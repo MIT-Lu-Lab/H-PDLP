@@ -257,6 +257,8 @@ void compute_next_primal_solution(pdhg_solver_state_t *state,
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->current_dual_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
+
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle_At,
                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
                                 &HOST_ONE,
@@ -314,9 +316,6 @@ void compute_next_dual_solution(pdhg_solver_state_t *state,
 {
     double dual_step = state->step_size * state->primal_weight;
 
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
-
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->reflected_primal_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
 
@@ -361,12 +360,12 @@ void compute_next_dual_solution(pdhg_solver_state_t *state,
             k_offset,
             reflection_coefficient);
     }
+
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
 }
 
 static void compute_fixed_point_error(pdhg_solver_state_t *state)
 {
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
     compute_delta_solution_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->pdhg_primal_solution,
         state->reflected_primal_solution,
