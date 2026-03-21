@@ -48,12 +48,17 @@ __global__ void fill_finite_bounds_kernel(
     double *__restrict__ lb_finite,
     double *__restrict__ ub_finite,
     int n);
-__global__ void hsd_gradient_kernel(
+__global__ void hsd_gradient_step_kernel(
     double *__restrict__ out,
     const double *__restrict__ current,
     const double *__restrict__ product,
     double step_size,
     int n);
+__global__ void cone_newton_init_kernel(
+    double *__restrict__ cone_newton_buffer,
+    const double *__restrict__ hsd_scalars_d,
+    double step_size,
+    int scalar_offset);
 __global__ void hsd_halpern_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
@@ -62,21 +67,19 @@ __global__ void hsd_halpern_kernel(
     int base_count,
     int k_offset,
     double refl_coeff,
-    int n);
-__global__ void hsd_primal_solution_update_kernel(
-    double *__restrict__ cur,
-    double *__restrict__ pdhg,
-    double *__restrict__ refl,
-    const double *__restrict__ init,
-    const double *__restrict__ dual_prod,
-    const double *__restrict__ refl_dual_slack,
-    const double *__restrict__ obj_vec,
-    double tau_refl,
-    double step_size,
-    int base_count,
-    int k_offset,
-    double refl_coeff,
     int n,
+    double *hsd_scalars_d,
+    const double *cone_newton_buffer,
+    double dual_step,
+    int scalar_offset,
+    bool is_major);
+__global__ void hsd_primal_scale_update_kernel(
+    double *hsd_scalars_d,
+    const double *c_dot_x_d,
+    double primal_step,
+    int inner_count,
+    int k_offset,
+    double reflection_coefficient,
     bool is_major);
 __global__ void cone_projection_reduce_kernel(
     const double *__restrict__ w_bar,
@@ -94,9 +97,23 @@ __global__ void cone_projection_apply_kernel(
     const double *__restrict__ newton_buf,
     int n);
 __global__ void cone_newton_step_kernel(
-    double *__restrict__ newton_buf,
-    double neg_scalar,
+    double *__restrict__ cone_newton_buffer,
     double tol);
+__global__ void hsd_primal_solution_update_kernel(
+    double *__restrict__ cur,
+    double *__restrict__ pdhg,
+    double *__restrict__ refl,
+    const double *__restrict__ init,
+    const double *__restrict__ dual_prod,
+    const double *__restrict__ refl_dual_slack,
+    const double *__restrict__ obj_vec,
+    const double *hsd_scalars_d,
+    double step_size,
+    int base_count,
+    int k_offset,
+    double refl_coeff,
+    int n,
+    bool is_major);
 __global__ void compute_delta_kernel(
     const double *__restrict__ initial_primal,
     const double *__restrict__ pdhg_primal,
@@ -126,6 +143,8 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state);
 static pdhg_solver_state_t *initialize_solver_state(
     lp_problem_t *working_problem,
     const pdhg_parameters_t *params);
+static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state);
+static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state, 
     const pdhg_parameters_t *params);
@@ -136,18 +155,18 @@ void hsd_update_primal_scaler(
     bool is_major);
 static void moreau_box_cone_project(
     const pdhg_parameters_t *params,
-    double unprojected_scalar,
     double *unprojected_vector,
     const double *lower_bound,
     const double *upper_bound,
     int n,
-    double *projected_scalar,
     double *projected_vector,
     double *reduce_buffer,
     void *cub_workspace,
     size_t cub_workspace_bytes,
     double *cone_newton_buffer,
-    double *cone_scale,
+    const double *hsd_scalars_d,
+    double step_size,
+    int scalar_offset,
     cudaStream_t stream);
 void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
@@ -217,6 +236,7 @@ cuhsdlp_result_t *optimize(
 
         if (do_restart)
         {
+            sync_hsd_scalars_to_host(state);
             compute_fixed_point_error(state);
             state->initial_fixed_point_error = state->fixed_point_error;
             do_restart = false;
@@ -239,6 +259,7 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
         hsd_update_primal_solution(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
 
+        sync_hsd_scalars_to_host(state);
         compute_fixed_point_error(state);
         compute_residual(state, params->optimality_norm);
         state->inner_count += params->termination_evaluation_frequency;
@@ -322,8 +343,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     state->termination_reason = TERMINATION_REASON_UNSPECIFIED;
 
-    state->num_blocks_primal = (state->num_variables + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    state->num_blocks_dual = (state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    state->num_blocks_primal = (state->num_variables + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    state->num_blocks_dual = (state->num_constraints + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_primal_dual =
         (state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_primal_dual_slack =
@@ -465,9 +486,11 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
         size_t max_bytes = (var_bytes > con_bytes) ? var_bytes : con_bytes;
         CUDA_CHECK(cudaMalloc(&state->cone_projection_reduce_buffer, 2 * max_bytes));
     }
-    CUDA_CHECK(cudaMalloc(&state->cone_newton_buffer, 6 * sizeof(double)));
-    state->cone_scale_constraint = 0.0;
-    state->cone_scale_bound = 0.0;
+    CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, 12 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->cone_newton_constraint_d, 7 * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->cone_newton_bound_d, 7 * sizeof(double)));
+    CUDA_CHECK(cudaMemset(state->cone_newton_constraint_d, 0, 7 * sizeof(double)));
+    CUDA_CHECK(cudaMemset(state->cone_newton_bound_d, 0, 7 * sizeof(double)));
 
     if (working_problem->primal_start)
     {
@@ -484,6 +507,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 #undef ALLOC_ZERO
 
     CUDA_CHECK(cudaMalloc(&state->scalar_pool_d, 8 * sizeof(double)));
+
+    sync_hsd_scalars_to_device(state);
 
     compute_objective_and_bound_norms(state, params);
 
@@ -642,6 +667,45 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     return state;
 }
 
+static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state)
+{
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    double host_scalars[12];
+    CUDA_CHECK(cudaMemcpy(host_scalars, state->hsd_scalars_d, 12 * sizeof(double), cudaMemcpyDeviceToHost));
+    state->current_primal_scale = host_scalars[0];
+    state->reflected_primal_scale = host_scalars[1];
+    state->pdhg_primal_scale = host_scalars[2];
+    state->initial_primal_scale = host_scalars[3];
+    state->current_dual_constraint_offset = host_scalars[4];
+    state->reflected_dual_constraint_offset = host_scalars[5];
+    state->pdhg_dual_constraint_offset = host_scalars[6];
+    state->initial_dual_constraint_offset = host_scalars[7];
+    state->current_dual_bound_offset = host_scalars[8];
+    state->reflected_dual_bound_offset = host_scalars[9];
+    state->pdhg_dual_bound_offset = host_scalars[10];
+    state->initial_dual_bound_offset = host_scalars[11];
+}
+
+static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state)
+{
+    double host_scalars[12];
+    host_scalars[0] = state->current_primal_scale;
+    host_scalars[1] = state->reflected_primal_scale;
+    host_scalars[2] = state->pdhg_primal_scale;
+    host_scalars[3] = state->initial_primal_scale;
+    host_scalars[4] = state->current_dual_constraint_offset;
+    host_scalars[5] = state->reflected_dual_constraint_offset;
+    host_scalars[6] = state->pdhg_dual_constraint_offset;
+    host_scalars[7] = state->initial_dual_constraint_offset;
+    host_scalars[8] = state->current_dual_bound_offset;
+    host_scalars[9] = state->reflected_dual_bound_offset;
+    host_scalars[10] = state->pdhg_dual_bound_offset;
+    host_scalars[11] = state->initial_dual_bound_offset;
+    CUDA_CHECK(cudaMemcpy(state->hsd_scalars_d, host_scalars, 12 * sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemset(state->cone_newton_constraint_d, 0, 7 * sizeof(double)));
+    CUDA_CHECK(cudaMemset(state->cone_newton_bound_d, 0, 7 * sizeof(double)));
+}
+
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
     double sigma_A = 0.0;
@@ -669,22 +733,6 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     state->best_primal_weight = state->primal_weight;
 }
 
-static inline void halpern_scalar(
-    double *current,
-    double *reflected,
-    double projected,
-    double initial,
-    int base_count,
-    int k_offset,
-    double reflection_coeff)
-{
-    int k = base_count + k_offset;
-    double weight = (double)k / (double)(k + 1);
-    *reflected = 2.0 * projected - *current;
-    double mixed = reflection_coeff * (*reflected) + (1.0 - reflection_coeff) * (*current);
-    *current = weight * mixed + (1.0 - weight) * initial;
-}
-
 void hsd_update_primal_scaler(
     pdhg_solver_state_t *state,
     const int k_offset,
@@ -698,26 +746,15 @@ void hsd_update_primal_scaler(
                             state->objective_vector, 1,
                             state->current_primal_solution, 1,
                             state->scalar_pool_d + 7));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    double c_dot_x;
-    CUDA_CHECK(cudaMemcpy(&c_dot_x, state->scalar_pool_d + 7, sizeof(double), cudaMemcpyDeviceToHost));
-
-    double primal_scale_gradient = c_dot_x + state->current_dual_constraint_offset + state->current_dual_bound_offset;
-    double projected_primal_scale = fmax(0.0, state->current_primal_scale + primal_step * primal_scale_gradient);
-
-    if (is_major)
-    {
-        state->pdhg_primal_scale = projected_primal_scale;
-    }
-
-    halpern_scalar(&state->current_primal_scale,
-                   &state->reflected_primal_scale,
-                   projected_primal_scale,
-                   state->initial_primal_scale,
-                   state->inner_count,
-                   k_offset,
-                   reflection_coefficient);
+    hsd_primal_scale_update_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->hsd_scalars_d,
+        state->scalar_pool_d + 7,
+        primal_step,
+        state->inner_count,
+        k_offset,
+        reflection_coefficient,
+        is_major);
 }
 
 void hsd_update_dual_solution(
@@ -728,8 +765,6 @@ void hsd_update_dual_solution(
     bool is_major)
 {
     double dual_step = state->step_size * state->primal_weight;
-
-    double unprojected_offset = state->current_dual_constraint_offset - dual_step * state->reflected_primal_scale;
 
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
@@ -745,43 +780,27 @@ void hsd_update_dual_solution(
                                 CUSPARSE_SPMV_CSR_ALG2,
                                 state->primal_spmv_buffer));
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
-    hsd_gradient_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+    hsd_gradient_step_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->dual_vec_buffer,
         state->current_dual_solution,
         state->primal_product,
         dual_step,
         state->num_constraints);
 
-    double projected_offset;
     moreau_box_cone_project(params,
-                            unprojected_offset,
                             state->dual_vec_buffer,
                             state->constraint_lower_bound,
                             state->constraint_upper_bound,
                             state->num_constraints,
-                            &projected_offset,
                             state->pdhg_dual_solution,
                             state->cone_projection_reduce_buffer,
                             state->cub_reduce_workspace,
                             state->cub_reduce_workspace_bytes,
-                            state->cone_newton_buffer,
-                            &state->cone_scale_constraint,
+                            state->cone_newton_constraint_d,
+                            state->hsd_scalars_d,
+                            dual_step,
+                            4,
                             state->stream_A);
-
-    if (is_major)
-    {
-        state->pdhg_dual_constraint_offset = projected_offset;
-    }
-
-    halpern_scalar(&state->current_dual_constraint_offset,
-                   &state->reflected_dual_constraint_offset,
-                   projected_offset,
-                   state->initial_dual_constraint_offset,
-                   state->inner_count,
-                   k_offset,
-                   reflection_coefficient);
 
     hsd_halpern_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->current_dual_solution,
@@ -791,7 +810,12 @@ void hsd_update_dual_solution(
         state->inner_count,
         k_offset,
         reflection_coefficient,
-        state->num_constraints);
+        state->num_constraints,
+        state->hsd_scalars_d,
+        state->cone_newton_constraint_d,
+        dual_step,
+        4,
+        is_major);
 }
 
 void hsd_update_dual_slack(pdhg_solver_state_t *state,
@@ -802,86 +826,66 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
 {
     double dual_step = state->step_size * state->primal_weight;
 
-    double unprojected_offset = state->current_dual_bound_offset - dual_step * state->reflected_primal_scale;
-
-    hsd_gradient_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+    hsd_gradient_step_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->primal_vec_buffer,
         state->current_dual_slack,
         state->current_primal_solution,
         dual_step,
         state->num_variables);
 
-    double projected_offset;
     moreau_box_cone_project(params,
-                            unprojected_offset,
                             state->primal_vec_buffer,
                             state->variable_lower_bound,
                             state->variable_upper_bound,
                             state->num_variables,
-                            &projected_offset,
                             state->pdhg_dual_slack,
                             state->cone_projection_reduce_buffer,
                             state->cub_reduce_workspace,
                             state->cub_reduce_workspace_bytes,
-                            state->cone_newton_buffer,
-                            &state->cone_scale_bound,
+                            state->cone_newton_bound_d,
+                            state->hsd_scalars_d,
+                            dual_step,
+                            8,
                             state->stream_A);
-
-    if (is_major)
-    {
-        state->pdhg_dual_bound_offset = projected_offset;
-    }
-
-    halpern_scalar(&state->current_dual_bound_offset,
-                   &state->reflected_dual_bound_offset,
-                   projected_offset,
-                   state->initial_dual_bound_offset,
-                   state->inner_count, 
-                   k_offset, 
-                   reflection_coefficient);
 
     hsd_halpern_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->current_dual_slack,
         state->reflected_dual_slack,
         state->pdhg_dual_slack,
         state->initial_dual_slack,
-        state->inner_count, 
-        k_offset, 
+        state->inner_count,
+        k_offset,
         reflection_coefficient,
-        state->num_variables);
+        state->num_variables,
+        state->hsd_scalars_d,
+        state->cone_newton_bound_d,
+        dual_step,
+        8,
+        is_major);
 }
 
 static void moreau_box_cone_project(
     const pdhg_parameters_t *params,
-    double unprojected_scalar,
     double *unprojected_vector,
     const double *lower_bound,
     const double *upper_bound,
     int n,
-    double *projected_scalar,
     double *projected_vector,
     double *reduce_buffer,
     void *cub_workspace,
     size_t cub_workspace_bytes,
     double *cone_newton_buffer,
-    double *cone_scale,
+    const double *hsd_scalars_d,
+    double step_size,
+    int scalar_offset,
     cudaStream_t stream)
 {
     int num_blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     double *newton_deriv = reduce_buffer;
     double *newton_value = reduce_buffer + n;
 
-    double neg_scalar = -unprojected_scalar;
-
-    if (neg_scalar <= 0.0 && n == 0)
-    {
-        *projected_scalar = unprojected_scalar;
-        return;
-    }
-
-    double init_state[4] = {*cone_scale, 0.0, INFINITY, 0.0};
-    CUDA_CHECK(cudaMemcpyAsync(
-        cone_newton_buffer + 2, init_state, 4 * sizeof(double), cudaMemcpyHostToDevice, stream));
+    cone_newton_init_kernel<<<1, 1, 0, stream>>>(
+        cone_newton_buffer, hsd_scalars_d, step_size, scalar_offset);
 
     for (int iter = 0; iter < params->cone_newton_max_iter; iter++)
     {
@@ -903,7 +907,7 @@ static void moreau_box_cone_project(
             cub_workspace, cub_bytes, newton_value, cone_newton_buffer + 1, n, stream));
 
         cone_newton_step_kernel<<<1, 1, 0, stream>>>(
-            cone_newton_buffer, neg_scalar, params->cone_newton_tol);
+            cone_newton_buffer, params->cone_newton_tol);
     }
 
     cone_projection_apply_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
@@ -913,15 +917,6 @@ static void moreau_box_cone_project(
         upper_bound,
         cone_newton_buffer,
         n);
-
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    double final_cone_scale;
-    CUDA_CHECK(cudaMemcpy(
-        &final_cone_scale, cone_newton_buffer + 2, sizeof(double), cudaMemcpyDeviceToHost));
-
-    *cone_scale = final_cone_scale;
-    *projected_scalar = unprojected_scalar + final_cone_scale;
 }
 
 void hsd_update_primal_solution(pdhg_solver_state_t *state,
@@ -956,7 +951,7 @@ void hsd_update_primal_solution(pdhg_solver_state_t *state,
         state->dual_product,
         state->reflected_dual_slack,
         state->objective_vector,
-        state->reflected_primal_scale,
+        state->hsd_scalars_d,
         primal_step,
         state->inner_count,
         k_offset,
@@ -1142,8 +1137,7 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
     state->current_dual_bound_offset = state->pdhg_dual_bound_offset;
     state->reflected_dual_bound_offset = state->pdhg_dual_bound_offset;
 
-    state->cone_scale_constraint = 0.0;
-    state->cone_scale_bound = 0.0;
+    sync_hsd_scalars_to_device(state);
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
@@ -1335,8 +1329,12 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->delta_dual_slack));
     if (state->cone_projection_reduce_buffer)
         CUDA_CHECK(cudaFree(state->cone_projection_reduce_buffer));
-    if (state->cone_newton_buffer)
-        CUDA_CHECK(cudaFree(state->cone_newton_buffer));
+    if (state->hsd_scalars_d)
+        CUDA_CHECK(cudaFree(state->hsd_scalars_d));
+    if (state->cone_newton_constraint_d)
+        CUDA_CHECK(cudaFree(state->cone_newton_constraint_d));
+    if (state->cone_newton_bound_d)
+        CUDA_CHECK(cudaFree(state->cone_newton_bound_d));
     if (state->cub_reduce_workspace)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace));
     if (state->scalar_pool_d)
@@ -1422,7 +1420,7 @@ __global__ void fill_finite_bounds_kernel(const double *__restrict__ lb,
     ub_finite[i] = isfinite(Ui) ? Ui : 0.0;
 }
 
-__global__ void hsd_gradient_kernel(
+__global__ void hsd_gradient_step_kernel(
     double *__restrict__ out,
     const double *__restrict__ current,
     const double *__restrict__ product,
@@ -1431,9 +1429,19 @@ __global__ void hsd_gradient_kernel(
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
-    {
         out[i] = current[i] - step_size * product[i];
-    }
+}
+
+__global__ void cone_newton_init_kernel(
+    double *__restrict__ cone_newton_buffer,
+    const double *__restrict__ hsd_scalars_d,
+    double step_size,
+    int scalar_offset)
+{
+    cone_newton_buffer[3] = 0.0;
+    cone_newton_buffer[4] = INFINITY;
+    cone_newton_buffer[5] = 0.0;
+    cone_newton_buffer[6] = step_size * hsd_scalars_d[1] - hsd_scalars_d[scalar_offset];
 }
 
 __global__ void hsd_halpern_kernel(
@@ -1444,23 +1452,44 @@ __global__ void hsd_halpern_kernel(
     int base_count,
     int k_offset,
     double refl_coeff,
-    int n)
+    int n,
+    double *hsd_scalars_d,
+    const double *cone_newton_buffer,
+    double dual_step,
+    int scalar_offset,
+    bool is_major)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-    int k = base_count + k_offset;
-    double weight = (double)(k) / (double)(k + 1);
-    refl[i] = 2.0 * proj[i] - cur[i];
-    double mixed = refl_coeff * refl[i] + (1.0 - refl_coeff) * cur[i];
-    cur[i] = weight * mixed + (1.0 - weight) * init[i];
+    if (i < n)
+    {
+        int k = base_count + k_offset;
+        double weight = (double)(k) / (double)(k + 1);
+        refl[i] = 2.0 * proj[i] - cur[i];
+        double mixed = refl_coeff * refl[i] + (1.0 - refl_coeff) * cur[i];
+        cur[i] = weight * mixed + (1.0 - weight) * init[i];
+    }
+    if (i == n)
+    {
+        int k = base_count + k_offset;
+        double weight = (double)(k) / (double)(k + 1);
+        double unprojected = hsd_scalars_d[scalar_offset] - dual_step * hsd_scalars_d[1];
+        double projected = unprojected + cone_newton_buffer[2];
+        if (is_major)
+        {
+            hsd_scalars_d[scalar_offset + 2] = projected;
+        }
+        double reflected = 2.0 * projected - hsd_scalars_d[scalar_offset];
+        double mixed = refl_coeff * reflected + (1.0 - refl_coeff) * hsd_scalars_d[scalar_offset];
+        hsd_scalars_d[scalar_offset] = weight * mixed + (1.0 - weight) * hsd_scalars_d[scalar_offset + 3];
+        hsd_scalars_d[scalar_offset + 1] = reflected;
+    }
 }
 
 __global__ void cone_projection_reduce_kernel(
     const double *__restrict__ w_bar,
     const double *__restrict__ lb,
     const double *__restrict__ ub,
-    const double *__restrict__ newton_buf,
+    const double *__restrict__ cone_newton_buffer,
     double *__restrict__ coeff_buf,
     double *__restrict__ val_buf,
     int n)
@@ -1469,7 +1498,14 @@ __global__ void cone_projection_reduce_kernel(
     if (i >= n)
         return;
 
-    double tau_est = newton_buf[2];
+    if (cone_newton_buffer[5] != 0.0)
+    {
+        coeff_buf[i] = 0.0;
+        val_buf[i] = 0.0;
+        return;
+    }
+
+    double tau_est = cone_newton_buffer[2];
     double vi = -w_bar[i];
     double li = lb[i];
     double ui = ub[i];
@@ -1516,18 +1552,18 @@ __global__ void cone_projection_apply_kernel(
 }
 
 __global__ void cone_newton_step_kernel(
-    double *__restrict__ newton_buf,
-    double neg_scalar,
+    double *__restrict__ cone_newton_buffer,
     double tol)
 {
-    if (newton_buf[5] != 0.0)
+    if (cone_newton_buffer[5] != 0.0)
         return;
 
-    double deriv_sum = newton_buf[0];
-    double value_sum = newton_buf[1];
-    double cone_scale = newton_buf[2];
-    double tau_lo = newton_buf[3];
-    double tau_hi = newton_buf[4];
+    double deriv_sum = cone_newton_buffer[0];
+    double value_sum = cone_newton_buffer[1];
+    double cone_scale = cone_newton_buffer[2];
+    double tau_lo = cone_newton_buffer[3];
+    double tau_hi = cone_newton_buffer[4];
+    double neg_scalar = cone_newton_buffer[6];
 
     double newton_step = fmax(0.0, (neg_scalar + value_sum) / (1.0 + deriv_sum));
 
@@ -1545,11 +1581,37 @@ __global__ void cone_newton_step_kernel(
         new_scale = fmax(newton_step, tau_lo);
 
     if (fabs(new_scale - cone_scale) < tol * (1.0 + fabs(new_scale)))
-        newton_buf[5] = 1.0;
+        cone_newton_buffer[5] = 1.0;
 
-    newton_buf[2] = new_scale;
-    newton_buf[3] = tau_lo;
-    newton_buf[4] = tau_hi;
+    cone_newton_buffer[2] = new_scale;
+    cone_newton_buffer[3] = tau_lo;
+    cone_newton_buffer[4] = tau_hi;
+}
+
+__global__ void hsd_primal_scale_update_kernel(
+    double *hsd_scalars_d,
+    const double *c_dot_x_d,
+    double primal_step,
+    int inner_count,
+    int k_offset,
+    double reflection_coefficient,
+    bool is_major)
+{
+    double c_dot_x = c_dot_x_d[0];
+    double gradient = c_dot_x + hsd_scalars_d[4] + hsd_scalars_d[8];
+    double projected = fmax(0.0, hsd_scalars_d[0] + primal_step * gradient);
+
+    if (is_major)
+    {
+        hsd_scalars_d[2] = projected;
+    }
+
+    int k = inner_count + k_offset;
+    double weight = (double)(k) / (double)(k + 1);
+    double reflected = 2.0 * projected - hsd_scalars_d[0];
+    double mixed = reflection_coefficient * reflected + (1.0 - reflection_coefficient) * hsd_scalars_d[0];
+    hsd_scalars_d[0] = weight * mixed + (1.0 - weight) * hsd_scalars_d[3];
+    hsd_scalars_d[1] = reflected;
 }
 
 __global__ void hsd_primal_solution_update_kernel(
@@ -1560,7 +1622,7 @@ __global__ void hsd_primal_solution_update_kernel(
     const double *__restrict__ dual_prod,
     const double *__restrict__ refl_dual_slack,
     const double *__restrict__ obj_vec,
-    double tau_refl,
+    const double *hsd_scalars_d,
     double step_size,
     int base_count,
     int k_offset,
@@ -1571,6 +1633,7 @@ __global__ void hsd_primal_solution_update_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
+    double tau_refl = hsd_scalars_d[1];
     int k = base_count + k_offset;
     double weight = (double)(k) / (double)(k + 1);
 

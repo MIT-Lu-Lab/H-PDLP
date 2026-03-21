@@ -108,10 +108,9 @@ typedef struct
     double pdhg_dual_bound_offset;
 
     double *cone_projection_reduce_buffer;
-    double *cone_newton_buffer;
-
-    double cone_scale_constraint;
-    double cone_scale_bound;
+    double *hsd_scalars_d;
+    double *cone_newton_constraint_d;
+    double *cone_newton_bound_d;
 
     double step_size;
     double primal_weight;
