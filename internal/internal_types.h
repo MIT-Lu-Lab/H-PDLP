@@ -24,6 +24,37 @@ limitations under the License.
 #include <stdint.h>
 #include <time.h>
 
+enum {
+    HSD_CURRENT   = 0,
+    HSD_REFLECTED = 1,
+    HSD_PDHG      = 2,
+    HSD_INITIAL   = 3,
+    HSD_PRIMAL_SCALE    = 0,
+    HSD_DUAL_CONSTRAINT = 4,
+    HSD_DUAL_BOUND      = 8,
+    HSD_SCALARS_COUNT   = 12,
+};
+
+enum {
+    CONE_DERIV_SUM  = 0,
+    CONE_VALUE_SUM  = 1,
+    CONE_SCALE      = 2,
+    CONE_TAU_LO     = 3,
+    CONE_TAU_HI     = 4,
+    CONE_CONVERGED  = 5,
+    CONE_NEG_SCALAR = 6,
+    CONE_BUFFER_SIZE = 7,
+};
+
+enum {
+    SCALAR_POOL_PRIMAL_NORM      = 0,
+    SCALAR_POOL_DUAL_NORM        = 1,
+    SCALAR_POOL_CROSS_TERM       = 2,
+    SCALAR_POOL_BOUND_DUAL_NORM  = 3,
+    SCALAR_POOL_BOUND_CROSS_TERM = 4,
+    SCALAR_POOL_C_DOT_X          = 7,
+};
+
 typedef struct
 {
     int num_rows;
