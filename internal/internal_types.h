@@ -94,6 +94,7 @@ typedef struct
     cudaStream_t stream_At;
     cudaEvent_t event_A;
     cudaEvent_t event_At;
+    cudaEvent_t event_s;
     cublasHandle_t blas_handle_A;
     cublasHandle_t blas_handle_At;
     curandGenerator_t curand_gen;
@@ -140,7 +141,8 @@ typedef struct
     double reflected_dual_bound_offset;
     double pdhg_dual_bound_offset;
 
-    double *cone_projection_reduce_buffer;
+    double *cone_projection_reduce_buffer_constraint;
+    double *cone_projection_reduce_buffer_bound;
     double *hsd_scalars_d;
     double *cone_newton_constraint_d;
     double *cone_newton_bound_d;
@@ -193,6 +195,7 @@ typedef struct
     cusparseDnVecDescr_t vec_dual_prod;
 
     void *cub_reduce_workspace;
+    void *cub_reduce_workspace_bound;
     size_t cub_reduce_workspace_bytes;
     double *scalar_pool_d;
 } pdhg_solver_state_t;

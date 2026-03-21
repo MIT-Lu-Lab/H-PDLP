@@ -228,9 +228,11 @@ cuhsdlp_result_t *optimize(
     while (state->total_count < params->termination_criteria.iteration_limit)
     {
         hsd_update_primal_scaler(state, 1, params->reflection_coefficient, true);
+        CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
+        CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
         hsd_update_dual_solution(state, params, 1, params->reflection_coefficient, true);
-        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
         hsd_update_dual_slack(state, params, 1, params->reflection_coefficient, true);
+        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
         hsd_update_primal_solution(state, 1, params->reflection_coefficient, true);
 
@@ -245,17 +247,21 @@ cuhsdlp_result_t *optimize(
         for (int i = 2; i <= params->termination_evaluation_frequency - 1; i++)
         {
             hsd_update_primal_scaler(state, i, params->reflection_coefficient, false);
+            CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
+            CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
             hsd_update_dual_solution(state, params, i, params->reflection_coefficient, false);
-            CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
             hsd_update_dual_slack(state, params, i, params->reflection_coefficient, false);
+            CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
             CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
             hsd_update_primal_solution(state, i, params->reflection_coefficient, false);
         }
 
         hsd_update_primal_scaler(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
+        CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
+        CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
         hsd_update_dual_solution(state, params, params->termination_evaluation_frequency, params->reflection_coefficient, true);
-        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
         hsd_update_dual_slack(state, params, params->termination_evaluation_frequency, params->reflection_coefficient, true);
+        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
         hsd_update_primal_solution(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
 
@@ -360,6 +366,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     CUDA_CHECK(cudaStreamCreate(&state->stream_At));
     CUDA_CHECK(cudaEventCreateWithFlags(&state->event_A, cudaEventDisableTiming));
     CUDA_CHECK(cudaEventCreateWithFlags(&state->event_At, cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(&state->event_s, cudaEventDisableTiming));
     CUSPARSE_CHECK(cusparseSetStream(state->sparse_handle_A, state->stream_A));
     CUSPARSE_CHECK(cusparseSetStream(state->sparse_handle_At, state->stream_At));
     CUBLAS_CHECK(cublasCreate(&state->blas_handle_A));
@@ -380,6 +387,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
         CUDA_CHECK(cub::DeviceReduce::Max((void *)NULL, tb_max, (double *)NULL, (double *)NULL, max_n));
         state->cub_reduce_workspace_bytes = (tb_sum > tb_max) ? tb_sum : tb_max;
         CUDA_CHECK(cudaMalloc(&state->cub_reduce_workspace, state->cub_reduce_workspace_bytes));
+        CUDA_CHECK(cudaMalloc(&state->cub_reduce_workspace_bound, state->cub_reduce_workspace_bytes));
     }
 
 #define ALLOC_AND_COPY(dest, src, bytes)  \
@@ -487,7 +495,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     {
         size_t max_bytes = (var_bytes > con_bytes) ? var_bytes : con_bytes;
-        CUDA_CHECK(cudaMalloc(&state->cone_projection_reduce_buffer, 2 * max_bytes));
+        CUDA_CHECK(cudaMalloc(&state->cone_projection_reduce_buffer_constraint, 2 * max_bytes));
+        CUDA_CHECK(cudaMalloc(&state->cone_projection_reduce_buffer_bound, 2 * max_bytes));
     }
     CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->cone_newton_constraint_d, CONE_BUFFER_SIZE * sizeof(double)));
@@ -673,6 +682,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
     double h[HSD_SCALARS_COUNT];
     CUDA_CHECK(cudaMemcpy(h, state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double), cudaMemcpyDeviceToHost));
     state->current_primal_scale              = h[HSD_PRIMAL_SCALE    + HSD_CURRENT];
@@ -796,7 +806,7 @@ void hsd_update_dual_solution(
                             state->constraint_upper_bound,
                             state->num_constraints,
                             state->pdhg_dual_solution,
-                            state->cone_projection_reduce_buffer,
+                            state->cone_projection_reduce_buffer_constraint,
                             state->cub_reduce_workspace,
                             state->cub_reduce_workspace_bytes,
                             state->cone_newton_constraint_d,
@@ -829,7 +839,7 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
 {
     double dual_step = state->step_size * state->primal_weight;
 
-    hsd_gradient_step_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+    hsd_gradient_step_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_At>>>(
         state->primal_vec_buffer,
         state->current_dual_slack,
         state->current_primal_solution,
@@ -842,16 +852,16 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
                             state->variable_upper_bound,
                             state->num_variables,
                             state->pdhg_dual_slack,
-                            state->cone_projection_reduce_buffer,
-                            state->cub_reduce_workspace,
+                            state->cone_projection_reduce_buffer_bound,
+                            state->cub_reduce_workspace_bound,
                             state->cub_reduce_workspace_bytes,
                             state->cone_newton_bound_d,
                             state->hsd_scalars_d,
                             dual_step,
                             HSD_DUAL_BOUND,
-                            state->stream_A);
+                            state->stream_At);
 
-    hsd_halpern_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+    hsd_halpern_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_At>>>(
         state->current_dual_slack,
         state->reflected_dual_slack,
         state->pdhg_dual_slack,
@@ -1153,13 +1163,16 @@ static cuhsdlp_result_t *create_result_from_state(pdhg_solver_state_t *state, co
 
     CUDA_CHECK(cudaMemcpy(results->primal_solution,
                           state->pdhg_primal_solution,
-                          state->var_bytes, cudaMemcpyDeviceToHost));
+                          state->var_bytes, 
+                          cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(results->dual_solution,
                           state->pdhg_dual_solution,
-                          state->con_bytes, cudaMemcpyDeviceToHost));
+                          state->con_bytes, 
+                          cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(results->reduced_cost,
                           state->pdhg_dual_slack,
-                          state->var_bytes, cudaMemcpyDeviceToHost));
+                          state->var_bytes, 
+                          cudaMemcpyDeviceToHost));
 
     results->num_variables = original_problem->num_variables;
     results->num_constraints = original_problem->num_constraints;
@@ -1230,10 +1243,14 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaStreamDestroy(state->stream_A));
     if (state->stream_At)
         CUDA_CHECK(cudaStreamDestroy(state->stream_At));
+    if (state->stream_At)
+        CUDA_CHECK(cudaStreamDestroy(state->stream_At));
     if (state->event_A)
         CUDA_CHECK(cudaEventDestroy(state->event_A));
     if (state->event_At)
         CUDA_CHECK(cudaEventDestroy(state->event_At));
+    if (state->event_s)
+        CUDA_CHECK(cudaEventDestroy(state->event_s));
     if (state->blas_handle_A)
         CUBLAS_CHECK(cublasDestroy(state->blas_handle_A));
     if (state->blas_handle_At)
@@ -1321,8 +1338,10 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->reflected_dual_slack));
     if (state->delta_dual_slack)
         CUDA_CHECK(cudaFree(state->delta_dual_slack));
-    if (state->cone_projection_reduce_buffer)
-        CUDA_CHECK(cudaFree(state->cone_projection_reduce_buffer));
+    if (state->cone_projection_reduce_buffer_constraint)
+        CUDA_CHECK(cudaFree(state->cone_projection_reduce_buffer_constraint));
+    if (state->cone_projection_reduce_buffer_bound)
+        CUDA_CHECK(cudaFree(state->cone_projection_reduce_buffer_bound));
     if (state->hsd_scalars_d)
         CUDA_CHECK(cudaFree(state->hsd_scalars_d));
     if (state->cone_newton_constraint_d)
@@ -1331,6 +1350,10 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->cone_newton_bound_d));
     if (state->cub_reduce_workspace)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace));
+    if (state->cub_reduce_workspace_bound)
+        CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
+    if (state->cub_reduce_workspace_bound)
+        CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
     if (state->scalar_pool_d)
         CUDA_CHECK(cudaFree(state->scalar_pool_d));
 
