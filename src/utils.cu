@@ -331,7 +331,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->optimality_norm = NORM_TYPE_L2;
     params->presolve = true;
     params->matrix_zero_tol = 1e-9;
-    params->cone_newton_max_iter = 20;
+    params->cone_newton_max_iter = 10;
     params->cone_newton_tol = 1e-6;
 }
 
