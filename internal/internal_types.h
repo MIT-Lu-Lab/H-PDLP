@@ -86,6 +86,8 @@ typedef struct
     int num_blocks_primal_dual_slack;
     int num_blocks_nnz;
 
+    size_t var_bytes;
+    size_t con_bytes;
     cusparseHandle_t sparse_handle_A;
     cusparseHandle_t sparse_handle_At;
     cudaStream_t stream_A;

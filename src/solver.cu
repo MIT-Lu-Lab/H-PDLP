@@ -323,11 +323,14 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     int n_vars = working_problem->num_variables;
     int n_cons = working_problem->num_constraints;
     int nnz = working_problem->constraint_matrix_num_nonzeros;
-    size_t var_bytes = n_vars * sizeof(double);
-    size_t con_bytes = n_cons * sizeof(double);
 
     state->num_variables = n_vars;
     state->num_constraints = n_cons;
+    state->var_bytes = n_vars * sizeof(double);
+    state->con_bytes = n_cons * sizeof(double);
+
+    size_t var_bytes = state->var_bytes;
+    size_t con_bytes = state->con_bytes;
     state->objective_constant = working_problem->objective_constant;
 
     state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
@@ -702,8 +705,8 @@ static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state)
     h[HSD_DUAL_BOUND      + HSD_PDHG]       = state->pdhg_dual_bound_offset;
     h[HSD_DUAL_BOUND      + HSD_INITIAL]    = state->initial_dual_bound_offset;
     CUDA_CHECK(cudaMemcpy(state->hsd_scalars_d, h, HSD_SCALARS_COUNT * sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemset(state->cone_newton_constraint_d, 0, CONE_BUFFER_SIZE * sizeof(double)));
-    CUDA_CHECK(cudaMemset(state->cone_newton_bound_d, 0, CONE_BUFFER_SIZE * sizeof(double)));
+    CUDA_CHECK(cudaMemsetAsync(state->cone_newton_constraint_d, 0, CONE_BUFFER_SIZE * sizeof(double), state->stream_A));
+    CUDA_CHECK(cudaMemsetAsync(state->cone_newton_bound_d, 0, CONE_BUFFER_SIZE * sizeof(double), state->stream_A));
 }
 
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
@@ -1100,30 +1103,24 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
         state->best_primal_weight = state->primal_weight;
     }
 
-    CUDA_CHECK(cudaMemcpy(state->initial_primal_solution,
-                          state->pdhg_primal_solution,
-                          state->num_variables * sizeof(double),
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_primal_solution,
-                          state->pdhg_primal_solution,
-                          state->num_variables * sizeof(double),
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->initial_dual_solution,
-                          state->pdhg_dual_solution,
-                          state->num_constraints * sizeof(double),
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_dual_solution,
-                          state->pdhg_dual_solution,
-                          state->num_constraints * sizeof(double),
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->initial_dual_slack,
-                          state->pdhg_dual_slack,
-                          state->num_variables * sizeof(double),
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_dual_slack,
-                          state->pdhg_dual_slack,
-                          state->num_variables * sizeof(double),
-                          cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(state->initial_primal_solution,
+                               state->pdhg_primal_solution, state->var_bytes,
+                               cudaMemcpyDeviceToDevice, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->current_primal_solution,
+                               state->pdhg_primal_solution, state->var_bytes,
+                               cudaMemcpyDeviceToDevice, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->initial_dual_solution,
+                               state->pdhg_dual_solution, state->con_bytes,
+                               cudaMemcpyDeviceToDevice, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->current_dual_solution,
+                               state->pdhg_dual_solution, state->con_bytes,
+                               cudaMemcpyDeviceToDevice, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->initial_dual_slack,
+                               state->pdhg_dual_slack, state->var_bytes,
+                               cudaMemcpyDeviceToDevice, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->current_dual_slack,
+                               state->pdhg_dual_slack, state->var_bytes,
+                               cudaMemcpyDeviceToDevice, state->stream_A));
 
     state->initial_primal_scale = state->pdhg_primal_scale;
     state->current_primal_scale = state->pdhg_primal_scale;
@@ -1150,22 +1147,19 @@ static cuhsdlp_result_t *create_result_from_state(pdhg_solver_state_t *state, co
     rescale_solution(state);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    results->primal_solution = (double *)safe_malloc(state->num_variables * sizeof(double));
-    results->dual_solution = (double *)safe_malloc(state->num_constraints * sizeof(double));
-    results->reduced_cost = (double *)safe_malloc(state->num_variables * sizeof(double));
+    results->primal_solution = (double *)safe_malloc(state->var_bytes);
+    results->dual_solution = (double *)safe_malloc(state->con_bytes);
+    results->reduced_cost = (double *)safe_malloc(state->var_bytes);
 
     CUDA_CHECK(cudaMemcpy(results->primal_solution,
                           state->pdhg_primal_solution,
-                          state->num_variables * sizeof(double),
-                          cudaMemcpyDeviceToHost));
+                          state->var_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(results->dual_solution,
                           state->pdhg_dual_solution,
-                          state->num_constraints * sizeof(double),
-                          cudaMemcpyDeviceToHost));
+                          state->con_bytes, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(results->reduced_cost,
                           state->pdhg_dual_slack,
-                          state->num_variables * sizeof(double),
-                          cudaMemcpyDeviceToHost));
+                          state->var_bytes, cudaMemcpyDeviceToHost));
 
     results->num_variables = original_problem->num_variables;
     results->num_constraints = original_problem->num_constraints;
