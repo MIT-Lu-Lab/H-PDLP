@@ -52,6 +52,7 @@ typedef struct
     int num_blocks_primal;
     int num_blocks_dual;
     int num_blocks_primal_dual;
+    int num_blocks_primal_dual_slack;
     int num_blocks_nnz;
 
     cusparseHandle_t sparse_handle_A;
@@ -73,15 +74,44 @@ typedef struct
     double *current_primal_solution;
     double *pdhg_primal_solution;
     double *reflected_primal_solution;
-    double *dual_product;
-    double *primal_slack;
-    double *dual_slack;
+    double *delta_primal_solution;
+    double *primal_product;
+    double *primal_vec_buffer;
 
     double *initial_dual_solution;
     double *current_dual_solution;
     double *pdhg_dual_solution;
     double *reflected_dual_solution;
-    double *primal_product;
+    double *delta_dual_solution;
+    double *dual_product;
+    double *dual_vec_buffer;
+
+    double *initial_dual_slack;
+    double *current_dual_slack;
+    double *pdhg_dual_slack;
+    double *reflected_dual_slack;
+    double *delta_dual_slack;
+
+    double initial_primal_scale;
+    double current_primal_scale;
+    double reflected_primal_scale;
+    double pdhg_primal_scale;
+    
+    double initial_dual_constraint_offset;
+    double current_dual_constraint_offset;
+    double reflected_dual_constraint_offset;
+    double pdhg_dual_constraint_offset;
+
+    double initial_dual_bound_offset;
+    double current_dual_bound_offset;
+    double reflected_dual_bound_offset;
+    double pdhg_dual_bound_offset;
+
+    double *cone_projection_reduce_buffer;
+    double *cone_newton_buffer;
+
+    double cone_scale_constraint;
+    double cone_scale_bound;
 
     double step_size;
     double primal_weight;
@@ -119,8 +149,6 @@ typedef struct
     double relative_objective_gap;
     termination_reason_t termination_reason;
 
-    double *delta_primal_solution;
-    double *delta_dual_solution;
     double fixed_point_error;
     double initial_fixed_point_error;
     double last_trial_fixed_point_error;
@@ -132,11 +160,8 @@ typedef struct
     cusparseDnVecDescr_t vec_primal_prod;
     cusparseDnVecDescr_t vec_dual_prod;
 
-    void *reduce_workspace_d;
-    size_t reduce_workspace_bytes;
+    void *cub_reduce_workspace;
+    size_t cub_reduce_workspace_bytes;
     double *scalar_pool_d;
-
-    double *ones_primal_d;
-    double *ones_dual_d;
 } pdhg_solver_state_t;
 

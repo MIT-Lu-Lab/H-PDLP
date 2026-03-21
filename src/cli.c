@@ -144,6 +144,8 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --sv_tol <float>                Tolerance for singular value estimation (default: 1e-4).\n");
     fprintf(stderr, "      --opt_norm <norm_type>          Norm for optimality criteria: l2 or linf (default: l2).\n");
     fprintf(stderr, "      --no_presolve                   Disable presolve.\n");
+    fprintf(stderr, "      --cone_newton_max_iter <int>    Max Newton iterations for cone projection (default: 20).\n");
+    fprintf(stderr, "      --cone_newton_tol <float>       Newton tolerance for cone projection (default: 1e-6).\n");
 }
 
 int main(int argc, char *argv[])
@@ -167,6 +169,8 @@ int main(int argc, char *argv[])
         {"eval_freq", required_argument, 0, 1013},
         {"opt_norm", required_argument, 0, 1014},
         {"no_presolve", no_argument, 0, 1015},
+        {"cone_newton_max_iter", required_argument, 0, 1016},
+        {"cone_newton_tol", required_argument, 0, 1017},
         {0, 0, 0, 0}};
 
     int opt;
@@ -229,6 +233,12 @@ int main(int argc, char *argv[])
         break;
         case 1015:
             params.presolve = false;
+            break;
+        case 1016:
+            params.cone_newton_max_iter = atoi(optarg);
+            break;
+        case 1017:
+            params.cone_newton_tol = atof(optarg);
             break;
         case '?':
             return 1;

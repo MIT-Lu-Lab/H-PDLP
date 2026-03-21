@@ -33,7 +33,8 @@ extern "C"
         TERMINATION_REASON_DUAL_INFEASIBLE,
         TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED,
         TERMINATION_REASON_TIME_LIMIT,
-        TERMINATION_REASON_ITERATION_LIMIT
+        TERMINATION_REASON_ITERATION_LIMIT,
+        TERMINATION_REASON_NUMERICAL_FAILURE
     } termination_reason_t;
 
     typedef enum
@@ -98,6 +99,8 @@ extern "C"
         norm_type_t optimality_norm;
         bool presolve;
         double matrix_zero_tol;
+        int cone_newton_max_iter;
+        double cone_newton_tol;
     } pdhg_parameters_t;
 
     typedef struct

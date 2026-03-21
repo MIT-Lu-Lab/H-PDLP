@@ -23,33 +23,33 @@ limitations under the License.
 #endif
 
 __global__ void compute_objective_norm_entries_kernel(
-    const double *__restrict__ objective_vector,
+    const double *__restrict__ obj_vec,
     double *__restrict__ entries,
     int n_vars,
     int use_linf);
 __global__ void compute_bound_norm_entries_kernel(
-    const double *__restrict__ constraint_lower_bound,
-    const double *__restrict__ constraint_upper_bound,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
     double *__restrict__ entries,
     int n_cons,
     int use_linf);
 __global__ void compute_residual_kernel(
-    double *__restrict__ primal_residual,
-    const double *__restrict__ primal_product,
-    const double *__restrict__ constraint_lower_bound,
-    const double *__restrict__ constraint_upper_bound,
-    const double *__restrict__ dual_solution,
-    double *__restrict__ dual_residual,
-    const double *__restrict__ dual_product,
+    double *__restrict__ primal_res,
+    const double *__restrict__ primal_prod,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    double *__restrict__ dual_res,
+    const double *__restrict__ dual_prod,
     const double *__restrict__ dual_slack,
-    const double *__restrict__ objective_vector,
-    const double *__restrict__ constraint_rescaling,
-    const double *__restrict__ variable_rescaling,
-    double *__restrict__ dual_obj_contribution,
-    const double *__restrict__ const_lb_finite,
-    const double *__restrict__ const_ub_finite,
-    int num_constraints,
-    int num_variables);
+    const double *__restrict__ obj_vec,
+    const double *__restrict__ cons_rescaling,
+    const double *__restrict__ var_rescaling,
+    const double *__restrict__ var_lb,
+    const double *__restrict__ var_ub,
+    const double *__restrict__ primal_sol,
+    double inv_tau,
+    int n_cons,
+    int n_vars);
 __global__ void abs_vector_inplace_kernel(
     double *__restrict__ arr, int n);
 
@@ -111,23 +111,23 @@ int dense_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
     *col_ind = (int *)safe_malloc((size_t)nnz * sizeof(int));
     *vals = (double *)safe_malloc((size_t)nnz * sizeof(double));
 
-    int nz = 0;
+    int nnz_filled = 0;
     for (int i = 0; i < m; ++i)
     {
-        (*row_ptr)[i] = nz;
+        (*row_ptr)[i] = nnz_filled;
         for (int j = 0; j < n; ++j)
         {
-            double v = desc->data.dense.A[i * n + j];
-            if (fabs(v) > tol)
+            double val = desc->data.dense.A[i * n + j];
+            if (fabs(val) > tol)
             {
-                (*col_ind)[nz] = j;
-                (*vals)[nz] = v;
-                ++nz;
+                (*col_ind)[nnz_filled] = j;
+                (*vals)[nnz_filled] = val;
+                ++nnz_filled;
             }
         }
     }
-    (*row_ptr)[m] = nz;
-    *nnz_out = nz;
+    (*row_ptr)[m] = nnz_filled;
+    *nnz_out = nnz_filled;
     return 0;
 }
 
@@ -137,7 +137,7 @@ int csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
     const int m = desc->m, n = desc->n;
     const int *col_ptr = desc->data.csc.col_ptr;
     const int *row_ind = desc->data.csc.row_ind;
-    const double *v = desc->data.csc.vals;
+    const double *csc_vals = desc->data.csc.vals;
 
     const double tol = (desc->zero_tolerance > 0) ? desc->zero_tolerance : 0.0;
 
@@ -157,7 +157,7 @@ int csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
                 free(*row_ptr);
                 return -1;
             }
-            double val = v[k];
+            double val = csc_vals[k];
             if (tol > 0 && fabs(val) <= tol)
                 continue;
             ++((*row_ptr)[ri + 1]);
@@ -180,7 +180,7 @@ int csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
         for (int k = col_ptr[j]; k < col_ptr[j + 1]; ++k)
         {
             int ri = row_ind[k];
-            double val = v[k];
+            double val = csc_vals[k];
             if (tol > 0 && fabs(val) <= tol)
                 continue;
             int pos = next[ri]++;
@@ -199,16 +199,16 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
 {
     const int m = desc->m, n = desc->n;
     const int nnz_in = desc->data.coo.nnz;
-    const int *r = desc->data.coo.row_ind;
-    const int *c = desc->data.coo.col_ind;
-    const double *v = desc->data.coo.vals;
+    const int *coo_row_ind = desc->data.coo.row_ind;
+    const int *coo_col_ind = desc->data.coo.col_ind;
+    const double *coo_vals = desc->data.coo.vals;
     const double tol = (desc->zero_tolerance > 0) ? desc->zero_tolerance : 0.0;
 
     int nnz = 0;
     if (tol > 0)
     {
         for (int k = 0; k < nnz_in; ++k)
-            if (fabs(v[k]) > tol)
+            if (fabs(coo_vals[k]) > tol)
                 ++nnz;
     }
     else
@@ -225,9 +225,9 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
     if (tol > 0)
     {
         for (int k = 0; k < nnz_in; ++k)
-            if (fabs(v[k]) > tol)
+            if (fabs(coo_vals[k]) > tol)
             {
-                int ri = r[k];
+                int ri = coo_row_ind[k];
                 if (ri < 0 || ri >= m)
                 {
                     fprintf(stderr, "[interface] COO: row index out of range\n");
@@ -241,7 +241,7 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
     {
         for (int k = 0; k < nnz_in; ++k)
         {
-            int ri = r[k];
+            int ri = coo_row_ind[k];
             if (ri < 0 || ri >= m)
             {
                 fprintf(stderr, "[interface] COO: row index out of range\n");
@@ -263,9 +263,9 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
     {
         for (int k = 0; k < nnz_in; ++k)
         {
-            if (fabs(v[k]) <= tol)
+            if (fabs(coo_vals[k]) <= tol)
                 continue;
-            int ri = r[k], cj = c[k];
+            int ri = coo_row_ind[k], cj = coo_col_ind[k];
             if (cj < 0 || cj >= n)
             {
                 fprintf(stderr, "[interface] COO: col index out of range\n");
@@ -274,14 +274,14 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
             }
             int pos = next[ri]++;
             (*col_ind)[pos] = cj;
-            (*vals)[pos] = v[k];
+            (*vals)[pos] = coo_vals[k];
         }
     }
     else
     {
         for (int k = 0; k < nnz_in; ++k)
         {
-            int ri = r[k], cj = c[k];
+            int ri = coo_row_ind[k], cj = coo_col_ind[k];
             if (cj < 0 || cj >= n)
             {
                 fprintf(stderr, "[interface] COO: col index out of range\n");
@@ -293,7 +293,7 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
             }
             int pos = next[ri]++;
             (*col_ind)[pos] = cj;
-            (*vals)[pos] = v[k];
+            (*vals)[pos] = coo_vals[k];
         }
     }
 
@@ -331,6 +331,8 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->optimality_norm = NORM_TYPE_L2;
     params->presolve = true;
     params->matrix_zero_tol = 1e-9;
+    params->cone_newton_max_iter = 20;
+    params->cone_newton_tol = 1e-6;
 }
 
 const char *termination_reason_to_string(termination_reason_t reason)
@@ -349,6 +351,8 @@ const char *termination_reason_to_string(termination_reason_t reason)
         return "TIME_LIMIT";
     case TERMINATION_REASON_ITERATION_LIMIT:
         return "ITERATION_LIMIT";
+    case TERMINATION_REASON_NUMERICAL_FAILURE:
+        return "NUMERICAL_FAILURE";
     case TERMINATION_REASON_UNSPECIFIED:
         return "UNSPECIFIED";
     default:
@@ -502,6 +506,12 @@ void print_initial_info(const pdhg_parameters_t *params,
     PRINT_DIFF_DBL("matrix_zero_tol",
                    params->matrix_zero_tol,
                    default_params.matrix_zero_tol);
+    PRINT_DIFF_INT("cone_newton_iter",
+                   params->cone_newton_max_iter,
+                   default_params.cone_newton_max_iter);
+    PRINT_DIFF_DBL("cone_newton_tol",
+                   params->cone_newton_tol,
+                   default_params.cone_newton_tol);
 }
 
 #undef PRINT_DIFF_INT
@@ -514,44 +524,44 @@ void compute_objective_and_bound_norms(
 {
     const int use_linf = (params->optimality_norm == NORM_TYPE_L_INF);
 
-    double *entries_vars = state->dual_residual;
-    double *entries_cons = state->primal_residual;
-    double *d_out = state->scalar_pool_d;
+    double *norm_entries_vars = state->primal_vec_buffer;
+    double *norm_entries_cons = state->dual_vec_buffer;
+    double *reduction_output_d = state->scalar_pool_d;
 
     compute_objective_norm_entries_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
-        state->objective_vector, entries_vars, state->num_variables, use_linf);
+        state->objective_vector, norm_entries_vars, state->num_variables, use_linf);
     CUDA_CHECK(cudaGetLastError());
 
     compute_bound_norm_entries_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_lower_bound, state->constraint_upper_bound,
-        entries_cons, state->num_constraints, use_linf);
+        norm_entries_cons, state->num_constraints, use_linf);
     CUDA_CHECK(cudaGetLastError());
 
-    size_t tb = state->reduce_workspace_bytes;
+    size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->reduce_workspace_d, tb, entries_vars, d_out, state->num_variables));
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, reduction_output_d, state->num_variables));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->reduce_workspace_d, tb, entries_vars, d_out, state->num_variables));
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, reduction_output_d, state->num_variables));
     CUDA_CHECK(cudaGetLastError());
 
     double obj_reduce = 0.0;
-    CUDA_CHECK(cudaMemcpy(&obj_reduce, d_out, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&obj_reduce, reduction_output_d, sizeof(double), cudaMemcpyDeviceToHost));
     state->objective_vector_norm = use_linf ? obj_reduce : sqrt(obj_reduce);
 
-    tb = state->reduce_workspace_bytes;
+    cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->reduce_workspace_d, tb, entries_cons, d_out, state->num_constraints));
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, reduction_output_d, state->num_constraints));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->reduce_workspace_d, tb, entries_cons, d_out, state->num_constraints));
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, reduction_output_d, state->num_constraints));
     CUDA_CHECK(cudaGetLastError());
 
     double con_reduce = 0.0;
-    CUDA_CHECK(cudaMemcpy(&con_reduce, d_out, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&con_reduce, reduction_output_d, sizeof(double), cudaMemcpyDeviceToHost));
     state->constraint_bound_norm = use_linf ? con_reduce : sqrt(con_reduce);
 }
 
 __global__ void compute_objective_norm_entries_kernel(
-    const double *__restrict__ objective_vector,
+    const double *__restrict__ obj_vec,
     double *__restrict__ entries,
     int n_vars,
     int use_linf)
@@ -559,13 +569,13 @@ __global__ void compute_objective_norm_entries_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_vars) return;
 
-    double v = objective_vector[i];
+    double v = obj_vec[i];
     entries[i] = use_linf ? fabs(v) : (v * v);
 }
 
 __global__ void compute_bound_norm_entries_kernel(
-    const double *__restrict__ constraint_lower_bound,
-    const double *__restrict__ constraint_upper_bound,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
     double *__restrict__ entries,
     int n_cons,
     int use_linf)
@@ -573,8 +583,8 @@ __global__ void compute_bound_norm_entries_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_cons) return;
 
-    double Li = constraint_lower_bound[i];
-    double Ui = constraint_upper_bound[i];
+    double Li = cons_lb[i];
+    double Ui = cons_ub[i];
     double acc = 0.0;
     if (use_linf)
     {
@@ -628,19 +638,19 @@ double estimate_maximum_singular_value(
     CUSPARSE_CHECK(cusparseCreateDnVec(&vecNextEigen, m, next_eigenvector_d, CUDA_R_64F));
     CUSPARSE_CHECK(cusparseCreateDnVec(&vecDual, n, dual_product_d, CUDA_R_64F));
 
-    void *dBufferAT = NULL;
-    void *dBufferA = NULL;
-    size_t bufferSizeAT = 0, bufferSizeA = 0;
+    void *spmv_buffer_at = NULL;
+    void *spmv_buffer_a = NULL;
+    size_t spmv_buffer_size_at = 0, spmv_buffer_size_a = 0;
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(
         sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matAT,
         vecNextEigen, &zero, vecDual, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2,
-        &bufferSizeAT));
+        &spmv_buffer_size_at));
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(
         sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matA, vecDual,
-        &zero, vecEigen, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &bufferSizeA));
+        &zero, vecEigen, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &spmv_buffer_size_a));
 
-    CUDA_CHECK(cudaMalloc(&dBufferAT, bufferSizeAT));
-    CUDA_CHECK(cudaMalloc(&dBufferA, bufferSizeA));
+    CUDA_CHECK(cudaMalloc(&spmv_buffer_at, spmv_buffer_size_at));
+    CUDA_CHECK(cudaMalloc(&spmv_buffer_a, spmv_buffer_size_a));
 
     for (int i = 0; i < max_iterations; ++i)
     {
@@ -654,12 +664,12 @@ double estimate_maximum_singular_value(
         CUSPARSE_CHECK(cusparseSpMV(
             sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
             &one, matAT, vecNextEigen, &zero, vecDual,
-            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, dBufferAT));
+            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, spmv_buffer_at));
 
         CUSPARSE_CHECK(cusparseSpMV(
             sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
             &one, matA, vecDual, &zero, vecEigen,
-            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, dBufferA));
+            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, spmv_buffer_a));
 
         CUBLAS_CHECK(cublasDdot(blas_handle, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
 
@@ -674,8 +684,8 @@ double estimate_maximum_singular_value(
             break;
     }
 
-    CUDA_CHECK(cudaFree(dBufferAT));
-    CUDA_CHECK(cudaFree(dBufferA));
+    CUDA_CHECK(cudaFree(spmv_buffer_at));
+    CUDA_CHECK(cudaFree(spmv_buffer_a));
     CUSPARSE_CHECK(cusparseDestroySpMat(matA));
     CUSPARSE_CHECK(cusparseDestroySpMat(matAT));
     CUSPARSE_CHECK(cusparseDestroyDnVec(vecEigen));
@@ -691,15 +701,15 @@ double estimate_maximum_singular_value(
 
 int get_print_frequency(int iter)
 {
-    int step = 10;
-    long long threshold = 1000;
+    int print_interval = 10;
+    long long iteration_threshold = 1000;
 
-    while (iter >= threshold)
+    while (iter >= iteration_threshold)
     {
-        step *= 10;
-        threshold *= 10;
+        print_interval *= 10;
+        iteration_threshold *= 10;
     }
-    return step;
+    return print_interval;
 }
 
 bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
@@ -751,11 +761,33 @@ void check_termination_criteria(
 {
     solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
 
-    if (optimality_criteria_met(solver_state, criteria->eps_optimal_relative, criteria->eps_feasible_relative))
+    double primal_scale = solver_state->pdhg_primal_scale;
+    double optimality_tolerance = criteria->eps_optimal_relative;
+
+    if (primal_scale > 1e-8)
     {
-        solver_state->termination_reason = TERMINATION_REASON_OPTIMAL;
-        return;
+        if (optimality_criteria_met(solver_state, optimality_tolerance, criteria->eps_feasible_relative))
+        {
+            solver_state->termination_reason = TERMINATION_REASON_OPTIMAL;
+            return;
+        }
     }
+
+    if (primal_scale <= 1e-8)
+    {
+        double dual_offset_sum = solver_state->pdhg_dual_constraint_offset + solver_state->pdhg_dual_bound_offset;
+        if (solver_state->absolute_dual_residual < optimality_tolerance && dual_offset_sum < -optimality_tolerance)
+        {
+            solver_state->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
+            return;
+        }
+        if (solver_state->absolute_primal_residual < optimality_tolerance && solver_state->primal_objective_value < -optimality_tolerance)
+        {
+            solver_state->termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
+            return;
+        }
+    }
+
     if (solver_state->total_count >= criteria->iteration_limit)
     {
         solver_state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
@@ -770,6 +802,9 @@ void check_termination_criteria(
 
 void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 {
+    double primal_scale = state->pdhg_primal_scale;
+    double inv_primal_scale = (fabs(primal_scale) > 1e-30) ? 1.0 / primal_scale : 0.0;
+
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->pdhg_primal_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->pdhg_dual_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
@@ -808,16 +843,16 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->primal_product,
         state->constraint_lower_bound,
         state->constraint_upper_bound,
-        state->pdhg_dual_solution,
         state->dual_residual,
         state->dual_product,
-        state->dual_slack,
+        state->pdhg_dual_slack,
         state->objective_vector,
         state->constraint_rescaling,
         state->variable_rescaling,
-        state->primal_slack,
-        state->constraint_lower_bound_finite_val,
-        state->constraint_upper_bound_finite_val,
+        state->variable_lower_bound,
+        state->variable_upper_bound,
+        state->pdhg_primal_solution,
+        inv_primal_scale,
         state->num_constraints,
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
@@ -832,11 +867,11 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
             state->dual_residual, state->num_variables);
 
-        size_t tb = state->reduce_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Max(state->reduce_workspace_d, tb,
+        size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
             state->primal_residual, state->scalar_pool_d + 0, state->num_constraints, state->stream_A));
-        tb = state->reduce_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Max(state->reduce_workspace_d, tb,
+        cub_buffer_bytes = state->cub_reduce_workspace_bytes;
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
             state->dual_residual, state->scalar_pool_d + 1, state->num_variables, state->stream_A));
 
         CUBLAS_CHECK(cublasDdot(
@@ -846,35 +881,26 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->pdhg_primal_solution, 1,
             state->scalar_pool_d + 2));
 
-        CUBLAS_CHECK(cublasDdot(
-            state->blas_handle_A,
-            state->num_variables,
-            state->dual_slack, 1,
-            state->pdhg_primal_solution, 1,
-            state->scalar_pool_d + 3));
-
-        CUBLAS_CHECK(cublasDdot(
-            state->blas_handle_At,
-            state->num_constraints,
-            state->primal_slack, 1,
-            state->ones_dual_d, 1,
-            state->scalar_pool_d + 4));
-
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
         CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
-        double h_buf[5];
-        CUDA_CHECK(cudaMemcpy(h_buf, state->scalar_pool_d, 5 * sizeof(double),
+        double host_residual_results[3];
+        CUDA_CHECK(cudaMemcpy(host_residual_results, state->scalar_pool_d, 3 * sizeof(double),
                                cudaMemcpyDeviceToHost));
 
-        state->absolute_primal_residual = h_buf[0] / state->constraint_bound_rescaling;
-        state->absolute_dual_residual = h_buf[1] / state->objective_vector_rescaling;
+        state->absolute_primal_residual = host_residual_results[0] / state->constraint_bound_rescaling;
+        state->absolute_dual_residual = host_residual_results[1] / state->objective_vector_rescaling;
+
+        double objective_dot_primal = host_residual_results[2];
+        double scaled_dual_constraint_offset = state->pdhg_dual_constraint_offset * inv_primal_scale;
+        double scaled_dual_bound_offset = state->pdhg_dual_bound_offset * inv_primal_scale;
+
         state->primal_objective_value =
-            h_buf[2] /
+            objective_dot_primal * inv_primal_scale /
                 (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
             state->objective_constant;
         state->dual_objective_value =
-            (h_buf[3] + h_buf[4]) /
+            -(scaled_dual_constraint_offset + scaled_dual_bound_offset) /
                 (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
             state->objective_constant;
     }
@@ -899,35 +925,26 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->pdhg_primal_solution, 1,
             state->scalar_pool_d + 2));
 
-        CUBLAS_CHECK(cublasDdot(
-            state->blas_handle_A,
-            state->num_variables,
-            state->dual_slack, 1,
-            state->pdhg_primal_solution, 1,
-            state->scalar_pool_d + 3));
-
-        CUBLAS_CHECK(cublasDdot(
-            state->blas_handle_At,
-            state->num_constraints,
-            state->primal_slack, 1,
-            state->ones_dual_d, 1,
-            state->scalar_pool_d + 4));
-
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
         CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
-        double h_buf[5];
-        CUDA_CHECK(cudaMemcpy(h_buf, state->scalar_pool_d, 5 * sizeof(double),
+        double host_residual_results[3];
+        CUDA_CHECK(cudaMemcpy(host_residual_results, state->scalar_pool_d, 3 * sizeof(double),
                                cudaMemcpyDeviceToHost));
 
-        state->absolute_primal_residual = h_buf[0] / state->constraint_bound_rescaling;
-        state->absolute_dual_residual = h_buf[1] / state->objective_vector_rescaling;
+        state->absolute_primal_residual = host_residual_results[0] / state->constraint_bound_rescaling;
+        state->absolute_dual_residual = host_residual_results[1] / state->objective_vector_rescaling;
+
+        double objective_dot_primal = host_residual_results[2];
+        double scaled_dual_constraint_offset = state->pdhg_dual_constraint_offset * inv_primal_scale;
+        double scaled_dual_bound_offset = state->pdhg_dual_bound_offset * inv_primal_scale;
+
         state->primal_objective_value =
-            h_buf[2] /
+            objective_dot_primal * inv_primal_scale /
                 (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
             state->objective_constant;
         state->dual_objective_value =
-            (h_buf[3] + h_buf[4]) /
+            -(scaled_dual_constraint_offset + scaled_dual_bound_offset) /
                 (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
             state->objective_constant;
     }
@@ -944,37 +961,37 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 }
 
 __global__ void compute_residual_kernel(
-    double *__restrict__ primal_residual,
-    const double *__restrict__ primal_product,
-    const double *__restrict__ constraint_lower_bound,
-    const double *__restrict__ constraint_upper_bound,
-    const double *__restrict__ dual_solution,
-    double *__restrict__ dual_residual,
-    const double *__restrict__ dual_product,
+    double *__restrict__ primal_res,
+    const double *__restrict__ primal_prod,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    double *__restrict__ dual_res,
+    const double *__restrict__ dual_prod,
     const double *__restrict__ dual_slack,
-    const double *__restrict__ objective_vector,
-    const double *__restrict__ constraint_rescaling,
-    const double *__restrict__ variable_rescaling,
-    double *__restrict__ dual_obj_contribution,
-    const double *__restrict__ const_lb_finite,
-    const double *__restrict__ const_ub_finite,
-    int num_constraints,
-    int num_variables)
+    const double *__restrict__ obj_vec,
+    const double *__restrict__ cons_rescaling,
+    const double *__restrict__ var_rescaling,
+    const double *__restrict__ var_lb,
+    const double *__restrict__ var_ub,
+    const double *__restrict__ primal_sol,
+    double inv_tau,
+    int n_cons,
+    int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i < num_constraints)
+    if (i < n_cons)
     {
-        double clamped_val = fmax(constraint_lower_bound[i], fmin(primal_product[i], constraint_upper_bound[i]));
-        primal_residual[i] = (primal_product[i] - clamped_val) * constraint_rescaling[i];
-
-        dual_obj_contribution[i] =
-            fmax(dual_solution[i], 0.0) * const_lb_finite[i] + fmin(dual_solution[i], 0.0) * const_ub_finite[i];
+        double ax_hat = primal_prod[i] * inv_tau;
+        double clamped = fmax(cons_lb[i], fmin(ax_hat, cons_ub[i]));
+        primal_res[i] = (ax_hat - clamped) * cons_rescaling[i];
     }
-    else if (i < num_constraints + num_variables)
+    else if (i < n_cons + n_vars)
     {
-        int idx = i - num_constraints;
-        dual_residual[idx] = (objective_vector[idx] - dual_product[idx] - dual_slack[idx]) * variable_rescaling[idx];
+        int idx = i - n_cons;
+        double yc_hat = dual_prod[idx] * inv_tau;
+        double yv_hat = dual_slack[idx] * inv_tau;
+        dual_res[idx] = (obj_vec[idx] - yc_hat - yv_hat) * var_rescaling[idx];
     }
 }
 
