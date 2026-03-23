@@ -724,13 +724,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     double sigma_A = 0.0;
     if (state->constraint_matrix->num_nonzeros > 0)
     {
-        sigma_A = estimate_maximum_singular_value(state->sparse_handle_A,
-                                                  state->blas_handle_A,
-                                                  state->curand_gen,
-                                                  state->constraint_matrix,
-                                                  state->constraint_matrix_t,
-                                                  params->sv_max_iter,
-                                                  params->sv_tol);
+        sigma_A = estimate_maximum_singular_value(state, params);
     }
     double Q_norm = sigma_A + state->objective_vector_norm + 1.0;
     state->step_size = 0.998 / Q_norm;
@@ -744,11 +738,6 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
         state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
     }
     state->best_primal_weight = state->primal_weight;
-
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 }
 
 void hsd_update_primal_scaler(

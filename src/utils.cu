@@ -600,68 +600,69 @@ __global__ void compute_bound_norm_entries_kernel(
 }
 
 double estimate_maximum_singular_value(
-    cusparseHandle_t sparse_handle,
-    cublasHandle_t blas_handle,
-    curandGenerator_t curand_gen,
-    cusparseSpMatDescr_t matA,
-    cusparseSpMatDescr_t matAt,
-    cusparseDnVecDescr_t vecEigen,
-    cusparseDnVecDescr_t vecNextEigen,
-    cusparseDnVecDescr_t vecDual,
-    void *spmv_buffer_a,
-    void *spmv_buffer_at,
-    double *eigenvector_d,
-    double *next_eigenvector_d,
-    double *dual_product_d,
-    int m,
-    int max_iterations, double tolerance)
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params)
 {
+    int m = state->num_constraints;
+    double *eigenvector_d = state->cone_projection_reduce_buffer_constraint;
+    double *next_eigenvector_d = state->delta_dual_solution;
+    double *dual_product_d = state->delta_primal_solution;
+
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
+
     size_t curand_count = ((size_t)m + 1) & ~(size_t)1;
-    CURAND_CHECK(curandGenerateNormalDouble(curand_gen, eigenvector_d, curand_count, 0.0, 1.0));
+    CURAND_CHECK(curandGenerateNormalDouble(state->curand_gen, eigenvector_d, curand_count, 0.0, 1.0));
 
-    CUSPARSE_CHECK(cusparseDnVecSetValues(vecEigen, eigenvector_d));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(vecNextEigen, next_eigenvector_d));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(vecDual, dual_product_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, eigenvector_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, next_eigenvector_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, dual_product_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, dual_product_d));
 
-    CUBLAS_CHECK(cublasSetPointerMode(blas_handle, CUBLAS_POINTER_MODE_HOST));
+    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_HOST));
 
     double sigma_max_sq = 1.0;
     const double one = 1.0;
     const double zero = 0.0;
 
-    for (int i = 0; i < max_iterations; ++i)
+    for (int i = 0; i < params->sv_max_iter; ++i)
     {
         CUDA_CHECK(cudaMemcpy(next_eigenvector_d, eigenvector_d, m * sizeof(double), cudaMemcpyDeviceToDevice));
         double eigenvector_norm;
-        CUBLAS_CHECK(cublasDnrm2_v2_64(blas_handle, m, next_eigenvector_d, 1, &eigenvector_norm));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A, m, next_eigenvector_d, 1, &eigenvector_norm));
 
         double inv_eigenvector_norm = 1.0 / eigenvector_norm;
-        CUBLAS_CHECK(cublasDscal(blas_handle, m, &inv_eigenvector_norm, next_eigenvector_d, 1));
+        CUBLAS_CHECK(cublasDscal(state->blas_handle_A, m, &inv_eigenvector_norm, next_eigenvector_d, 1));
 
         CUSPARSE_CHECK(cusparseSpMV(
-            sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &one, matAt, vecNextEigen, &zero, vecDual,
-            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, spmv_buffer_at));
+            state->sparse_handle_A, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &one, state->matAt, state->vec_dual_sol, &zero, state->vec_dual_prod,
+            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
         CUSPARSE_CHECK(cusparseSpMV(
-            sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &one, matA, vecDual, &zero, vecEigen,
-            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, spmv_buffer_a));
+            state->sparse_handle_A, CUSPARSE_OPERATION_NON_TRANSPOSE,
+            &one, state->matA, state->vec_primal_sol, &zero, state->vec_primal_prod,
+            CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
 
-        CUBLAS_CHECK(cublasDdot(blas_handle, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
+        CUBLAS_CHECK(cublasDdot(state->blas_handle_A, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
 
         double neg_sigma_sq = -sigma_max_sq;
-        CUBLAS_CHECK(cublasDscal(blas_handle, m, &neg_sigma_sq, next_eigenvector_d, 1));
-        CUBLAS_CHECK(cublasDaxpy(blas_handle, m, &one, eigenvector_d, 1, next_eigenvector_d, 1));
+        CUBLAS_CHECK(cublasDscal(state->blas_handle_A, m, &neg_sigma_sq, next_eigenvector_d, 1));
+        CUBLAS_CHECK(cublasDaxpy(state->blas_handle_A, m, &one, eigenvector_d, 1, next_eigenvector_d, 1));
 
         double residual_norm;
-        CUBLAS_CHECK(cublasDnrm2_v2_64(blas_handle, m, next_eigenvector_d, 1, &residual_norm));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A, m, next_eigenvector_d, 1, &residual_norm));
 
-        if (residual_norm < tolerance)
+        if (residual_norm < params->sv_tol)
             break;
     }
 
-    CUBLAS_CHECK(cublasSetPointerMode(blas_handle, CUBLAS_POINTER_MODE_DEVICE));
+    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_DEVICE));
+
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
+
     return sqrt(sigma_max_sq);
 }
 

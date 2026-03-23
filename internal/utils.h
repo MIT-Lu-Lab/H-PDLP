@@ -99,22 +99,8 @@ extern "C"
     void compute_objective_and_bound_norms(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
 
     double estimate_maximum_singular_value(
-        cusparseHandle_t sparse_handle,
-        cublasHandle_t blas_handle,
-        curandGenerator_t curand_gen,
-        cusparseSpMatDescr_t matA,
-        cusparseSpMatDescr_t matAt,
-        cusparseDnVecDescr_t vecEigen,
-        cusparseDnVecDescr_t vecNextEigen,
-        cusparseDnVecDescr_t vecDual,
-        void *spmv_buffer_a,
-        void *spmv_buffer_at,
-        double *eigenvector_d,
-        double *next_eigenvector_d,
-        double *dual_product_d,
-        int m,
-        int max_iterations,
-        double tolerance);
+        pdhg_solver_state_t *state,
+        const pdhg_parameters_t *params);
 
     void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose);
     int get_print_frequency(int iter);
