@@ -924,6 +924,11 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
     state->relative_objective_gap =
         state->objective_gap /
         (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
+
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 }
 
 __global__ void compute_residual_kernel(

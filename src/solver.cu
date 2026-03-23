@@ -744,6 +744,11 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
         state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
     }
     state->best_primal_weight = state->primal_weight;
+
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 }
 
 void hsd_update_primal_scaler(
@@ -1056,6 +1061,11 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
     double interaction = 2.0 * state->step_size * (cross_term - bound_cross_term);
 
     state->fixed_point_error = sqrt(fmax(0.0, movement + interaction));
+
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 }
 
 static void perform_restart(pdhg_solver_state_t *state, const restart_parameters_t *restart_params)
