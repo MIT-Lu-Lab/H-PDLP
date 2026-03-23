@@ -603,54 +603,31 @@ double estimate_maximum_singular_value(
     cusparseHandle_t sparse_handle,
     cublasHandle_t blas_handle,
     curandGenerator_t curand_gen,
-    const cu_sparse_matrix_csr_t *A,
-    const cu_sparse_matrix_csr_t *AT,
+    cusparseSpMatDescr_t matA,
+    cusparseSpMatDescr_t matAt,
+    cusparseDnVecDescr_t vecEigen,
+    cusparseDnVecDescr_t vecNextEigen,
+    cusparseDnVecDescr_t vecDual,
+    void *spmv_buffer_a,
+    void *spmv_buffer_at,
+    double *eigenvector_d,
+    double *next_eigenvector_d,
+    double *dual_product_d,
+    int m,
     int max_iterations, double tolerance)
 {
-    int m = A->num_rows;
-    int n = A->num_cols;
-    double *eigenvector_d, *next_eigenvector_d, *dual_product_d;
+    size_t curand_count = ((size_t)m + 1) & ~(size_t)1;
+    CURAND_CHECK(curandGenerateNormalDouble(curand_gen, eigenvector_d, curand_count, 0.0, 1.0));
 
-    CUDA_CHECK(cudaMalloc(&eigenvector_d, ((size_t)m + 1) * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&next_eigenvector_d, m * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&dual_product_d, n * sizeof(double)));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(vecEigen, eigenvector_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(vecNextEigen, next_eigenvector_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(vecDual, dual_product_d));
 
-    CURAND_CHECK(curandGenerateNormalDouble(curand_gen, eigenvector_d, ((size_t)m + 1) & ~(size_t)1, 0.0, 1.0));
+    CUBLAS_CHECK(cublasSetPointerMode(blas_handle, CUBLAS_POINTER_MODE_HOST));
 
     double sigma_max_sq = 1.0;
     const double one = 1.0;
     const double zero = 0.0;
-
-    CUBLAS_CHECK(cublasSetPointerMode(blas_handle, CUBLAS_POINTER_MODE_HOST));
-
-    cusparseSpMatDescr_t matA, matAT;
-    CUSPARSE_CHECK(cusparseCreateCsr(
-        &matA, A->num_rows, A->num_cols, A->num_nonzeros, A->row_ptr, A->col_ind,
-        A->val, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_BASE_ZERO,
-        CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateCsr(
-        &matAT, AT->num_rows, AT->num_cols, AT->num_nonzeros, AT->row_ptr,
-        AT->col_ind, AT->val, CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
-        CUSPARSE_INDEX_BASE_ZERO, CUDA_R_64F));
-
-    cusparseDnVecDescr_t vecEigen, vecNextEigen, vecDual;
-    CUSPARSE_CHECK(cusparseCreateDnVec(&vecEigen, m, eigenvector_d, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&vecNextEigen, m, next_eigenvector_d, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&vecDual, n, dual_product_d, CUDA_R_64F));
-
-    void *spmv_buffer_at = NULL;
-    void *spmv_buffer_a = NULL;
-    size_t spmv_buffer_size_at = 0, spmv_buffer_size_a = 0;
-    CUSPARSE_CHECK(cusparseSpMV_bufferSize(
-        sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matAT,
-        vecNextEigen, &zero, vecDual, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2,
-        &spmv_buffer_size_at));
-    CUSPARSE_CHECK(cusparseSpMV_bufferSize(
-        sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &one, matA, vecDual,
-        &zero, vecEigen, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &spmv_buffer_size_a));
-
-    CUDA_CHECK(cudaMalloc(&spmv_buffer_at, spmv_buffer_size_at));
-    CUDA_CHECK(cudaMalloc(&spmv_buffer_a, spmv_buffer_size_a));
 
     for (int i = 0; i < max_iterations; ++i)
     {
@@ -663,7 +640,7 @@ double estimate_maximum_singular_value(
 
         CUSPARSE_CHECK(cusparseSpMV(
             sparse_handle, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &one, matAT, vecNextEigen, &zero, vecDual,
+            &one, matAt, vecNextEigen, &zero, vecDual,
             CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, spmv_buffer_at));
 
         CUSPARSE_CHECK(cusparseSpMV(
@@ -673,7 +650,7 @@ double estimate_maximum_singular_value(
 
         CUBLAS_CHECK(cublasDdot(blas_handle, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
 
-        double neg_sigma_sq = - sigma_max_sq;
+        double neg_sigma_sq = -sigma_max_sq;
         CUBLAS_CHECK(cublasDscal(blas_handle, m, &neg_sigma_sq, next_eigenvector_d, 1));
         CUBLAS_CHECK(cublasDaxpy(blas_handle, m, &one, eigenvector_d, 1, next_eigenvector_d, 1));
 
@@ -683,17 +660,6 @@ double estimate_maximum_singular_value(
         if (residual_norm < tolerance)
             break;
     }
-
-    CUDA_CHECK(cudaFree(spmv_buffer_at));
-    CUDA_CHECK(cudaFree(spmv_buffer_a));
-    CUSPARSE_CHECK(cusparseDestroySpMat(matA));
-    CUSPARSE_CHECK(cusparseDestroySpMat(matAT));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(vecEigen));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(vecNextEigen));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(vecDual));
-    CUDA_CHECK(cudaFree(eigenvector_d));
-    CUDA_CHECK(cudaFree(next_eigenvector_d));
-    CUDA_CHECK(cudaFree(dual_product_d));
 
     CUBLAS_CHECK(cublasSetPointerMode(blas_handle, CUBLAS_POINTER_MODE_DEVICE));
     return sqrt(sigma_max_sq);
