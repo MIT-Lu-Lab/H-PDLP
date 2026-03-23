@@ -232,8 +232,6 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
         hsd_update_dual_solution(state, params, 1, params->reflection_coefficient, true);
         hsd_update_dual_slack(state, params, 1, params->reflection_coefficient, true);
-        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-        CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
         hsd_update_primal_solution(state, 1, params->reflection_coefficient, true);
 
         if (do_restart)
@@ -251,8 +249,6 @@ cuhsdlp_result_t *optimize(
             CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
             hsd_update_dual_solution(state, params, i, params->reflection_coefficient, false);
             hsd_update_dual_slack(state, params, i, params->reflection_coefficient, false);
-            CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-            CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
             hsd_update_primal_solution(state, i, params->reflection_coefficient, false);
         }
 
@@ -261,8 +257,6 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
         hsd_update_dual_solution(state, params, params->termination_evaluation_frequency, params->reflection_coefficient, true);
         hsd_update_dual_slack(state, params, params->termination_evaluation_frequency, params->reflection_coefficient, true);
-        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-        CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
         hsd_update_primal_solution(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
 
         sync_hsd_scalars_to_host(state);
@@ -932,9 +926,6 @@ void hsd_update_primal_solution(pdhg_solver_state_t *state,
                        bool is_major)
 {
     double primal_step = state->step_size / state->primal_weight;
-
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
 
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle_At,
                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
