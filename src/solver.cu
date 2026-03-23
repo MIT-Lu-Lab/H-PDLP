@@ -1242,8 +1242,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaStreamDestroy(state->stream_A));
     if (state->stream_At)
         CUDA_CHECK(cudaStreamDestroy(state->stream_At));
-    if (state->stream_At)
-        CUDA_CHECK(cudaStreamDestroy(state->stream_At));
     if (state->event_A)
         CUDA_CHECK(cudaEventDestroy(state->event_A));
     if (state->event_At)
@@ -1349,8 +1347,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->cone_newton_bound_d));
     if (state->cub_reduce_workspace)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace));
-    if (state->cub_reduce_workspace_bound)
-        CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
     if (state->cub_reduce_workspace_bound)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
     if (state->scalar_pool_d)
