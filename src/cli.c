@@ -129,23 +129,28 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "  <output_dir>             Directory where output files will be saved.\n\n");
 
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  -h, --help                          Display this help message.\n");
-    fprintf(stderr, "  -v, --verbose                       Enable verbose logging (default: false).\n");
-    fprintf(stderr, "      --time_limit <seconds>          Time limit in seconds (default: 3600.0).\n");
-    fprintf(stderr, "      --iter_limit <iterations>       Iteration limit (default: %d).\n", INT32_MAX);
-    fprintf(stderr, "      --eps_opt <tolerance>           Relative optimality tolerance (default: 1e-4).\n");
-    fprintf(stderr, "      --eps_feas <tolerance>          Relative feasibility tolerance (default: 1e-4).\n");
-    fprintf(stderr, "      --l_inf_ruiz_iter <int>         Iterations for L-inf Ruiz rescaling (default: 10).\n");
-    fprintf(stderr, "      --no_pock_chambolle             Disable Pock-Chambolle rescaling.\n");
-    fprintf(stderr, "      --pock_chambolle_alpha <float>  Value for Pock-Chambolle alpha (default: 1.0).\n");
-    fprintf(stderr, "      --no_bound_obj_rescaling        Disable bound objective rescaling.\n");
-    fprintf(stderr, "      --eval_freq <int>               Termination evaluation frequency (default: 200).\n");
-    fprintf(stderr, "      --sv_max_iter <int>             Max iterations for singular value estimation (default: 5000).\n");
-    fprintf(stderr, "      --sv_tol <float>                Tolerance for singular value estimation (default: 1e-4).\n");
-    fprintf(stderr, "      --opt_norm <norm_type>          Norm for optimality criteria: l2 or linf (default: l2).\n");
-    fprintf(stderr, "      --no_presolve                   Disable presolve.\n");
-    fprintf(stderr, "      --cone_newton_max_iter <int>    Max Newton iterations for cone projection (default: 20).\n");
-    fprintf(stderr, "      --cone_newton_tol <float>       Newton tolerance for cone projection (default: 1e-6).\n");
+    fprintf(stderr, "  -h, --help                            Display this help message.\n");
+    fprintf(stderr, "\n  Preprocessing/scaling:\n");
+    fprintf(stderr, "      --no_presolve                     Disable presolve.\n");
+    fprintf(stderr, "      --l_inf_ruiz_iter <int>           Iterations for L-inf Ruiz rescaling (default: 10).\n");
+    fprintf(stderr, "      --no_pock_chambolle               Disable Pock-Chambolle rescaling.\n");
+    fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: 1.0).\n");
+    fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
+    fprintf(stderr, "\n  Solver algorithm:\n");
+    fprintf(stderr, "      --homogeneous_step_factor <float> HSD homogeneous step budget fraction (default: 0.5).\n");
+    fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
+    fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
+    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 20).\n");
+    fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: 1e-6).\n");
+    fprintf(stderr, "\n  Termination:\n");
+    fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: 3600.0).\n");
+    fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n", INT32_MAX);
+    fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: 1e-4).\n");
+    fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: 1e-4).\n");
+    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: 200).\n");
+    fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
+    fprintf(stderr, "\n  Output:\n");
+    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: false).\n");
 }
 
 int main(int argc, char *argv[])
@@ -155,22 +160,23 @@ int main(int argc, char *argv[])
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
+        {"no_presolve", no_argument, 0, 1001},
+        {"l_inf_ruiz_iter", required_argument, 0, 1002},
+        {"no_pock_chambolle", no_argument, 0, 1003},
+        {"pock_chambolle_alpha", required_argument, 0, 1004},
+        {"no_bound_obj_rescaling", no_argument, 0, 1005},
+        {"homogeneous_step_factor", required_argument, 0, 1006},
+        {"singular_value_max_iter", required_argument, 0, 1007},
+        {"singular_value_tol", required_argument, 0, 1008},
+        {"cone_newton_max_iter", required_argument, 0, 1009},
+        {"cone_newton_tol", required_argument, 0, 1010},
+        {"time_limit", required_argument, 0, 1011},
+        {"iter_limit", required_argument, 0, 1012},
+        {"eps_opt", required_argument, 0, 1013},
+        {"eps_feas", required_argument, 0, 1014},
+        {"eval_freq", required_argument, 0, 1015},
+        {"opt_norm", required_argument, 0, 1016},
         {"verbose", no_argument, 0, 'v'},
-        {"time_limit", required_argument, 0, 1001},
-        {"iter_limit", required_argument, 0, 1002},
-        {"eps_opt", required_argument, 0, 1003},
-        {"eps_feas", required_argument, 0, 1004},
-        {"l_inf_ruiz_iter", required_argument, 0, 1007},
-        {"pock_chambolle_alpha", required_argument, 0, 1008},
-        {"no_pock_chambolle", no_argument, 0, 1009},
-        {"no_bound_obj_rescaling", no_argument, 0, 1010},
-        {"sv_max_iter", required_argument, 0, 1011},
-        {"sv_tol", required_argument, 0, 1012},
-        {"eval_freq", required_argument, 0, 1013},
-        {"opt_norm", required_argument, 0, 1014},
-        {"no_presolve", no_argument, 0, 1015},
-        {"cone_newton_max_iter", required_argument, 0, 1016},
-        {"cone_newton_tol", required_argument, 0, 1017},
         {0, 0, 0, 0}};
 
     int opt;
@@ -185,39 +191,51 @@ int main(int argc, char *argv[])
             params.verbose = true;
             break;
         case 1001:
-            params.termination_criteria.time_sec_limit = atof(optarg);
+            params.presolve = false;
             break;
         case 1002:
-            params.termination_criteria.iteration_limit = atoi(optarg);
-            break;
-        case 1003:
-            params.termination_criteria.eps_optimal_relative = atof(optarg);
-            break;
-        case 1004:
-            params.termination_criteria.eps_feasible_relative = atof(optarg);
-            break;
-        case 1007:
             params.l_inf_ruiz_iterations = atoi(optarg);
             break;
-        case 1008:
-            params.pock_chambolle_alpha = atof(optarg);
-            break;
-        case 1009:
+        case 1003:
             params.has_pock_chambolle_alpha = false;
             break;
-        case 1010:
+        case 1004:
+            params.pock_chambolle_alpha = atof(optarg);
+            break;
+        case 1005:
             params.bound_objective_rescaling = false;
             break;
+        case 1006:
+            params.homogeneous_step_factor = atof(optarg);
+            break;
+        case 1007:
+            params.singular_value_max_iter = atoi(optarg);
+            break;
+        case 1008:
+            params.singular_value_tol = atof(optarg);
+            break;
+        case 1009:
+            params.cone_newton_max_iter = atoi(optarg);
+            break;
+        case 1010:
+            params.cone_newton_tol = atof(optarg);
+            break;
         case 1011:
-            params.sv_max_iter = atoi(optarg);
+            params.termination_criteria.time_sec_limit = atof(optarg);
             break;
         case 1012:
-            params.sv_tol = atof(optarg);
+            params.termination_criteria.iteration_limit = atoi(optarg);
             break;
         case 1013:
-            params.termination_evaluation_frequency = atoi(optarg);
+            params.termination_criteria.eps_optimal_relative = atof(optarg);
             break;
         case 1014:
+            params.termination_criteria.eps_feasible_relative = atof(optarg);
+            break;
+        case 1015:
+            params.termination_evaluation_frequency = atoi(optarg);
+            break;
+        case 1016:
         {
             const char *norm_str = optarg;
             if (strcmp(norm_str, "l2") == 0)
@@ -231,15 +249,6 @@ int main(int argc, char *argv[])
             }
         }
         break;
-        case 1015:
-            params.presolve = false;
-            break;
-        case 1016:
-            params.cone_newton_max_iter = atoi(optarg);
-            break;
-        case 1017:
-            params.cone_newton_tol = atof(optarg);
-            break;
         case '?':
             return 1;
         }

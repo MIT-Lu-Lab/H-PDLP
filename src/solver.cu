@@ -558,7 +558,10 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
-    state->step_size = 0.0;
+    state->step_size_primal = 0.0;
+    state->step_size_dual_constraint = 0.0;
+    state->step_size_dual_bound = 0.0;
+    state->step_size_homogeneous = 0.0;
     state->primal_weight_error_sum = 0.0;
     state->primal_weight_last_error = 0.0;
 
@@ -713,15 +716,66 @@ static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMemsetAsync(state->cone_newton_bound_d, 0, CONE_BUFFER_SIZE * sizeof(double), state->stream_A));
 }
 
+static void compute_step_sizes(pdhg_solver_state_t *state)
+{
+    double omega   = state->primal_weight;
+    double sigma_A = state->sigma_A;
+    double theta   = state->homogeneous_step_factor;
+    double c_norm  = state->objective_vector_norm;
+
+    if (sigma_A > 0.0)
+    {
+        double sigma_A_sq = sigma_A * sigma_A;
+        double rho = theta * c_norm * c_norm * omega * omega
+                   / ((1.0 - theta) * (1.0 + 1.0 / sigma_A_sq));
+        double lambda = 0.998 * sqrt((1.0 - rho) / 2.0);
+
+        state->step_size_primal          = lambda * omega;
+        state->step_size_dual_constraint = lambda / (omega * sigma_A_sq);
+        state->step_size_dual_bound      = lambda / omega;
+        state->step_size_homogeneous     = theta * omega
+                                         / (lambda * (1.0 + 1.0 / sigma_A_sq));
+    }
+    else
+    {
+        double rho = theta * c_norm * c_norm * omega * omega / (1.0 - theta);
+        double lambda = 0.998 * sqrt((1.0 - rho) / 2.0);
+
+        state->step_size_primal          = lambda * omega;
+        state->step_size_dual_constraint = 0.0;
+        state->step_size_dual_bound      = lambda / omega;
+        state->step_size_homogeneous     = theta * omega / lambda;
+    }
+}
+
+static void clamp_primal_weight(pdhg_solver_state_t *state)
+{
+    double sigma_A = state->sigma_A;
+    double theta   = state->homogeneous_step_factor;
+    double c_norm  = state->objective_vector_norm;
+
+    if (c_norm > 0.0)
+    {
+        double omega_max;
+        if (sigma_A > 0.0)
+            omega_max = sqrt((1.0 - theta) * (1.0 + 1.0 / (sigma_A * sigma_A))
+                           / (theta * c_norm * c_norm));
+        else
+            omega_max = sqrt((1.0 - theta) / (theta * c_norm * c_norm));
+
+        state->primal_weight = fmin(state->primal_weight, 0.998 * omega_max);
+    }
+}
+
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
 {
-    double sigma_A = 0.0;
+    state->sigma_A = 0.0;
     if (state->constraint_matrix->num_nonzeros > 0)
     {
-        sigma_A = estimate_maximum_singular_value(state, params);
+        state->sigma_A = estimate_maximum_singular_value(state, params);
     }
-    double Q_norm = sigma_A + state->objective_vector_norm + 1.0;
-    state->step_size = 0.998 / Q_norm;
+
+    state->homogeneous_step_factor = params->homogeneous_step_factor;
 
     if (params->bound_objective_rescaling)
     {
@@ -731,6 +785,10 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     {
         state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
     }
+
+    clamp_primal_weight(state);
+    compute_step_sizes(state);
+
     state->best_primal_weight = state->primal_weight;
 }
 
@@ -740,7 +798,7 @@ void hsd_update_primal_scaler(
     const double reflection_coefficient,
     bool is_major)
 {
-    double primal_step = state->step_size / state->primal_weight;
+    double homogeneous_step = state->step_size_homogeneous;
 
     CUBLAS_CHECK(cublasDdot(state->blas_handle_A,
                             state->num_variables,
@@ -751,7 +809,7 @@ void hsd_update_primal_scaler(
     hsd_primal_scale_update_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_scalars_d,
         state->scalar_pool_d + SCALAR_POOL_C_DOT_X,
-        primal_step,
+        homogeneous_step,
         state->inner_count,
         k_offset,
         reflection_coefficient,
@@ -765,7 +823,7 @@ void hsd_update_dual_solution(
     const double reflection_coefficient,
     bool is_major)
 {
-    double dual_step = state->step_size * state->primal_weight;
+    double dual_step = state->step_size_dual_constraint;
 
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
@@ -825,7 +883,7 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
                            const double reflection_coefficient,
                            bool is_major)
 {
-    double dual_step = state->step_size * state->primal_weight;
+    double dual_step = state->step_size_dual_bound;
 
     hsd_gradient_step_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_At>>>(
         state->primal_vec_buffer,
@@ -925,7 +983,7 @@ void hsd_update_primal_solution(pdhg_solver_state_t *state,
                        const double reflection_coefficient,
                        bool is_major)
 {
-    double primal_step = state->step_size / state->primal_weight;
+    double primal_step = state->step_size_primal;
 
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle_At,
                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -1032,13 +1090,13 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
     double delta_constraint_offset = state->reflected_dual_constraint_offset - state->pdhg_dual_constraint_offset;
     double delta_bound_offset = state->reflected_dual_bound_offset - state->pdhg_dual_bound_offset;
 
-    double movement = primal_norm * primal_norm * state->primal_weight
-                    + dual_norm * dual_norm / state->primal_weight
-                    + bound_dual_norm * bound_dual_norm / state->primal_weight
-                    + delta_primal_scale * delta_primal_scale * state->primal_weight
-                    + delta_constraint_offset * delta_constraint_offset / state->primal_weight
-                    + delta_bound_offset * delta_bound_offset / state->primal_weight;
-    double interaction = 2.0 * state->step_size * (cross_term - bound_cross_term);
+    double movement = primal_norm * primal_norm / state->step_size_primal
+                    + dual_norm * dual_norm / state->step_size_dual_constraint
+                    + bound_dual_norm * bound_dual_norm / state->step_size_dual_bound
+                    + delta_primal_scale * delta_primal_scale / state->step_size_homogeneous
+                    + delta_constraint_offset * delta_constraint_offset / state->step_size_dual_constraint
+                    + delta_bound_offset * delta_bound_offset / state->step_size_dual_bound;
+    double interaction = 2.0 * (cross_term - bound_cross_term);
 
     state->fixed_point_error = sqrt(fmax(0.0, movement + interaction));
 
@@ -1102,6 +1160,9 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
         state->best_primal_dual_residual_gap = primal_dual_residual_gap;
         state->best_primal_weight = state->primal_weight;
     }
+
+    clamp_primal_weight(state);
+    compute_step_sizes(state);
 
     CUDA_CHECK(cudaMemcpyAsync(state->initial_primal_solution,
                                state->pdhg_primal_solution, state->var_bytes,

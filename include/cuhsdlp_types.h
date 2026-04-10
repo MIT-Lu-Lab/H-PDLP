@@ -85,22 +85,26 @@ extern "C"
 
     typedef struct
     {
+        bool presolve;
         int l_inf_ruiz_iterations;
         bool has_pock_chambolle_alpha;
         double pock_chambolle_alpha;
         bool bound_objective_rescaling;
-        bool verbose;
-        int termination_evaluation_frequency;
-        int sv_max_iter;
-        double sv_tol;
-        termination_criteria_t termination_criteria;
-        restart_parameters_t restart_params;
-        double reflection_coefficient;
-        norm_type_t optimality_norm;
-        bool presolve;
         double matrix_zero_tol;
+
+        double reflection_coefficient;
+        double homogeneous_step_factor;
+        int singular_value_max_iter;
+        double singular_value_tol;
         int cone_newton_max_iter;
         double cone_newton_tol;
+
+        bool verbose;
+        int termination_evaluation_frequency;
+        norm_type_t optimality_norm;
+
+        termination_criteria_t termination_criteria;
+        restart_parameters_t restart_params;
     } pdhg_parameters_t;
 
     typedef struct

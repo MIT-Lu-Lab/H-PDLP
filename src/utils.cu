@@ -304,16 +304,23 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
 
 void set_default_parameters(pdhg_parameters_t *params)
 {
+    params->presolve = true;
     params->l_inf_ruiz_iterations = 10;
     params->has_pock_chambolle_alpha = true;
     params->pock_chambolle_alpha = 1.0;
     params->bound_objective_rescaling = true;
+    params->matrix_zero_tol = 1e-9;
+
+    params->reflection_coefficient = 1.0;
+    params->homogeneous_step_factor = 0.5;
+    params->singular_value_max_iter = 5000;
+    params->singular_value_tol = 1e-4;
+    params->cone_newton_max_iter = 10;
+    params->cone_newton_tol = 1e-6;
+
     params->verbose = true;
     params->termination_evaluation_frequency = 200;
-    params->reflection_coefficient = 1.0;
-
-    params->sv_max_iter = 5000;
-    params->sv_tol = 1e-4;
+    params->optimality_norm = NORM_TYPE_L2;
 
     params->termination_criteria.eps_optimal_relative = 1e-4;
     params->termination_criteria.eps_feasible_relative = 1e-4;
@@ -327,12 +334,6 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->restart_params.k_i = 0.01;
     params->restart_params.k_d = 0.0;
     params->restart_params.i_smooth = 0.3;
-
-    params->optimality_norm = NORM_TYPE_L2;
-    params->presolve = true;
-    params->matrix_zero_tol = 1e-9;
-    params->cone_newton_max_iter = 10;
-    params->cone_newton_tol = 1e-6;
 }
 
 const char *termination_reason_to_string(termination_reason_t reason)
@@ -491,12 +492,12 @@ void print_initial_info(const pdhg_parameters_t *params,
     PRINT_DIFF_BOOL("bound_obj_rescaling",
                     params->bound_objective_rescaling,
                     default_params.bound_objective_rescaling);
-    PRINT_DIFF_INT("sv_max_iter",
-                   params->sv_max_iter,
-                   default_params.sv_max_iter);
-    PRINT_DIFF_DBL("sv_tol",
-                   params->sv_tol,
-                   default_params.sv_tol);
+    PRINT_DIFF_INT("singular_value_max_iter",
+                   params->singular_value_max_iter,
+                   default_params.singular_value_max_iter);
+    PRINT_DIFF_DBL("singular_value_tol",
+                   params->singular_value_tol,
+                   default_params.singular_value_tol);
     PRINT_DIFF_INT("evaluation_freq",
                    params->termination_evaluation_frequency,
                    default_params.termination_evaluation_frequency);
@@ -624,7 +625,7 @@ double estimate_maximum_singular_value(
     const double one = 1.0;
     const double zero = 0.0;
 
-    for (int i = 0; i < params->sv_max_iter; ++i)
+    for (int i = 0; i < params->singular_value_max_iter; ++i)
     {
         CUDA_CHECK(cudaMemcpy(next_eigenvector_d, eigenvector_d, m * sizeof(double), cudaMemcpyDeviceToDevice));
         double eigenvector_norm;
@@ -652,7 +653,7 @@ double estimate_maximum_singular_value(
         double residual_norm;
         CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A, m, next_eigenvector_d, 1, &residual_norm));
 
-        if (residual_norm < params->sv_tol)
+        if (residual_norm < params->singular_value_tol)
             break;
     }
 

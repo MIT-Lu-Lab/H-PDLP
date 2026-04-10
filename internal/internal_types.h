@@ -147,8 +147,14 @@ typedef struct
     double *cone_newton_constraint_d;
     double *cone_newton_bound_d;
 
-    double step_size;
+    double step_size_primal;
+    double step_size_dual_constraint;
+    double step_size_dual_bound;
+    double step_size_homogeneous;
+
     double primal_weight;
+    double sigma_A;
+    double homogeneous_step_factor;
 
     int total_count;
     int inner_count;
