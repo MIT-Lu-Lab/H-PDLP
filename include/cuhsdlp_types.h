@@ -93,7 +93,7 @@ extern "C"
         double matrix_zero_tol;
 
         double reflection_coefficient;
-        double homogeneous_step_factor;
+        double objective_coupling_budget;
         int singular_value_max_iter;
         double singular_value_tol;
         int cone_newton_max_iter;

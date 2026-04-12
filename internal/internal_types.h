@@ -154,7 +154,7 @@ typedef struct
 
     double primal_weight;
     double sigma_A;
-    double homogeneous_step_factor;
+    double objective_coupling_budget;
 
     int total_count;
     int inner_count;

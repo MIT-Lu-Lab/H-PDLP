@@ -720,50 +720,30 @@ static void compute_step_sizes(pdhg_solver_state_t *state)
 {
     double omega   = state->primal_weight;
     double sigma_A = state->sigma_A;
-    double theta   = state->homogeneous_step_factor;
+    double xi      = state->objective_coupling_budget;
     double c_norm  = state->objective_vector_norm;
+
+    double lambda = 0.998 * sqrt((1.0 - xi) / 2.0);
+
+    state->step_size_primal     = lambda * omega;
+    state->step_size_dual_bound = lambda / omega;
 
     if (sigma_A > 0.0)
     {
         double sigma_A_sq = sigma_A * sigma_A;
-        double rho = theta * c_norm * c_norm * omega * omega
-                   / ((1.0 - theta) * (1.0 + 1.0 / sigma_A_sq));
-        double lambda = 0.998 * sqrt((1.0 - rho) / 2.0);
-
-        state->step_size_primal          = lambda * omega;
         state->step_size_dual_constraint = lambda / (omega * sigma_A_sq);
-        state->step_size_dual_bound      = lambda / omega;
-        state->step_size_homogeneous     = theta * omega
-                                         / (lambda * (1.0 + 1.0 / sigma_A_sq));
+
+        double sigma_sum = (lambda / omega) * (1.0 + 1.0 / sigma_A_sq);
+        double gamma = (c_norm > 0.0) ? c_norm * c_norm * lambda * omega / xi : 0.0;
+        state->step_size_homogeneous = 1.0 / (sigma_sum + gamma);
     }
     else
     {
-        double rho = theta * c_norm * c_norm * omega * omega / (1.0 - theta);
-        double lambda = 0.998 * sqrt((1.0 - rho) / 2.0);
-
-        state->step_size_primal          = lambda * omega;
         state->step_size_dual_constraint = 0.0;
-        state->step_size_dual_bound      = lambda / omega;
-        state->step_size_homogeneous     = theta * omega / lambda;
-    }
-}
 
-static void clamp_primal_weight(pdhg_solver_state_t *state)
-{
-    double sigma_A = state->sigma_A;
-    double theta   = state->homogeneous_step_factor;
-    double c_norm  = state->objective_vector_norm;
-
-    if (c_norm > 0.0)
-    {
-        double omega_max;
-        if (sigma_A > 0.0)
-            omega_max = sqrt((1.0 - theta) * (1.0 + 1.0 / (sigma_A * sigma_A))
-                           / (theta * c_norm * c_norm));
-        else
-            omega_max = sqrt((1.0 - theta) / (theta * c_norm * c_norm));
-
-        state->primal_weight = fmin(state->primal_weight, 0.998 * omega_max);
+        double sigma_sum = lambda / omega;
+        double gamma = (c_norm > 0.0) ? c_norm * c_norm * lambda * omega / xi : 0.0;
+        state->step_size_homogeneous = 1.0 / (sigma_sum + gamma);
     }
 }
 
@@ -775,7 +755,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
         state->sigma_A = estimate_maximum_singular_value(state, params);
     }
 
-    state->homogeneous_step_factor = params->homogeneous_step_factor;
+    state->objective_coupling_budget = params->objective_coupling_budget;
 
     if (params->bound_objective_rescaling)
     {
@@ -786,7 +766,6 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
         state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
     }
 
-    clamp_primal_weight(state);
     compute_step_sizes(state);
 
     state->best_primal_weight = state->primal_weight;
@@ -1161,7 +1140,6 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
         state->best_primal_weight = state->primal_weight;
     }
 
-    clamp_primal_weight(state);
     compute_step_sizes(state);
 
     CUDA_CHECK(cudaMemcpyAsync(state->initial_primal_solution,

@@ -137,7 +137,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: 1.0).\n");
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
-    fprintf(stderr, "      --homogeneous_step_factor <float> HSD homogeneous step budget fraction (default: 0.5).\n");
+    fprintf(stderr, "      --objective_coupling_budget <float> Objective coupling budget fraction (default: 0.05).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
     fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 20).\n");
@@ -165,7 +165,7 @@ int main(int argc, char *argv[])
         {"no_pock_chambolle", no_argument, 0, 1003},
         {"pock_chambolle_alpha", required_argument, 0, 1004},
         {"no_bound_obj_rescaling", no_argument, 0, 1005},
-        {"homogeneous_step_factor", required_argument, 0, 1006},
+        {"objective_coupling_budget", required_argument, 0, 1006},
         {"singular_value_max_iter", required_argument, 0, 1007},
         {"singular_value_tol", required_argument, 0, 1008},
         {"cone_newton_max_iter", required_argument, 0, 1009},
@@ -206,7 +206,7 @@ int main(int argc, char *argv[])
             params.bound_objective_rescaling = false;
             break;
         case 1006:
-            params.homogeneous_step_factor = atof(optarg);
+            params.objective_coupling_budget = atof(optarg);
             break;
         case 1007:
             params.singular_value_max_iter = atoi(optarg);
