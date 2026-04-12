@@ -137,6 +137,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: 1.0).\n");
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
+    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1] (default: 0.998).\n");
     fprintf(stderr, "      --objective_coupling_budget <float> Objective coupling budget fraction (default: 0.05).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
@@ -165,17 +166,18 @@ int main(int argc, char *argv[])
         {"no_pock_chambolle", no_argument, 0, 1003},
         {"pock_chambolle_alpha", required_argument, 0, 1004},
         {"no_bound_obj_rescaling", no_argument, 0, 1005},
-        {"objective_coupling_budget", required_argument, 0, 1006},
-        {"singular_value_max_iter", required_argument, 0, 1007},
-        {"singular_value_tol", required_argument, 0, 1008},
-        {"cone_newton_max_iter", required_argument, 0, 1009},
-        {"cone_newton_tol", required_argument, 0, 1010},
-        {"time_limit", required_argument, 0, 1011},
-        {"iter_limit", required_argument, 0, 1012},
-        {"eps_opt", required_argument, 0, 1013},
-        {"eps_feas", required_argument, 0, 1014},
-        {"eval_freq", required_argument, 0, 1015},
-        {"opt_norm", required_argument, 0, 1016},
+        {"step_size_factor", required_argument, 0, 1006},
+        {"objective_coupling_budget", required_argument, 0, 1007},
+        {"singular_value_max_iter", required_argument, 0, 1008},
+        {"singular_value_tol", required_argument, 0, 1009},
+        {"cone_newton_max_iter", required_argument, 0, 1010},
+        {"cone_newton_tol", required_argument, 0, 1011},
+        {"time_limit", required_argument, 0, 1012},
+        {"iter_limit", required_argument, 0, 1013},
+        {"eps_opt", required_argument, 0, 1014},
+        {"eps_feas", required_argument, 0, 1015},
+        {"eval_freq", required_argument, 0, 1016},
+        {"opt_norm", required_argument, 0, 1017},
         {"verbose", no_argument, 0, 'v'},
         {0, 0, 0, 0}};
 
@@ -206,36 +208,39 @@ int main(int argc, char *argv[])
             params.bound_objective_rescaling = false;
             break;
         case 1006:
-            params.objective_coupling_budget = atof(optarg);
+            params.step_size_factor = atof(optarg);
             break;
         case 1007:
-            params.singular_value_max_iter = atoi(optarg);
+            params.objective_coupling_budget = atof(optarg);
             break;
         case 1008:
-            params.singular_value_tol = atof(optarg);
+            params.singular_value_max_iter = atoi(optarg);
             break;
         case 1009:
-            params.cone_newton_max_iter = atoi(optarg);
+            params.singular_value_tol = atof(optarg);
             break;
         case 1010:
-            params.cone_newton_tol = atof(optarg);
+            params.cone_newton_max_iter = atoi(optarg);
             break;
         case 1011:
-            params.termination_criteria.time_sec_limit = atof(optarg);
+            params.cone_newton_tol = atof(optarg);
             break;
         case 1012:
-            params.termination_criteria.iteration_limit = atoi(optarg);
+            params.termination_criteria.time_sec_limit = atof(optarg);
             break;
         case 1013:
-            params.termination_criteria.eps_optimal_relative = atof(optarg);
+            params.termination_criteria.iteration_limit = atoi(optarg);
             break;
         case 1014:
-            params.termination_criteria.eps_feasible_relative = atof(optarg);
+            params.termination_criteria.eps_optimal_relative = atof(optarg);
             break;
         case 1015:
-            params.termination_evaluation_frequency = atoi(optarg);
+            params.termination_criteria.eps_feasible_relative = atof(optarg);
             break;
         case 1016:
+            params.termination_evaluation_frequency = atoi(optarg);
+            break;
+        case 1017:
         {
             const char *norm_str = optarg;
             if (strcmp(norm_str, "l2") == 0)

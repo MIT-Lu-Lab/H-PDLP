@@ -723,12 +723,13 @@ static void compute_step_sizes(pdhg_solver_state_t *state)
     double xi      = state->objective_coupling_budget;
     double c_norm  = state->objective_vector_norm;
 
-    double lambda = 0.998 * sqrt((1.0 - xi) / (sigma_A * sigma_A + 1.0));
+    double factor = state->step_size_factor;
+    double lambda = factor * sqrt((1.0 - xi) / (sigma_A * sigma_A + 1.0));
 
     state->step_size_primal      = lambda / omega;
     state->step_size_dual         = lambda * omega;
-    state->step_size_homogeneous  = 1.0 / (2.0 * lambda * omega
-                                  + c_norm * c_norm * lambda / (xi * omega));
+    state->step_size_homogeneous  = factor * xi / (c_norm * c_norm * lambda / omega
+                                  + 2.0 * lambda * omega);
 }
 
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
@@ -740,6 +741,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     }
 
     state->objective_coupling_budget = params->objective_coupling_budget;
+    state->step_size_factor = params->step_size_factor;
 
     if (params->bound_objective_rescaling)
     {

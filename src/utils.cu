@@ -312,6 +312,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->matrix_zero_tol = 1e-9;
 
     params->reflection_coefficient = 1.0;
+    params->step_size_factor = 0.998;
     params->objective_coupling_budget = 0.05;
     params->singular_value_max_iter = 5000;
     params->singular_value_tol = 1e-4;
