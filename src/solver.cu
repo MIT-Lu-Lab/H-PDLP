@@ -746,7 +746,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     }
     else
     {
-        state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
+        state->primal_weight = (state->constraint_bound_norm + 1.0) / (state->objective_vector_norm + 1.0);
     }
 
     compute_step_sizes(state);
@@ -1102,7 +1102,7 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
     if (primal_dist > 1e-16 && dual_dist > 1e-16 && primal_dist < 1e12 && dual_dist < 1e12 && ratio_infeas > 1e-8 &&
         ratio_infeas < 1e8)
     {
-        double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
+        double error = log(primal_dist) - log(dual_dist) - log(state->primal_weight);
         state->primal_weight_error_sum *= restart_params->i_smooth;
         state->primal_weight_error_sum += error;
         double delta_error = error - state->primal_weight_last_error;
