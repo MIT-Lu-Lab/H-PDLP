@@ -188,6 +188,7 @@ void hsd_update_primal_solution(
 static void perform_restart(
     pdhg_solver_state_t *state,
     const restart_parameters_t *restart_params);
+static void normalize_hsd_variables(pdhg_solver_state_t *state);
 static void rescale_solution(pdhg_solver_state_t *state);
 static cuhsdlp_result_t *create_result_from_state(
     pdhg_solver_state_t *state, 
@@ -1127,6 +1128,8 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
 
     compute_step_sizes(state);
 
+    normalize_hsd_variables(state);
+
     CUDA_CHECK(cudaMemcpyAsync(state->initial_primal_solution,
                                state->pdhg_primal_solution, state->var_bytes,
                                cudaMemcpyDeviceToDevice, state->stream_A));
@@ -1162,6 +1165,31 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
+}
+
+static void normalize_hsd_variables(pdhg_solver_state_t *state)
+{
+    double tau = state->pdhg_primal_scale;
+    if (!isfinite(tau) || tau <= 1e-12)
+        return;
+    double inv_tau = 1.0 / tau;
+    CUDA_CHECK(cudaMemcpyAsync(state->scalar_pool_d + 5, &inv_tau, sizeof(double),
+                                cudaMemcpyHostToDevice, state->stream_A));
+    CUBLAS_CHECK(cublasDscal(state->blas_handle_A,
+                             state->num_variables,
+                             state->scalar_pool_d + 5,
+                             state->pdhg_primal_solution, 1));
+    CUBLAS_CHECK(cublasDscal(state->blas_handle_A,
+                             state->num_constraints,
+                             state->scalar_pool_d + 5,
+                             state->pdhg_dual_solution, 1));
+    CUBLAS_CHECK(cublasDscal(state->blas_handle_A,
+                             state->num_variables,
+                             state->scalar_pool_d + 5,
+                             state->pdhg_dual_slack, 1));
+    state->pdhg_primal_scale = 1.0;
+    state->pdhg_dual_constraint_offset *= inv_tau;
+    state->pdhg_dual_bound_offset *= inv_tau;
 }
 
 static cuhsdlp_result_t *create_result_from_state(pdhg_solver_state_t *state, const lp_problem_t *original_problem)
