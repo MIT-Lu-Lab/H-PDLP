@@ -148,8 +148,7 @@ typedef struct
     double *cone_newton_bound_d;
 
     double step_size_primal;
-    double step_size_dual_constraint;
-    double step_size_dual_bound;
+    double step_size_dual;
     double step_size_homogeneous;
 
     double primal_weight;

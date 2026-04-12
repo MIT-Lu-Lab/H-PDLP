@@ -559,8 +559,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
     state->step_size_primal = 0.0;
-    state->step_size_dual_constraint = 0.0;
-    state->step_size_dual_bound = 0.0;
+    state->step_size_dual = 0.0;
     state->step_size_homogeneous = 0.0;
     state->primal_weight_error_sum = 0.0;
     state->primal_weight_last_error = 0.0;
@@ -723,28 +722,12 @@ static void compute_step_sizes(pdhg_solver_state_t *state)
     double xi      = state->objective_coupling_budget;
     double c_norm  = state->objective_vector_norm;
 
-    double lambda = 0.998 * sqrt((1.0 - xi) / 2.0);
+    double lambda = 0.998 * sqrt((1.0 - xi) / (sigma_A * sigma_A + 1.0));
 
-    state->step_size_primal     = lambda * omega;
-    state->step_size_dual_bound = lambda / omega;
-
-    if (sigma_A > 0.0)
-    {
-        double sigma_A_sq = sigma_A * sigma_A;
-        state->step_size_dual_constraint = lambda / (omega * sigma_A_sq);
-
-        double sigma_sum = (lambda / omega) * (1.0 + 1.0 / sigma_A_sq);
-        double gamma = (c_norm > 0.0) ? c_norm * c_norm * lambda * omega / xi : 0.0;
-        state->step_size_homogeneous = 1.0 / (sigma_sum + gamma);
-    }
-    else
-    {
-        state->step_size_dual_constraint = 0.0;
-
-        double sigma_sum = lambda / omega;
-        double gamma = (c_norm > 0.0) ? c_norm * c_norm * lambda * omega / xi : 0.0;
-        state->step_size_homogeneous = 1.0 / (sigma_sum + gamma);
-    }
+    state->step_size_primal      = lambda * omega;
+    state->step_size_dual         = lambda / omega;
+    state->step_size_homogeneous  = 1.0 / (2.0 * lambda / omega
+                                  + c_norm * c_norm * lambda * omega / xi);
 }
 
 static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, const pdhg_parameters_t *params)
@@ -802,7 +785,7 @@ void hsd_update_dual_solution(
     const double reflection_coefficient,
     bool is_major)
 {
-    double dual_step = state->step_size_dual_constraint;
+    double dual_step = state->step_size_dual;
 
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
     CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
@@ -862,7 +845,7 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
                            const double reflection_coefficient,
                            bool is_major)
 {
-    double dual_step = state->step_size_dual_bound;
+    double dual_step = state->step_size_dual;
 
     hsd_gradient_step_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_At>>>(
         state->primal_vec_buffer,
@@ -1069,12 +1052,14 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
     double delta_constraint_offset = state->reflected_dual_constraint_offset - state->pdhg_dual_constraint_offset;
     double delta_bound_offset = state->reflected_dual_bound_offset - state->pdhg_dual_bound_offset;
 
+    double dual_movement = (dual_norm * dual_norm
+                         + bound_dual_norm * bound_dual_norm
+                         + delta_constraint_offset * delta_constraint_offset
+                         + delta_bound_offset * delta_bound_offset)
+                         / state->step_size_dual;
     double movement = primal_norm * primal_norm / state->step_size_primal
-                    + dual_norm * dual_norm / state->step_size_dual_constraint
-                    + bound_dual_norm * bound_dual_norm / state->step_size_dual_bound
-                    + delta_primal_scale * delta_primal_scale / state->step_size_homogeneous
-                    + delta_constraint_offset * delta_constraint_offset / state->step_size_dual_constraint
-                    + delta_bound_offset * delta_bound_offset / state->step_size_dual_bound;
+                    + dual_movement
+                    + delta_primal_scale * delta_primal_scale / state->step_size_homogeneous;
     double interaction = 2.0 * (cross_term - bound_cross_term);
 
     state->fixed_point_error = sqrt(fmax(0.0, movement + interaction));
