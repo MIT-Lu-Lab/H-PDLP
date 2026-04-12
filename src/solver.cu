@@ -1090,14 +1090,18 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
         state->blas_handle_A, state->num_variables, state->delta_primal_solution, 1, state->scalar_pool_d + SCALAR_POOL_PRIMAL_NORM));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_constraints, state->delta_dual_solution, 1, state->scalar_pool_d + SCALAR_POOL_DUAL_NORM));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_variables, state->delta_dual_slack, 1, state->scalar_pool_d + SCALAR_POOL_CROSS_TERM));
 
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    double host_distance_scalars[2];
-    CUDA_CHECK(cudaMemcpy(host_distance_scalars, state->scalar_pool_d, 2 * sizeof(double), cudaMemcpyDeviceToHost));
+    double host_distance_scalars[3];
+    CUDA_CHECK(cudaMemcpy(host_distance_scalars, state->scalar_pool_d, 3 * sizeof(double), cudaMemcpyDeviceToHost));
 
     double primal_dist = host_distance_scalars[0];
-    double dual_dist = host_distance_scalars[1];
+    double dual_nrm = host_distance_scalars[1];
+    double slack_nrm = host_distance_scalars[2];
+    double dual_dist = sqrt(dual_nrm * dual_nrm + slack_nrm * slack_nrm);
     double ratio_infeas = state->relative_dual_residual / state->relative_primal_residual;
 
     if (primal_dist > 1e-16 && dual_dist > 1e-16 && primal_dist < 1e12 && dual_dist < 1e12 && ratio_infeas > 1e-8 &&
