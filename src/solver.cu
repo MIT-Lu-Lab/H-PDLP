@@ -651,14 +651,16 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     if (params->verbose)
     {
-        printf("---------------------------------------------------------------------"
-               "------------------\n");
-        printf("%s | %s | %s | %s \n",
+        printf("------------------------------------------------------------"
+               "-----------------------------------------------------------------\n");
+        printf("%s | %s | %s | %s | %s | %s\n",
                "   runtime    ",
                "    objective     ",
                "  absolute residuals   ",
-               "  relative residuals   ");
-        printf("%s %s | %s %s | %s %s %s | %s %s %s \n",
+               "  relative residuals   ",
+               "      step sizes       ",
+               "   hsd   ");
+        printf("%s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s\n",
                "  iter",
                "  time ",
                " pr obj ",
@@ -668,9 +670,13 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
                "  gap  ",
                " pr res",
                " du res",
-               "  gap  ");
-        printf("---------------------------------------------------------------------"
-               "------------------\n");
+               "  gap  ",
+               " pr ss ",
+               " du ss ",
+               " sc ss ",
+               "  scale  ");
+        printf("------------------------------------------------------------"
+               "-----------------------------------------------------------------\n");
     }
 
     return state;

@@ -451,11 +451,13 @@ void print_initial_info(const pdhg_parameters_t *params,
     {
         return;
     }
-    printf("-------------------------------------------------------------------------------------\n");
-    printf("                              cuHSDLP v%s\n", CUHSDLP_VERSION);
-    printf("                   A GPU-Accelerated First-Order LP Solver\n");
-    printf("          (c) Haihao Lu, Massachusetts Institute of Technology, 2026\n");
-    printf("-------------------------------------------------------------------------------------\n");
+    printf("------------------------------------------------------------"
+           "-----------------------------------------------------------------\n");
+    printf("%*scuHSDLP v%s\n", (125 - 14) / 2, "", CUHSDLP_VERSION);
+    printf("%*sA GPU-Accelerated First-Order LP Solver\n", (125 - 39) / 2, "");
+    printf("%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n", (125 - 58) / 2, "");
+    printf("------------------------------------------------------------"
+           "-----------------------------------------------------------------\n");
     printf("\n");
 
     filter_constraint_matrix_entries(problem, params);
@@ -984,7 +986,7 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
     }
     if (state->total_count % get_print_frequency(state->total_count) == 0)
     {
-        printf("%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e \n",
+        printf("%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %9.1e\n",
                state->total_count,
                state->cumulative_time_sec,
                state->primal_objective_value,
@@ -994,7 +996,11 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
                state->objective_gap,
                state->relative_primal_residual,
                state->relative_dual_residual,
-               state->relative_objective_gap);
+               state->relative_objective_gap,
+               state->step_size_primal,
+               state->step_size_dual,
+               state->step_size_homogeneous,
+               state->current_primal_scale);
     }
 }
 
@@ -1004,7 +1010,8 @@ void pdhg_final_log(
 {
     if (params->verbose)
     {
-        printf("-------------------------------------------------------------------------------------\n");
+        printf("------------------------------------------------------------"
+           "-----------------------------------------------------------------\n");
         printf("Solution Summary\n");
         printf("  Status                 : %s\n", termination_reason_to_string(result->termination_reason));
         if (params->presolve)
