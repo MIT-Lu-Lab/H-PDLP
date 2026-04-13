@@ -155,6 +155,7 @@ typedef struct
     double sigma_A;
     double objective_coupling_budget;
     double step_size_factor;
+    double step_size_base;
 
     int total_count;
     int inner_count;
