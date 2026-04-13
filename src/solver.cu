@@ -1182,7 +1182,7 @@ static void perform_restart(pdhg_solver_state_t *state, const restart_parameters
 static void normalize_hsd_variables(pdhg_solver_state_t *state)
 {
     double tau = state->pdhg_primal_scale;
-    if (!isfinite(tau) || tau <= 1e-12)
+    if (!isfinite(tau) || tau <= 1.0)
         return;
     double inv_tau = 1.0 / tau;
     CUDA_CHECK(cudaMemcpyAsync(state->scalar_pool_d + 5, &inv_tau, sizeof(double),
