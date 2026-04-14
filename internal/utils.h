@@ -96,7 +96,11 @@ extern "C"
     void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem);
 
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
-    void compute_objective_and_bound_norms(pdhg_solver_state_t *state, const pdhg_parameters_t *params);
+    void compute_objective_and_bound_norms(
+        pdhg_solver_state_t *state,
+        const pdhg_parameters_t *params,
+        double *out_objective_norm,
+        double *out_bound_norm);
 
     double estimate_maximum_singular_value(
         pdhg_solver_state_t *state,

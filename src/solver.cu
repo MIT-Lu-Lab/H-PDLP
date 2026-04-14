@@ -519,21 +519,19 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     sync_hsd_scalars_to_device(state);
 
-    compute_objective_and_bound_norms(state, params);
+    compute_objective_and_bound_norms(state, params, &state->original_objective_norm, &state->original_bound_norm);
 
     CUDA_CHECK(cudaMalloc(&state->constraint_rescaling, con_bytes));
     CUDA_CHECK(cudaMalloc(&state->variable_rescaling, var_bytes));
 
     rescale_problem(params, state);
 
-    CUDA_CHECK(cudaMemcpy(
-        state->current_primal_solution, state->initial_primal_solution, var_bytes, cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(
-        cudaMemcpy(state->current_dual_solution, state->initial_dual_solution, con_bytes, cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(
-        cudaMemcpy(state->pdhg_primal_solution, state->initial_primal_solution, var_bytes, cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(
-        cudaMemcpy(state->pdhg_dual_solution, state->initial_dual_solution, con_bytes, cudaMemcpyDeviceToDevice));
+    compute_objective_and_bound_norms(state, params, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
+
+    CUDA_CHECK(cudaMemcpy(state->current_primal_solution, state->initial_primal_solution, var_bytes, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->current_dual_solution, state->initial_dual_solution, con_bytes, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution, state->initial_primal_solution, var_bytes, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution, state->initial_dual_solution, con_bytes, cudaMemcpyDeviceToDevice));
 
     CUDA_CHECK(cudaMalloc(&state->constraint_lower_bound_finite_val, con_bytes));
     CUDA_CHECK(cudaMalloc(&state->constraint_upper_bound_finite_val, con_bytes));
@@ -596,14 +594,10 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
                                      CUDA_R_64F));
     CUDA_CHECK(cudaGetLastError());
 
-    CUSPARSE_CHECK(
-        cusparseCreateDnVec(&state->vec_primal_sol, state->num_variables, state->current_primal_solution, CUDA_R_64F));
-    CUSPARSE_CHECK(
-        cusparseCreateDnVec(&state->vec_dual_sol, state->num_constraints, state->reflected_dual_solution, CUDA_R_64F));
-    CUSPARSE_CHECK(
-        cusparseCreateDnVec(&state->vec_primal_prod, state->num_constraints, state->primal_product, CUDA_R_64F));
-    CUSPARSE_CHECK(
-        cusparseCreateDnVec(&state->vec_dual_prod, state->num_variables, state->dual_product, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_primal_sol, state->num_variables, state->current_primal_solution, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_dual_sol, state->num_constraints, state->reflected_dual_solution, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_primal_prod, state->num_constraints, state->primal_product, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->vec_dual_prod, state->num_variables, state->dual_product, CUDA_R_64F));
 
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(state->sparse_handle_A,
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -653,7 +647,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     if (params->verbose)
     {
-        printf("-------------------------------------------------------------"
+        printf("-----------------------------------------------------------"
                "-----------------------------------------------------------------\n");
         printf(" %s | %s | %s | %s | %s | %s\n",
                "   runtime    ",
@@ -661,7 +655,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
                "  absolute residuals   ",
                "  relative residuals   ",
                "      step sizes       ",
-               "   hsd   ");
+               "  hsd  ");
         printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s\n",
                "  iter",
                "  time ",
@@ -676,8 +670,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
                " pr ss ",
                " du ss ",
                " sc ss ",
-               "  scale  ");
-        printf("-------------------------------------------------------------"
+               " scale ");
+        printf("-----------------------------------------------------------"
                "-----------------------------------------------------------------\n");
     }
 
@@ -728,7 +722,7 @@ static void compute_step_sizes(pdhg_solver_state_t *state)
 {
     double omega = state->primal_weight;
     double base  = state->step_size_base;
-    double c_norm = state->objective_vector_norm;
+    double c_norm = state->rescaled_objective_norm;
 
     state->step_size_primal      = base / omega;
     state->step_size_dual        = base * omega;
@@ -755,7 +749,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     }
     else
     {
-        state->primal_weight = (state->objective_vector_norm + 1.0) / (state->constraint_bound_norm + 1.0);
+        state->primal_weight = (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
     compute_step_sizes(state);

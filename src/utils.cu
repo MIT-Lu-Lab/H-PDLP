@@ -451,12 +451,12 @@ void print_initial_info(const pdhg_parameters_t *params,
     {
         return;
     }
-    printf("-------------------------------------------------------------"
+    printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
-    printf("%*scuHSDLP v%s\n", (126 - 14) / 2, "", CUHSDLP_VERSION);
-    printf("%*sA GPU-Accelerated First-Order LP Solver\n", (126 - 39) / 2, "");
-    printf("%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n", (126 - 58) / 2, "");
-    printf("-------------------------------------------------------------"
+    printf("%*scuHSDLP v%s\n", (124 - 14) / 2, "", CUHSDLP_VERSION);
+    printf("%*sA GPU-Accelerated First-Order LP Solver\n", (124 - 39) / 2, "");
+    printf("%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n", (124 - 58) / 2, "");
+    printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
     printf("\n");
 
@@ -524,7 +524,9 @@ void print_initial_info(const pdhg_parameters_t *params,
 
 void compute_objective_and_bound_norms(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params)
+    const pdhg_parameters_t *params,
+    double *out_objective_norm,
+    double *out_bound_norm)
 {
     const int use_linf = (params->optimality_norm == NORM_TYPE_L_INF);
 
@@ -550,7 +552,7 @@ void compute_objective_and_bound_norms(
 
     double obj_reduce = 0.0;
     CUDA_CHECK(cudaMemcpy(&obj_reduce, reduction_output_d, sizeof(double), cudaMemcpyDeviceToHost));
-    state->objective_vector_norm = use_linf ? obj_reduce : sqrt(obj_reduce);
+    *out_objective_norm = use_linf ? obj_reduce : sqrt(obj_reduce);
 
     cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
@@ -561,7 +563,7 @@ void compute_objective_and_bound_norms(
 
     double con_reduce = 0.0;
     CUDA_CHECK(cudaMemcpy(&con_reduce, reduction_output_d, sizeof(double), cudaMemcpyDeviceToHost));
-    state->constraint_bound_norm = use_linf ? con_reduce : sqrt(con_reduce);
+    *out_bound_norm = use_linf ? con_reduce : sqrt(con_reduce);
 }
 
 __global__ void compute_objective_norm_entries_kernel(
@@ -923,9 +925,9 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
     state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
 
     state->relative_primal_residual =
-        state->absolute_primal_residual / (1.0 + state->constraint_bound_norm);
+        state->absolute_primal_residual / (1.0 + state->original_bound_norm);
     state->relative_dual_residual =
-        state->absolute_dual_residual / (1.0 + state->objective_vector_norm);
+        state->absolute_dual_residual / (1.0 + state->original_objective_norm);
     state->relative_objective_gap =
         state->objective_gap /
         (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
@@ -986,7 +988,7 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, boo
     }
     if (is_restart || state->total_count % get_print_frequency(state->total_count) == 0)
     {
-        printf("%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %9.1e\n",
+        printf("%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e\n",
                is_restart ? 'R' : ' ',
                state->total_count,
                state->cumulative_time_sec,
@@ -1011,7 +1013,7 @@ void pdhg_final_log(
 {
     if (params->verbose)
     {
-        printf("-------------------------------------------------------------"
+        printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
         printf("Solution Summary\n");
         printf("  Status                 : %s\n", termination_reason_to_string(result->termination_reason));

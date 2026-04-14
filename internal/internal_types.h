@@ -101,8 +101,10 @@ typedef struct
     void *primal_spmv_buffer;
     void *dual_spmv_buffer;
 
-    double objective_vector_norm;
-    double constraint_bound_norm;
+    double original_objective_norm;
+    double original_bound_norm;
+    double rescaled_objective_norm;
+    double rescaled_bound_norm;
 
     double *initial_primal_solution;
     double *current_primal_solution;
