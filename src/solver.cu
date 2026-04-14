@@ -597,9 +597,9 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     CUDA_CHECK(cudaGetLastError());
 
     CUSPARSE_CHECK(
-        cusparseCreateDnVec(&state->vec_primal_sol, state->num_variables, state->pdhg_primal_solution, CUDA_R_64F));
+        cusparseCreateDnVec(&state->vec_primal_sol, state->num_variables, state->current_primal_solution, CUDA_R_64F));
     CUSPARSE_CHECK(
-        cusparseCreateDnVec(&state->vec_dual_sol, state->num_constraints, state->pdhg_dual_solution, CUDA_R_64F));
+        cusparseCreateDnVec(&state->vec_dual_sol, state->num_constraints, state->reflected_dual_solution, CUDA_R_64F));
     CUSPARSE_CHECK(
         cusparseCreateDnVec(&state->vec_primal_prod, state->num_constraints, state->primal_product, CUDA_R_64F));
     CUSPARSE_CHECK(
