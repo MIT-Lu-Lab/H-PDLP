@@ -159,6 +159,7 @@ typedef struct
 
     int total_count;
     int inner_count;
+    int restart_count;
     clock_t start_time;
     double cumulative_time_sec;
 

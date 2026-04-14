@@ -137,6 +137,12 @@ extern "C"
         double objective_gap;
         double relative_objective_gap;
         termination_reason_t termination_reason;
+
+        int restart_count;
+        double homogeneous_scale;
+        double final_step_size_primal;
+        double final_step_size_dual;
+        double final_step_size_homogeneous;
     } cuhsdlp_result_t;
 
     typedef enum

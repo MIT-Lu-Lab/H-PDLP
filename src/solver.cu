@@ -219,7 +219,7 @@ cuhsdlp_result_t *optimize(
     }
 
     pdhg_solver_state_t *state = initialize_solver_state(working_problem, params);
-    display_iteration_stats(state, params->verbose);
+    display_iteration_stats(state, params->verbose, false);
 
     initialize_step_size_and_primal_weight(state, params);
 
@@ -266,21 +266,23 @@ cuhsdlp_result_t *optimize(
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 
-        if (state->total_count % get_print_frequency(state->total_count) == 0)
-        {
-            display_iteration_stats(state, params->verbose);
-        }
-
         check_termination_criteria(state, &params->termination_criteria);
         if (state->termination_reason != TERMINATION_REASON_UNSPECIFIED)
         {
+            display_iteration_stats(state, params->verbose, false);
             break;
         }
 
         do_restart = should_do_adaptive_restart(state, &params->restart_params, params->termination_evaluation_frequency);
         if (do_restart)
         {
+            state->restart_count++;
+            display_iteration_stats(state, params->verbose, true);
             perform_restart(state, &params->restart_params);
+        }
+        else
+        {
+            display_iteration_stats(state, params->verbose, false);
         }
     }
 
@@ -288,7 +290,7 @@ cuhsdlp_result_t *optimize(
     {
         state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_residual(state, params->optimality_norm);
-        display_iteration_stats(state, params->verbose);
+        display_iteration_stats(state, params->verbose, false);
     }
 
     cuhsdlp_result_t *result = create_result_from_state(state, original_problem);
@@ -651,16 +653,16 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     if (params->verbose)
     {
-        printf("------------------------------------------------------------"
+        printf("-------------------------------------------------------------"
                "-----------------------------------------------------------------\n");
-        printf("%s | %s | %s | %s | %s | %s\n",
+        printf(" %s | %s | %s | %s | %s | %s\n",
                "   runtime    ",
                "    objective     ",
                "  absolute residuals   ",
                "  relative residuals   ",
                "      step sizes       ",
                "   hsd   ");
-        printf("%s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s\n",
+        printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s\n",
                "  iter",
                "  time ",
                " pr obj ",
@@ -675,7 +677,7 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
                " du ss ",
                " sc ss ",
                "  scale  ");
-        printf("------------------------------------------------------------"
+        printf("-------------------------------------------------------------"
                "-----------------------------------------------------------------\n");
     }
 
@@ -1241,6 +1243,12 @@ static cuhsdlp_result_t *create_result_from_state(pdhg_solver_state_t *state, co
     results->objective_gap = state->objective_gap;
     results->relative_objective_gap = state->relative_objective_gap;
     results->termination_reason = state->termination_reason;
+
+    results->restart_count = state->restart_count;
+    results->homogeneous_scale = state->pdhg_primal_scale;
+    results->final_step_size_primal = state->step_size_primal;
+    results->final_step_size_dual = state->step_size_dual;
+    results->final_step_size_homogeneous = state->step_size_homogeneous;
 
     return results;
 }

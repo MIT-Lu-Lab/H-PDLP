@@ -451,12 +451,12 @@ void print_initial_info(const pdhg_parameters_t *params,
     {
         return;
     }
-    printf("------------------------------------------------------------"
+    printf("-------------------------------------------------------------"
            "-----------------------------------------------------------------\n");
-    printf("%*scuHSDLP v%s\n", (125 - 14) / 2, "", CUHSDLP_VERSION);
-    printf("%*sA GPU-Accelerated First-Order LP Solver\n", (125 - 39) / 2, "");
-    printf("%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n", (125 - 58) / 2, "");
-    printf("------------------------------------------------------------"
+    printf("%*scuHSDLP v%s\n", (126 - 14) / 2, "", CUHSDLP_VERSION);
+    printf("%*sA GPU-Accelerated First-Order LP Solver\n", (126 - 39) / 2, "");
+    printf("%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n", (126 - 58) / 2, "");
+    printf("-------------------------------------------------------------"
            "-----------------------------------------------------------------\n");
     printf("\n");
 
@@ -978,15 +978,16 @@ __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n)
         arr[i] = fabs(arr[i]);
 }
 
-void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose)
+void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, bool is_restart)
 {
     if (!verbose)
     {
         return;
     }
-    if (state->total_count % get_print_frequency(state->total_count) == 0)
+    if (is_restart || state->total_count % get_print_frequency(state->total_count) == 0)
     {
-        printf("%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %9.1e\n",
+        printf("%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %9.1e\n",
+               is_restart ? 'R' : ' ',
                state->total_count,
                state->cumulative_time_sec,
                state->primal_objective_value,
@@ -1010,7 +1011,7 @@ void pdhg_final_log(
 {
     if (params->verbose)
     {
-        printf("------------------------------------------------------------"
+        printf("-------------------------------------------------------------"
            "-----------------------------------------------------------------\n");
         printf("Solution Summary\n");
         printf("  Status                 : %s\n", termination_reason_to_string(result->termination_reason));
@@ -1026,6 +1027,11 @@ void pdhg_final_log(
         printf("  Objective gap          : %.3e\n", result->relative_objective_gap);
         printf("  Primal infeas          : %.3e\n", result->relative_primal_residual);
         printf("  Dual infeas            : %.3e\n", result->relative_dual_residual);
+        printf("  Restarts               : %d\n", result->restart_count);
+        printf("  Homogeneous scale      : %.3e\n", result->homogeneous_scale);
+        printf("  Step size (primal)     : %.3e\n", result->final_step_size_primal);
+        printf("  Step size (dual)       : %.3e\n", result->final_step_size_dual);
+        printf("  Step size (homogeneous): %.3e\n", result->final_step_size_homogeneous);
     }
 }
 

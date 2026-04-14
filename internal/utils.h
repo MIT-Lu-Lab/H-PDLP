@@ -102,7 +102,7 @@ extern "C"
         pdhg_solver_state_t *state,
         const pdhg_parameters_t *params);
 
-    void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose);
+    void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose, bool is_restart);
     int get_print_frequency(int iter);
 
     bool should_do_adaptive_restart(
