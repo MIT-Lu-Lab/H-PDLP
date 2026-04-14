@@ -237,5 +237,7 @@ void cuhsdlp_presolve_info_free(cuhsdlp_presolve_info_t *info)
         free_presolver(info->presolver);
     if (info->settings)
         free_settings(info->settings);
+    if (info->reduced_problem)
+        free(info->reduced_problem);
     free(info);
 }
