@@ -932,6 +932,16 @@ static void moreau_box_cone_project(
 
         cone_newton_step_kernel<<<1, 1, 0, stream>>>(
             cone_newton_buffer, params->cone_newton_tol);
+
+        if ((iter + 1) % 3 == 0)
+        {
+            double converged;
+            CUDA_CHECK(cudaMemcpyAsync(&converged, cone_newton_buffer + CONE_CONVERGED,
+                                       sizeof(double), cudaMemcpyDeviceToHost, stream));
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            if (converged != 0.0)
+                break;
+        }
     }
 
     cone_projection_apply_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
