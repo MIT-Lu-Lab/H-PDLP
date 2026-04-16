@@ -227,8 +227,6 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
         hsd_prepare_dual_solution_update(state, &params->cone_params);
         hsd_prepare_dual_slack_update(state, &params->cone_params);
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
         hsd_project_and_update_dual_solution(state, 1, params->reflection_coefficient, true);
         hsd_project_and_update_dual_slack(state, 1, params->reflection_coefficient, true);
         hsd_update_primal_solution(state, 1, params->reflection_coefficient, true);
@@ -248,8 +246,6 @@ cuhsdlp_result_t *optimize(
             CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
             hsd_prepare_dual_solution_update(state, &params->cone_params);
             hsd_prepare_dual_slack_update(state, &params->cone_params);
-            CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-            CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
             hsd_project_and_update_dual_solution(state, i, params->reflection_coefficient, false);
             hsd_project_and_update_dual_slack(state, i, params->reflection_coefficient, false);
             hsd_update_primal_solution(state, i, params->reflection_coefficient, false);
@@ -260,8 +256,6 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
         hsd_prepare_dual_solution_update(state, &params->cone_params);
         hsd_prepare_dual_slack_update(state, &params->cone_params);
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
         hsd_project_and_update_dual_solution(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
         hsd_project_and_update_dual_slack(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
         hsd_update_primal_solution(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
@@ -834,6 +828,8 @@ void hsd_project_and_update_dual_solution(pdhg_solver_state_t *state,
         dual_step,
         HSD_DUAL_CONSTRAINT,
         is_major);
+
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
 }
 
 void hsd_prepare_dual_slack_update(pdhg_solver_state_t *state,
@@ -933,6 +929,8 @@ void hsd_update_primal_solution(pdhg_solver_state_t *state,
                        bool is_major)
 {
     double primal_step = state->step_size_primal;
+
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
     CUSPARSE_CHECK(cusparseSpMV(state->sparse_handle_At,
                                 CUSPARSE_OPERATION_NON_TRANSPOSE,
