@@ -1031,11 +1031,11 @@ void pdhg_final_log(
         printf("  Objective gap          : %.3e\n", result->relative_objective_gap);
         printf("  Primal infeas          : %.3e\n", result->relative_primal_residual);
         printf("  Dual infeas            : %.3e\n", result->relative_dual_residual);
-        printf("  Restarts               : %d\n", result->restart_count);
-        printf("  Homogeneous scale      : %.3e\n", result->homogeneous_scale);
-        printf("  Step size (primal)     : %.3e\n", result->final_step_size_primal);
-        printf("  Step size (dual)       : %.3e\n", result->final_step_size_dual);
-        printf("  Step size (homogeneous): %.3e\n", result->final_step_size_homogeneous);
+        // printf("  Restarts               : %d\n", result->restart_count);
+        // printf("  Homogeneous scale      : %.3e\n", result->homogeneous_scale);
+        // printf("  Step size (primal)     : %.3e\n", result->final_step_size_primal);
+        // printf("  Step size (dual)       : %.3e\n", result->final_step_size_dual);
+        // printf("  Step size (homogeneous): %.3e\n", result->final_step_size_homogeneous);
     }
 }
 
