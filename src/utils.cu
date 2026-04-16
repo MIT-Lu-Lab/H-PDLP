@@ -804,7 +804,6 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         CUSPARSE_SPMV_CSR_ALG2,
         state->dual_spmv_buffer));
 
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 
@@ -826,9 +825,6 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->num_constraints,
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
-
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
     if (optimality_norm == NORM_TYPE_L_INF)
     {
@@ -853,6 +849,9 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
     }
     else
     {
+        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+        CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
+
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A,
             state->num_constraints,
@@ -888,7 +887,8 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->pdhg_dual_bound_offset,
         state->objective_constant);
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaEventSynchronize(state->event_A));
 
     double residual_metrics_h[RESIDUAL_METRIC_COUNT];
     CUDA_CHECK(cudaMemcpy(residual_metrics_h, state->residual_metrics_d,

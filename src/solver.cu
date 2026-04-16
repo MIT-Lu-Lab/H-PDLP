@@ -1046,7 +1046,8 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         delta_constraint_offset,
         delta_bound_offset);
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaEventSynchronize(state->event_A));
     CUDA_CHECK(cudaMemcpy(&state->fixed_point_error, state->fixed_point_error_d, sizeof(double), cudaMemcpyDeviceToHost));
 }
 
