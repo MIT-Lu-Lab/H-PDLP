@@ -48,11 +48,15 @@ __global__ void hsd_gradient_step_kernel(
     const double *__restrict__ product,
     double step_size,
     int n);
-__global__ void cone_newton_init_kernel(
-    double *__restrict__ cone_newton_buffer,
-    const double *__restrict__ hsd_scalars_d,
-    double step_size,
-    int scalar_offset);
+__global__ void cone_project_kernel(
+    double *__restrict__ projected,
+    const double *__restrict__ w_bar,
+    const double *__restrict__ lb,
+    const double *__restrict__ ub,
+    double *__restrict__ cone_state,
+    const double *__restrict__ hsd_scalars,
+    double step_size, int scalar_offset,
+    int n, int max_iter, double tol);
 __global__ void hsd_halpern_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
@@ -75,24 +79,6 @@ __global__ void hsd_primal_scale_update_kernel(
     int k_offset,
     double reflection_coefficient,
     bool is_major);
-__global__ void cone_projection_reduce_kernel(
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ newton_buf,
-    double *__restrict__ coeff_buf,
-    double *__restrict__ val_buf,
-    int n);
-__global__ void cone_projection_apply_kernel(
-    double *__restrict__ out_y,
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ newton_buf,
-    int n);
-__global__ void cone_newton_step_kernel(
-    double *__restrict__ cone_newton_buffer,
-    double tol);
 __global__ void hsd_primal_solution_update_kernel(
     double *__restrict__ cur,
     double *__restrict__ pdhg,
@@ -154,9 +140,6 @@ static void moreau_box_cone_project(
     const double *upper_bound,
     int n,
     double *projected_vector,
-    double *reduce_buffer,
-    void *cub_workspace,
-    size_t cub_workspace_bytes,
     double *cone_newton_buffer,
     const double *hsd_scalars_d,
     double step_size,
@@ -791,9 +774,6 @@ void hsd_update_dual_solution(
                             state->constraint_upper_bound,
                             state->num_constraints,
                             state->pdhg_dual_solution,
-                            state->cone_projection_reduce_buffer_constraint,
-                            state->cub_reduce_workspace,
-                            state->cub_reduce_workspace_bytes,
                             state->cone_newton_constraint_d,
                             state->hsd_scalars_d,
                             dual_step,
@@ -837,9 +817,6 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
                             state->variable_upper_bound,
                             state->num_variables,
                             state->pdhg_dual_slack,
-                            state->cone_projection_reduce_buffer_bound,
-                            state->cub_reduce_workspace_bound,
-                            state->cub_reduce_workspace_bytes,
                             state->cone_newton_bound_d,
                             state->hsd_scalars_d,
                             dual_step,
@@ -869,62 +846,20 @@ static void moreau_box_cone_project(
     const double *upper_bound,
     int n,
     double *projected_vector,
-    double *reduce_buffer,
-    void *cub_workspace,
-    size_t cub_workspace_bytes,
     double *cone_newton_buffer,
     const double *hsd_scalars_d,
     double step_size,
     int scalar_offset,
     cudaStream_t stream)
 {
-    int num_blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    double *newton_deriv = reduce_buffer;
-    double *newton_value = reduce_buffer + n;
-
-    cone_newton_init_kernel<<<1, 1, 0, stream>>>(
-        cone_newton_buffer, hsd_scalars_d, step_size, scalar_offset);
-
-    for (int iter = 0; iter < cone_params->max_iter; iter++)
-    {
-        cone_projection_reduce_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
-            unprojected_vector,
-            lower_bound,
-            upper_bound,
-            cone_newton_buffer,
-            newton_deriv,
-            newton_value,
-            n);
-
-        size_t cub_bytes = cub_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Sum(
-            cub_workspace, cub_bytes, newton_deriv, cone_newton_buffer + CONE_DERIV_SUM, n, stream));
-
-        cub_bytes = cub_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Sum(
-            cub_workspace, cub_bytes, newton_value, cone_newton_buffer + CONE_VALUE_SUM, n, stream));
-
-        cone_newton_step_kernel<<<1, 1, 0, stream>>>(
-            cone_newton_buffer, cone_params->tol);
-
-        if ((iter + 1) % 3 == 0)
-        {
-            double converged;
-            CUDA_CHECK(cudaMemcpyAsync(&converged, cone_newton_buffer + CONE_CONVERGED,
-                                       sizeof(double), cudaMemcpyDeviceToHost, stream));
-            CUDA_CHECK(cudaStreamSynchronize(stream));
-            if (converged != 0.0)
-                break;
-        }
-    }
-
-    cone_projection_apply_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
-        projected_vector,
-        unprojected_vector,
-        lower_bound,
-        upper_bound,
-        cone_newton_buffer,
-        n);
+    const int BLOCK = 256;
+    size_t smem = 2 * BLOCK * sizeof(double);
+    cone_project_kernel<<<1, BLOCK, smem, stream>>>(
+        projected_vector, unprojected_vector,
+        lower_bound, upper_bound,
+        cone_newton_buffer, hsd_scalars_d,
+        step_size, scalar_offset,
+        n, cone_params->max_iter, cone_params->tol);
 }
 
 void hsd_update_primal_solution(pdhg_solver_state_t *state,
@@ -1459,17 +1394,124 @@ __global__ void hsd_gradient_step_kernel(
         out[i] = current[i] - step_size * product[i];
 }
 
-__global__ void cone_newton_init_kernel(
-    double *__restrict__ cone_newton_buffer,
-    const double *__restrict__ hsd_scalars_d,
+__global__ void cone_project_kernel(
+    double *__restrict__ projected,
+    const double *__restrict__ w_bar,
+    const double *__restrict__ lb,
+    const double *__restrict__ ub,
+    double *__restrict__ cone_state,
+    const double *__restrict__ hsd_scalars,
     double step_size,
-    int scalar_offset)
+    int scalar_offset,
+    int n,
+    int max_iter,
+    double tol)
 {
-    cone_newton_buffer[CONE_TAU_LO]     = 0.0;
-    cone_newton_buffer[CONE_TAU_HI]     = INFINITY;
-    cone_newton_buffer[CONE_CONVERGED]  = 0.0;
-    cone_newton_buffer[CONE_NEG_SCALAR] = step_size * hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED]
-                                        - hsd_scalars_d[scalar_offset + HSD_CURRENT];
+    extern __shared__ double smem[];
+    double *s_ci = smem;
+    double *s_wi = smem + blockDim.x;
+
+    __shared__ double scale, tau_lo, tau_hi, neg_scalar;
+    __shared__ int converged;
+
+    if (threadIdx.x == 0)
+    {
+        scale = cone_state[CONE_SCALE];
+        tau_lo = 0.0;
+        tau_hi = INFINITY;
+        neg_scalar = step_size * hsd_scalars[HSD_PRIMAL_SCALE + HSD_REFLECTED]
+                   - hsd_scalars[scalar_offset + HSD_CURRENT];
+        converged = 0;
+    }
+    __syncthreads();
+
+    for (int it = 0; it < max_iter; it++)
+    {
+        if (converged) break;
+
+        double my_ci = 0.0, my_wi = 0.0;
+        for (int i = threadIdx.x; i < n; i += blockDim.x)
+        {
+            double vi = -w_bar[i];
+            double li = lb[i], ui = ub[i];
+            if (isfinite(li) && vi < li * scale)
+            {
+                my_ci += li * li;
+                my_wi += li * vi;
+            }
+            else if (isfinite(ui) && vi > ui * scale)
+            {
+                my_ci += ui * ui;
+                my_wi += ui * vi;
+            }
+        }
+
+        s_ci[threadIdx.x] = my_ci;
+        s_wi[threadIdx.x] = my_wi;
+        __syncthreads();
+        for (int s = blockDim.x / 2; s > 32; s >>= 1)
+        {
+            if (threadIdx.x < s)
+            {
+                s_ci[threadIdx.x] += s_ci[threadIdx.x + s];
+                s_wi[threadIdx.x] += s_wi[threadIdx.x + s];
+            }
+            __syncthreads();
+        }
+        if (threadIdx.x < 32)
+        {
+            volatile double *vc = s_ci, *vw = s_wi;
+            vc[threadIdx.x] += vc[threadIdx.x + 32];
+            vw[threadIdx.x] += vw[threadIdx.x + 32];
+            vc[threadIdx.x] += vc[threadIdx.x + 16];
+            vw[threadIdx.x] += vw[threadIdx.x + 16];
+            vc[threadIdx.x] += vc[threadIdx.x + 8];
+            vw[threadIdx.x] += vw[threadIdx.x + 8];
+            vc[threadIdx.x] += vc[threadIdx.x + 4];
+            vw[threadIdx.x] += vw[threadIdx.x + 4];
+            vc[threadIdx.x] += vc[threadIdx.x + 2];
+            vw[threadIdx.x] += vw[threadIdx.x + 2];
+            vc[threadIdx.x] += vc[threadIdx.x + 1];
+            vw[threadIdx.x] += vw[threadIdx.x + 1];
+        }
+        __syncthreads();
+
+        if (threadIdx.x == 0)
+        {
+            double ds = s_ci[0], vs = s_wi[0];
+            double ns = fmax(0.0, (neg_scalar + vs) / (1.0 + ds));
+
+            if (ns > scale)
+                tau_lo = fmax(tau_lo, scale);
+            else
+                tau_hi = fmin(tau_hi, scale);
+
+            double new_s;
+            if (ns >= tau_lo && ns <= tau_hi)
+                new_s = ns;
+            else if (isfinite(tau_hi))
+                new_s = 0.5 * (tau_lo + tau_hi);
+            else
+                new_s = fmax(ns, tau_lo);
+
+            if (fabs(new_s - scale) < tol * (1.0 + fabs(new_s)))
+                converged = 1;
+            scale = new_s;
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0)
+        cone_state[CONE_SCALE] = scale;
+
+    for (int i = threadIdx.x; i < n; i += blockDim.x)
+    {
+        double vi = -w_bar[i];
+        double li = lb[i], ui = ub[i];
+        double lo_c = isfinite(li) ? li * scale : -INFINITY;
+        double hi_c = isfinite(ui) ? ui * scale : INFINITY;
+        projected[i] = w_bar[i] + fmin(fmax(vi, lo_c), hi_c);
+    }
 }
 
 __global__ void hsd_halpern_kernel(
@@ -1514,108 +1556,6 @@ __global__ void hsd_halpern_kernel(
     }
 }
 
-__global__ void cone_projection_reduce_kernel(
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ cone_newton_buffer,
-    double *__restrict__ coeff_buf,
-    double *__restrict__ val_buf,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    if (cone_newton_buffer[CONE_CONVERGED] != 0.0)
-    {
-        coeff_buf[i] = 0.0;
-        val_buf[i] = 0.0;
-        return;
-    }
-
-    double tau_est = cone_newton_buffer[CONE_SCALE];
-    double vi = -w_bar[i];
-    double li = lb[i];
-    double ui = ub[i];
-    double ci = 0.0;
-    double wi = 0.0;
-
-    if (isfinite(li) && vi < li * tau_est)
-    {
-        ci = li * li;
-        wi = li * vi;
-    }
-    else if (isfinite(ui) && vi > ui * tau_est)
-    {
-        ci = ui * ui;
-        wi = ui * vi;
-    }
-
-    coeff_buf[i] = ci;
-    val_buf[i] = wi;
-}
-
-__global__ void cone_projection_apply_kernel(
-    double *__restrict__ out_y,
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ newton_buf,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    double tau_star = newton_buf[CONE_SCALE];
-    double vi = -w_bar[i];
-    double li = lb[i];
-    double ui = ub[i];
-
-    double lo_clamp = isfinite(li) ? li * tau_star : -INFINITY;
-    double hi_clamp = isfinite(ui) ? ui * tau_star : INFINITY;
-    double proj_i = fmin(fmax(vi, lo_clamp), hi_clamp);
-
-    out_y[i] = w_bar[i] + proj_i;
-}
-
-__global__ void cone_newton_step_kernel(
-    double *__restrict__ cone_newton_buffer,
-    double tol)
-{
-    if (cone_newton_buffer[CONE_CONVERGED] != 0.0)
-        return;
-
-    double deriv_sum  = cone_newton_buffer[CONE_DERIV_SUM];
-    double value_sum  = cone_newton_buffer[CONE_VALUE_SUM];
-    double cone_scale = cone_newton_buffer[CONE_SCALE];
-    double tau_lo     = cone_newton_buffer[CONE_TAU_LO];
-    double tau_hi     = cone_newton_buffer[CONE_TAU_HI];
-    double neg_scalar = cone_newton_buffer[CONE_NEG_SCALAR];
-
-    double newton_step = fmax(0.0, (neg_scalar + value_sum) / (1.0 + deriv_sum));
-
-    if (newton_step > cone_scale)
-        tau_lo = fmax(tau_lo, cone_scale);
-    else
-        tau_hi = fmin(tau_hi, cone_scale);
-
-    double new_scale;
-    if (newton_step >= tau_lo && newton_step <= tau_hi)
-        new_scale = newton_step;
-    else if (isfinite(tau_hi))
-        new_scale = 0.5 * (tau_lo + tau_hi);
-    else
-        new_scale = fmax(newton_step, tau_lo);
-
-    if (fabs(new_scale - cone_scale) < tol * (1.0 + fabs(new_scale)))
-        cone_newton_buffer[CONE_CONVERGED] = 1.0;
-
-    cone_newton_buffer[CONE_SCALE] = new_scale;
-    cone_newton_buffer[CONE_TAU_LO] = tau_lo;
-    cone_newton_buffer[CONE_TAU_HI] = tau_hi;
-}
 
 __global__ void hsd_primal_scale_update_kernel(
     double *hsd_scalars_d,
