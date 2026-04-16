@@ -47,8 +47,8 @@ enum {
     WORKSPACE_SCALAR_BOUND_DUAL_NORM  = 3,
     WORKSPACE_SCALAR_BOUND_CROSS_TERM = 4,
     WORKSPACE_SCALAR_INV_TAU          = 5,
-    WORKSPACE_SCALAR_C_DOT_X          = 7,
-    WORKSPACE_SCALAR_COUNT            = 8,
+    WORKSPACE_SCALAR_C_DOT_X          = 6,
+    WORKSPACE_SCALAR_COUNT            = 7,
 };
 
 typedef struct
