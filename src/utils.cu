@@ -50,6 +50,17 @@ __global__ void compute_residual_kernel(
     double inv_tau,
     int n_cons,
     int n_vars);
+__global__ void compute_residual_metrics_kernel(
+    double *residual_metrics_d,
+    const double *workspace_scalars_d,
+    double inv_primal_scale,
+    double constraint_bound_rescaling,
+    double objective_vector_rescaling,
+    double original_bound_norm,
+    double original_objective_norm,
+    double pdhg_dual_constraint_offset,
+    double pdhg_dual_bound_offset,
+    double objective_constant);
 __global__ void abs_vector_inplace_kernel(
     double *__restrict__ arr, int n);
 
@@ -839,29 +850,6 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->objective_vector, 1,
             state->pdhg_primal_solution, 1,
             state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
-
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
-
-        double host_residual_results[3];
-        CUDA_CHECK(cudaMemcpy(host_residual_results, state->workspace_scalars_d, 3 * sizeof(double),
-                               cudaMemcpyDeviceToHost));
-
-        state->absolute_primal_residual = host_residual_results[0] / state->constraint_bound_rescaling;
-        state->absolute_dual_residual = host_residual_results[1] / state->objective_vector_rescaling;
-
-        double objective_dot_primal = host_residual_results[2];
-        double scaled_dual_constraint_offset = state->pdhg_dual_constraint_offset * inv_primal_scale;
-        double scaled_dual_bound_offset = state->pdhg_dual_bound_offset * inv_primal_scale;
-
-        state->primal_objective_value =
-            objective_dot_primal * inv_primal_scale /
-                (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
-            state->objective_constant;
-        state->dual_objective_value =
-            -(scaled_dual_constraint_offset + scaled_dual_bound_offset) /
-                (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
-            state->objective_constant;
     }
     else
     {
@@ -884,39 +872,37 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->pdhg_primal_solution, 1,
             state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
 
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
-
-        double host_residual_results[3];
-        CUDA_CHECK(cudaMemcpy(host_residual_results, state->workspace_scalars_d, 3 * sizeof(double),
-                               cudaMemcpyDeviceToHost));
-
-        state->absolute_primal_residual = host_residual_results[0] / state->constraint_bound_rescaling;
-        state->absolute_dual_residual = host_residual_results[1] / state->objective_vector_rescaling;
-
-        double objective_dot_primal = host_residual_results[2];
-        double scaled_dual_constraint_offset = state->pdhg_dual_constraint_offset * inv_primal_scale;
-        double scaled_dual_bound_offset = state->pdhg_dual_bound_offset * inv_primal_scale;
-
-        state->primal_objective_value =
-            objective_dot_primal * inv_primal_scale /
-                (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
-            state->objective_constant;
-        state->dual_objective_value =
-            -(scaled_dual_constraint_offset + scaled_dual_bound_offset) /
-                (state->constraint_bound_rescaling * state->objective_vector_rescaling) +
-            state->objective_constant;
+        CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
+        CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
     }
 
-    state->objective_gap = fabs(state->primal_objective_value - state->dual_objective_value);
+    compute_residual_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->residual_metrics_d,
+        state->workspace_scalars_d,
+        inv_primal_scale,
+        state->constraint_bound_rescaling,
+        state->objective_vector_rescaling,
+        state->original_bound_norm,
+        state->original_objective_norm,
+        state->pdhg_dual_constraint_offset,
+        state->pdhg_dual_bound_offset,
+        state->objective_constant);
 
-    state->relative_primal_residual =
-        state->absolute_primal_residual / (1.0 + state->original_bound_norm);
-    state->relative_dual_residual =
-        state->absolute_dual_residual / (1.0 + state->original_objective_norm);
-    state->relative_objective_gap =
-        state->objective_gap /
-        (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    double residual_metrics_h[RESIDUAL_METRIC_COUNT];
+    CUDA_CHECK(cudaMemcpy(residual_metrics_h, state->residual_metrics_d,
+                          RESIDUAL_METRIC_COUNT * sizeof(double),
+                          cudaMemcpyDeviceToHost));
+
+    state->absolute_primal_residual = residual_metrics_h[RESIDUAL_METRIC_ABSOLUTE_PRIMAL];
+    state->relative_primal_residual = residual_metrics_h[RESIDUAL_METRIC_RELATIVE_PRIMAL];
+    state->absolute_dual_residual = residual_metrics_h[RESIDUAL_METRIC_ABSOLUTE_DUAL];
+    state->relative_dual_residual = residual_metrics_h[RESIDUAL_METRIC_RELATIVE_DUAL];
+    state->primal_objective_value = residual_metrics_h[RESIDUAL_METRIC_PRIMAL_OBJECTIVE];
+    state->dual_objective_value = residual_metrics_h[RESIDUAL_METRIC_DUAL_OBJECTIVE];
+    state->objective_gap = residual_metrics_h[RESIDUAL_METRIC_OBJECTIVE_GAP];
+    state->relative_objective_gap = residual_metrics_h[RESIDUAL_METRIC_RELATIVE_GAP];
 
 }
 
@@ -953,6 +939,45 @@ __global__ void compute_residual_kernel(
         double yv_hat = dual_slack[idx] * inv_tau;
         dual_res[idx] = (obj_vec[idx] - yc_hat - yv_hat) * var_rescaling[idx];
     }
+}
+
+__global__ void compute_residual_metrics_kernel(
+    double *residual_metrics_d,
+    const double *workspace_scalars_d,
+    double inv_primal_scale,
+    double constraint_bound_rescaling,
+    double objective_vector_rescaling,
+    double original_bound_norm,
+    double original_objective_norm,
+    double pdhg_dual_constraint_offset,
+    double pdhg_dual_bound_offset,
+    double objective_constant)
+{
+    double absolute_primal_residual = workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM] / constraint_bound_rescaling;
+    double absolute_dual_residual = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM] / objective_vector_rescaling;
+    double objective_dot_primal = workspace_scalars_d[WORKSPACE_SCALAR_CROSS_TERM];
+    double scaled_dual_constraint_offset = pdhg_dual_constraint_offset * inv_primal_scale;
+    double scaled_dual_bound_offset = pdhg_dual_bound_offset * inv_primal_scale;
+
+    double primal_objective_value = objective_dot_primal * inv_primal_scale 
+                                  / (constraint_bound_rescaling * objective_vector_rescaling) 
+                                  + objective_constant;
+    double dual_objective_value = - (scaled_dual_constraint_offset + scaled_dual_bound_offset) 
+                                / (constraint_bound_rescaling * objective_vector_rescaling) 
+                                + objective_constant;
+    double objective_gap = fabs(primal_objective_value - dual_objective_value);
+    double relative_primal_residual = absolute_primal_residual / (1.0 + original_bound_norm);
+    double relative_dual_residual = absolute_dual_residual / (1.0 + original_objective_norm);
+    double relative_objective_gap = objective_gap / (1.0 + fabs(primal_objective_value) + fabs(dual_objective_value));
+
+    residual_metrics_d[RESIDUAL_METRIC_ABSOLUTE_PRIMAL] = absolute_primal_residual;
+    residual_metrics_d[RESIDUAL_METRIC_RELATIVE_PRIMAL] = relative_primal_residual;
+    residual_metrics_d[RESIDUAL_METRIC_ABSOLUTE_DUAL] = absolute_dual_residual;
+    residual_metrics_d[RESIDUAL_METRIC_RELATIVE_DUAL] = relative_dual_residual;
+    residual_metrics_d[RESIDUAL_METRIC_PRIMAL_OBJECTIVE] = primal_objective_value;
+    residual_metrics_d[RESIDUAL_METRIC_DUAL_OBJECTIVE] = dual_objective_value;
+    residual_metrics_d[RESIDUAL_METRIC_OBJECTIVE_GAP] = objective_gap;
+    residual_metrics_d[RESIDUAL_METRIC_RELATIVE_GAP] = relative_objective_gap;
 }
 
 __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n)

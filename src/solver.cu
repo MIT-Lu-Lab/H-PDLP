@@ -123,6 +123,15 @@ __global__ void rescale_solution_kernel(
     double tau,
     int n_vars,
     int n_cons);
+__global__ void compute_fixed_point_error_kernel(
+    double *fixed_point_error_d,
+    const double *workspace_scalars_d,
+    double step_size_primal,
+    double step_size_dual,
+    double step_size_homogeneous,
+    double delta_primal_scale,
+    double delta_constraint_offset,
+    double delta_bound_offset);
 
 static void check_params_validity(const pdhg_parameters_t *params);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
@@ -516,6 +525,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 #undef ALLOC_ZERO
 
     CUDA_CHECK(cudaMalloc(&state->workspace_scalars_d, WORKSPACE_SCALAR_COUNT * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->fixed_point_error_d, sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->residual_metrics_d, RESIDUAL_METRIC_COUNT * sizeof(double)));
 
     sync_hsd_scalars_to_device(state);
 
@@ -1021,33 +1032,22 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
                             1,
                             state->workspace_scalars_d + WORKSPACE_SCALAR_BOUND_CROSS_TERM));
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
-    double fixed_point_scalars_h[5];
-    CUDA_CHECK(cudaMemcpy(fixed_point_scalars_h, state->workspace_scalars_d, 5 * sizeof(double), cudaMemcpyDeviceToHost));
-
-    double primal_norm = fixed_point_scalars_h[0];
-    double dual_norm = fixed_point_scalars_h[1];
-    double cross_term = fixed_point_scalars_h[2];
-    double bound_dual_norm = fixed_point_scalars_h[3];
-    double bound_cross_term = fixed_point_scalars_h[4];
-
     double delta_primal_scale = state->reflected_primal_scale - state->pdhg_primal_scale;
     double delta_constraint_offset = state->reflected_dual_constraint_offset - state->pdhg_dual_constraint_offset;
     double delta_bound_offset = state->reflected_dual_bound_offset - state->pdhg_dual_bound_offset;
 
-    double dual_movement = (dual_norm * dual_norm
-                         + bound_dual_norm * bound_dual_norm
-                         + delta_constraint_offset * delta_constraint_offset
-                         + delta_bound_offset * delta_bound_offset)
-                         / state->step_size_dual;
-    double movement = primal_norm * primal_norm / state->step_size_primal
-                    + dual_movement
-                    + delta_primal_scale * delta_primal_scale / state->step_size_homogeneous;
-    double interaction = 2.0 * (cross_term - bound_cross_term);
+    compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->fixed_point_error_d,
+        state->workspace_scalars_d,
+        state->step_size_primal,
+        state->step_size_dual,
+        state->step_size_homogeneous,
+        delta_primal_scale,
+        delta_constraint_offset,
+        delta_bound_offset);
 
-    state->fixed_point_error = sqrt(fmax(0.0, movement + interaction));
-
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    CUDA_CHECK(cudaMemcpy(&state->fixed_point_error, state->fixed_point_error_d, sizeof(double), cudaMemcpyDeviceToHost));
 }
 
 static void perform_restart(pdhg_solver_state_t *state, const step_size_parameters_t *step_size_params)
@@ -1385,6 +1385,10 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
     if (state->workspace_scalars_d)
         CUDA_CHECK(cudaFree(state->workspace_scalars_d));
+    if (state->fixed_point_error_d)
+        CUDA_CHECK(cudaFree(state->fixed_point_error_d));
+    if (state->residual_metrics_d)
+        CUDA_CHECK(cudaFree(state->residual_metrics_d));
 
     if (state->constraint_matrix)
         free(state->constraint_matrix);
@@ -1738,4 +1742,33 @@ __global__ void compute_delta_kernel(const double *__restrict__ initial_primal,
         int idx = i - n_vars - n_cons;
         delta_dual_slack[idx] = pdhg_dual_slack[idx] - initial_dual_slack[idx];
     }
+}
+
+__global__ void compute_fixed_point_error_kernel(
+    double *fixed_point_error_d,
+    const double *workspace_scalars_d,
+    double step_size_primal,
+    double step_size_dual,
+    double step_size_homogeneous,
+    double delta_primal_scale,
+    double delta_constraint_offset,
+    double delta_bound_offset)
+{
+    double primal_norm = workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM];
+    double dual_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
+    double cross_term = workspace_scalars_d[WORKSPACE_SCALAR_CROSS_TERM];
+    double bound_dual_norm = workspace_scalars_d[WORKSPACE_SCALAR_BOUND_DUAL_NORM];
+    double bound_cross_term = workspace_scalars_d[WORKSPACE_SCALAR_BOUND_CROSS_TERM];
+
+    double dual_movement = (dual_norm * dual_norm
+                         + bound_dual_norm * bound_dual_norm
+                         + delta_constraint_offset * delta_constraint_offset
+                         + delta_bound_offset * delta_bound_offset)
+                         / step_size_dual;
+    double movement = primal_norm * primal_norm / step_size_primal
+                    + dual_movement
+                    + delta_primal_scale * delta_primal_scale / step_size_homogeneous;
+    double interaction = 2.0 * (cross_term - bound_cross_term);
+
+    fixed_point_error_d[0] = sqrt(fmax(0.0, movement + interaction));
 }

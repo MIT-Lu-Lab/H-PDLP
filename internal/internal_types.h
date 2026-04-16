@@ -51,6 +51,18 @@ enum {
     WORKSPACE_SCALAR_COUNT            = 7,
 };
 
+enum {
+    RESIDUAL_METRIC_ABSOLUTE_PRIMAL = 0,
+    RESIDUAL_METRIC_RELATIVE_PRIMAL = 1,
+    RESIDUAL_METRIC_ABSOLUTE_DUAL = 2,
+    RESIDUAL_METRIC_RELATIVE_DUAL = 3,
+    RESIDUAL_METRIC_PRIMAL_OBJECTIVE = 4,
+    RESIDUAL_METRIC_DUAL_OBJECTIVE = 5,
+    RESIDUAL_METRIC_OBJECTIVE_GAP = 6,
+    RESIDUAL_METRIC_RELATIVE_GAP = 7,
+    RESIDUAL_METRIC_COUNT = 8,
+};
+
 typedef struct
 {
     int num_rows;
@@ -203,5 +215,7 @@ typedef struct
     void *cub_reduce_workspace_bound;
     size_t cub_reduce_workspace_bytes;
     double *workspace_scalars_d;
+    double *fixed_point_error_d;
+    double *residual_metrics_d;
 } pdhg_solver_state_t;
 

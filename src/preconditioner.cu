@@ -220,10 +220,10 @@ static void bound_objective_rescaling(
 
     size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes,
-                                       bound_contrib_d, state->scalar_pool_d, num_constraints));
+                                       bound_contrib_d, state->workspace_scalars_d, num_constraints));
 
     double bnd_norm_sq_h = 0.0;
-    CUDA_CHECK(cudaMemcpy(&bnd_norm_sq_h, state->scalar_pool_d, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&bnd_norm_sq_h, state->workspace_scalars_d, sizeof(double), cudaMemcpyDeviceToHost));
     double bnd_norm = sqrt(bnd_norm_sq_h);
 
     double obj_norm = 0.0;
