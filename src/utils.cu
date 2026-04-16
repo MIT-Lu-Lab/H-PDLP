@@ -534,7 +534,7 @@ void compute_objective_and_bound_norms(
 
     double *norm_entries_vars = state->primal_vec_buffer;
     double *norm_entries_cons = state->dual_vec_buffer;
-    double *reduction_output_d = state->scalar_pool_d;
+    double *workspace_result_d = state->workspace_scalars_d;
 
     compute_objective_norm_entries_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         state->objective_vector, norm_entries_vars, state->num_variables, use_linf);
@@ -547,24 +547,24 @@ void compute_objective_and_bound_norms(
 
     size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, reduction_output_d, state->num_variables));
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, workspace_result_d, state->num_variables));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, reduction_output_d, state->num_variables));
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, workspace_result_d, state->num_variables));
     CUDA_CHECK(cudaGetLastError());
 
     double obj_reduce = 0.0;
-    CUDA_CHECK(cudaMemcpy(&obj_reduce, reduction_output_d, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&obj_reduce, workspace_result_d, sizeof(double), cudaMemcpyDeviceToHost));
     *out_objective_norm = use_linf ? obj_reduce : sqrt(obj_reduce);
 
     cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, reduction_output_d, state->num_constraints));
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, workspace_result_d, state->num_constraints));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, reduction_output_d, state->num_constraints));
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, workspace_result_d, state->num_constraints));
     CUDA_CHECK(cudaGetLastError());
 
     double con_reduce = 0.0;
-    CUDA_CHECK(cudaMemcpy(&con_reduce, reduction_output_d, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&con_reduce, workspace_result_d, sizeof(double), cudaMemcpyDeviceToHost));
     *out_bound_norm = use_linf ? con_reduce : sqrt(con_reduce);
 }
 
@@ -612,7 +612,7 @@ double estimate_maximum_singular_value(
     const power_iteration_parameters_t *power_iter_params)
 {
     int m = state->num_constraints;
-    double *eigenvector_d = state->cone_projection_reduce_buffer_constraint;
+    double *eigenvector_d = state->power_iteration_vector_d;
     double *next_eigenvector_d = state->delta_dual_solution;
 
     CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
@@ -828,23 +828,23 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 
         size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
         CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
-            state->primal_residual, state->scalar_pool_d + 0, state->num_constraints, state->stream_A));
+            state->primal_residual, state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM, state->num_constraints, state->stream_A));
         cub_buffer_bytes = state->cub_reduce_workspace_bytes;
         CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
-            state->dual_residual, state->scalar_pool_d + 1, state->num_variables, state->stream_A));
+            state->dual_residual, state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM, state->num_variables, state->stream_A));
 
         CUBLAS_CHECK(cublasDdot(
             state->blas_handle_A,
             state->num_variables,
             state->objective_vector, 1,
             state->pdhg_primal_solution, 1,
-            state->scalar_pool_d + 2));
+            state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
 
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
         CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
         double host_residual_results[3];
-        CUDA_CHECK(cudaMemcpy(host_residual_results, state->scalar_pool_d, 3 * sizeof(double),
+        CUDA_CHECK(cudaMemcpy(host_residual_results, state->workspace_scalars_d, 3 * sizeof(double),
                                cudaMemcpyDeviceToHost));
 
         state->absolute_primal_residual = host_residual_results[0] / state->constraint_bound_rescaling;
@@ -869,26 +869,26 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->blas_handle_A,
             state->num_constraints,
             state->primal_residual, 1,
-            state->scalar_pool_d + 0));
+            state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM));
 
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_At,
             state->num_variables,
             state->dual_residual, 1,
-            state->scalar_pool_d + 1));
+            state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM));
 
         CUBLAS_CHECK(cublasDdot(
             state->blas_handle_A,
             state->num_variables,
             state->objective_vector, 1,
             state->pdhg_primal_solution, 1,
-            state->scalar_pool_d + 2));
+            state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
 
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
         CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
         double host_residual_results[3];
-        CUDA_CHECK(cudaMemcpy(host_residual_results, state->scalar_pool_d, 3 * sizeof(double),
+        CUDA_CHECK(cudaMemcpy(host_residual_results, state->workspace_scalars_d, 3 * sizeof(double),
                                cudaMemcpyDeviceToHost));
 
         state->absolute_primal_residual = host_residual_results[0] / state->constraint_bound_rescaling;

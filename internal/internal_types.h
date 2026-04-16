@@ -36,23 +36,19 @@ enum {
 };
 
 enum {
-    CONE_DERIV_SUM  = 0,
-    CONE_VALUE_SUM  = 1,
-    CONE_SCALE      = 2,
-    CONE_TAU_LO     = 3,
-    CONE_TAU_HI     = 4,
-    CONE_CONVERGED  = 5,
-    CONE_NEG_SCALAR = 6,
-    CONE_BUFFER_SIZE = 7,
+    CONE_SCALE = 0,
+    CONE_BUFFER_SIZE = 1,
 };
 
 enum {
-    SCALAR_POOL_PRIMAL_NORM      = 0,
-    SCALAR_POOL_DUAL_NORM        = 1,
-    SCALAR_POOL_CROSS_TERM       = 2,
-    SCALAR_POOL_BOUND_DUAL_NORM  = 3,
-    SCALAR_POOL_BOUND_CROSS_TERM = 4,
-    SCALAR_POOL_C_DOT_X          = 7,
+    WORKSPACE_SCALAR_PRIMAL_NORM      = 0,
+    WORKSPACE_SCALAR_DUAL_NORM        = 1,
+    WORKSPACE_SCALAR_CROSS_TERM       = 2,
+    WORKSPACE_SCALAR_BOUND_DUAL_NORM  = 3,
+    WORKSPACE_SCALAR_BOUND_CROSS_TERM = 4,
+    WORKSPACE_SCALAR_INV_TAU          = 5,
+    WORKSPACE_SCALAR_C_DOT_X          = 7,
+    WORKSPACE_SCALAR_COUNT            = 8,
 };
 
 typedef struct
@@ -145,8 +141,7 @@ typedef struct
     double reflected_dual_bound_offset;
     double pdhg_dual_bound_offset;
 
-    double *cone_projection_reduce_buffer_constraint;
-    double *cone_projection_reduce_buffer_bound;
+    double *power_iteration_vector_d;
     double *hsd_scalars_d;
     double *cone_newton_constraint_d;
     double *cone_newton_bound_d;
@@ -207,6 +202,6 @@ typedef struct
     void *cub_reduce_workspace;
     void *cub_reduce_workspace_bound;
     size_t cub_reduce_workspace_bytes;
-    double *scalar_pool_d;
+    double *workspace_scalars_d;
 } pdhg_solver_state_t;
 
