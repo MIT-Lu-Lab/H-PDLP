@@ -621,10 +621,10 @@ double estimate_maximum_singular_value(
     size_t curand_count = ((size_t)m + 1) & ~(size_t)1;
     CURAND_CHECK(curandGenerateNormalDouble(state->curand_gen, eigenvector_d, curand_count, 0.0, 1.0));
 
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, eigenvector_d));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, next_eigenvector_d));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, dual_product_d));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, dual_product_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_product, eigenvector_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_solution, next_eigenvector_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_product, dual_product_d));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_solution, dual_product_d));
 
     CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_HOST));
 
@@ -643,12 +643,12 @@ double estimate_maximum_singular_value(
 
         CUSPARSE_CHECK(cusparseSpMV(
             state->sparse_handle_A, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &one, state->matAt, state->vec_dual_sol, &zero, state->vec_dual_prod,
+            &one, state->matAt, state->vec_dual_solution, &zero, state->vec_dual_product,
             CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
         CUSPARSE_CHECK(cusparseSpMV(
             state->sparse_handle_A, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &one, state->matA, state->vec_primal_sol, &zero, state->vec_primal_prod,
+            &one, state->matA, state->vec_primal_solution, &zero, state->vec_primal_product,
             CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
 
         CUBLAS_CHECK(cublasDdot(state->blas_handle_A, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
@@ -666,10 +666,10 @@ double estimate_maximum_singular_value(
 
     CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_DEVICE));
 
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_solution, state->current_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_product, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_solution, state->reflected_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_product, state->dual_product));
 
     return sqrt(sigma_max_sq);
 }
@@ -780,19 +780,19 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
     double primal_scale = state->pdhg_primal_scale;
     double inv_primal_scale = (fabs(primal_scale) > 1e-30) ? 1.0 / primal_scale : 0.0;
 
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->pdhg_primal_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->pdhg_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_solution, state->pdhg_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_solution, state->pdhg_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_product, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_product, state->dual_product));
 
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &HOST_ONE,
         state->matA,
-        state->vec_primal_sol,
+        state->vec_primal_solution,
         &HOST_ZERO,
-        state->vec_primal_prod,
+        state->vec_primal_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
         state->primal_spmv_buffer));
@@ -802,9 +802,9 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &HOST_ONE,
         state->matAt,
-        state->vec_dual_sol,
+        state->vec_dual_solution,
         &HOST_ZERO,
-        state->vec_dual_prod,
+        state->vec_dual_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
         state->dual_spmv_buffer));
@@ -934,10 +934,10 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->objective_gap /
         (1.0 + fabs(state->primal_objective_value) + fabs(state->dual_objective_value));
 
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_sol, state->current_primal_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_prod, state->primal_product));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_sol, state->reflected_dual_solution));
-    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_prod, state->dual_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_solution, state->current_primal_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_primal_product, state->primal_product));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_solution, state->reflected_dual_solution));
+    CUSPARSE_CHECK(cusparseDnVecSetValues(state->vec_dual_product, state->dual_product));
 }
 
 __global__ void compute_residual_kernel(

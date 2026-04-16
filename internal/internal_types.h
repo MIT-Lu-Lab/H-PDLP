@@ -193,10 +193,10 @@ typedef struct
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
-    cusparseDnVecDescr_t vec_primal_sol;
-    cusparseDnVecDescr_t vec_dual_sol;
-    cusparseDnVecDescr_t vec_primal_prod;
-    cusparseDnVecDescr_t vec_dual_prod;
+    cusparseDnVecDescr_t vec_primal_solution;
+    cusparseDnVecDescr_t vec_dual_solution;
+    cusparseDnVecDescr_t vec_primal_product;
+    cusparseDnVecDescr_t vec_dual_product;
 
     void *cub_reduce_workspace;
     void *cub_reduce_workspace_bound;
