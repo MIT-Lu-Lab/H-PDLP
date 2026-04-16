@@ -193,10 +193,16 @@ typedef struct
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
-    cusparseDnVecDescr_t vec_primal_solution;
-    cusparseDnVecDescr_t vec_dual_solution;
-    cusparseDnVecDescr_t vec_primal_product;
-    cusparseDnVecDescr_t vec_dual_product;
+    cusparseDnVecDescr_t spmv_current_primal_solution;
+    cusparseDnVecDescr_t spmv_reflected_dual_solution;
+    cusparseDnVecDescr_t spmv_pdhg_primal_solution;
+    cusparseDnVecDescr_t spmv_pdhg_dual_solution;
+    cusparseDnVecDescr_t spmv_delta_dual_solution;
+    cusparseDnVecDescr_t spmv_primal_product;
+    cusparseDnVecDescr_t spmv_dual_product;
+    cusparseDnVecDescr_t spmv_power_iteration_vector;
+    cusparseDnVecDescr_t spmv_power_iteration_next_vector;
+    cusparseDnVecDescr_t spmv_power_iteration_product;
 
     void *cub_reduce_workspace;
     void *cub_reduce_workspace_bound;
