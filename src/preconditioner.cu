@@ -58,6 +58,9 @@ __global__ void compute_csr_row_powsum_kernel(
     int n_rows,
     double degree,
     double *__restrict__ row_powsum_values);
+__global__ void compute_bound_objective_scales_kernel(
+    double *rescaling_factors_d,
+    const double *workspace_scalars_d);
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
@@ -212,7 +215,7 @@ static void bound_objective_rescaling(
     const int num_variables = state->num_variables;
 
     double *bound_contrib_d = state->dual_vec_buffer;
-    compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         bound_contrib_d,
         state->constraint_lower_bound,
         state->constraint_upper_bound,
@@ -220,22 +223,27 @@ static void bound_objective_rescaling(
 
     size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes,
-                                       bound_contrib_d, state->workspace_scalars_d, num_constraints));
+                                       bound_contrib_d, state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM,
+                                       num_constraints, state->stream_A));
 
-    double bnd_norm_sq_h = 0.0;
-    CUDA_CHECK(cudaMemcpy(&bnd_norm_sq_h, state->workspace_scalars_d, sizeof(double), cudaMemcpyDeviceToHost));
-    double bnd_norm = sqrt(bnd_norm_sq_h);
+    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A,
+                                   state->num_variables,
+                                   state->objective_vector, 1,
+                                   state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM));
 
-    double obj_norm = 0.0;
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_HOST));
-    CUBLAS_CHECK(cublasDnrm2(state->blas_handle_A,
-                             state->num_variables,
-                             state->objective_vector, 1,
-                             &obj_norm));
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_DEVICE));
+    compute_bound_objective_scales_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->rescaling_factors_d,
+        state->workspace_scalars_d);
 
-    double constraint_scale = 1.0 / (bnd_norm + 1.0);
-    double objective_scale = 1.0 / (obj_norm + 1.0);
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    double scaling_factors_h[RESCALING_FACTOR_COUNT];
+    CUDA_CHECK(cudaMemcpy(scaling_factors_h, state->rescaling_factors_d,
+                          RESCALING_FACTOR_COUNT * sizeof(double),
+                          cudaMemcpyDeviceToHost));
+
+    double constraint_scale = scaling_factors_h[RESCALING_FACTOR_CONSTRAINT];
+    double objective_scale = scaling_factors_h[RESCALING_FACTOR_OBJECTIVE];
 
     scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_lower_bound,
@@ -256,6 +264,17 @@ static void bound_objective_rescaling(
 
     state->constraint_bound_rescaling = constraint_scale;
     state->objective_vector_rescaling = objective_scale;
+}
+
+__global__ void compute_bound_objective_scales_kernel(
+    double *rescaling_factors_d,
+    const double *workspace_scalars_d)
+{
+    double bound_norm = sqrt(workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM]);
+    double objective_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
+
+    rescaling_factors_d[RESCALING_FACTOR_CONSTRAINT] = 1.0 / (bound_norm + 1.0);
+    rescaling_factors_d[RESCALING_FACTOR_OBJECTIVE] = 1.0 / (objective_norm + 1.0);
 }
 
 void rescale_problem(

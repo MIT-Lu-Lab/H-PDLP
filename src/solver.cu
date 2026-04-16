@@ -132,6 +132,9 @@ __global__ void compute_fixed_point_error_kernel(
     double delta_primal_scale,
     double delta_constraint_offset,
     double delta_bound_offset);
+__global__ void compute_restart_distances_kernel(
+    double *restart_distances_d,
+    const double *workspace_scalars_d);
 
 static void check_params_validity(const pdhg_parameters_t *params);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
@@ -525,6 +528,9 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 #undef ALLOC_ZERO
 
     CUDA_CHECK(cudaMalloc(&state->workspace_scalars_d, WORKSPACE_SCALAR_COUNT * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->norm_results_d, NORM_RESULT_COUNT * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->rescaling_factors_d, RESCALING_FACTOR_COUNT * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->restart_distances_d, RESTART_DISTANCE_COUNT * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->fixed_point_error_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->residual_metrics_d, RESIDUAL_METRIC_COUNT * sizeof(double)));
 
@@ -1073,15 +1079,20 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables, state->delta_dual_slack, 1, state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    compute_restart_distances_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->restart_distances_d,
+        state->workspace_scalars_d);
 
-    double distance_scalars_h[3];
-    CUDA_CHECK(cudaMemcpy(distance_scalars_h, state->workspace_scalars_d, 3 * sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaEventSynchronize(state->event_A));
 
-    double primal_dist = distance_scalars_h[0];
-    double dual_norm = distance_scalars_h[1];
-    double slack_norm = distance_scalars_h[2];
-    double dual_dist = sqrt(dual_norm * dual_norm + slack_norm * slack_norm);
+    double restart_distances_h[RESTART_DISTANCE_COUNT];
+    CUDA_CHECK(cudaMemcpy(restart_distances_h, state->restart_distances_d,
+                          RESTART_DISTANCE_COUNT * sizeof(double),
+                          cudaMemcpyDeviceToHost));
+
+    double primal_dist = restart_distances_h[RESTART_DISTANCE_PRIMAL];
+    double dual_dist = restart_distances_h[RESTART_DISTANCE_DUAL];
     double ratio_infeas = state->relative_dual_residual / state->relative_primal_residual;
 
     if (primal_dist > 1e-16 && dual_dist > 1e-16 && primal_dist < 1e12 && dual_dist < 1e12 && ratio_infeas > 1e-8 &&
@@ -1386,6 +1397,12 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
     if (state->workspace_scalars_d)
         CUDA_CHECK(cudaFree(state->workspace_scalars_d));
+    if (state->norm_results_d)
+        CUDA_CHECK(cudaFree(state->norm_results_d));
+    if (state->rescaling_factors_d)
+        CUDA_CHECK(cudaFree(state->rescaling_factors_d));
+    if (state->restart_distances_d)
+        CUDA_CHECK(cudaFree(state->restart_distances_d));
     if (state->fixed_point_error_d)
         CUDA_CHECK(cudaFree(state->fixed_point_error_d));
     if (state->residual_metrics_d)
@@ -1772,4 +1789,17 @@ __global__ void compute_fixed_point_error_kernel(
     double interaction = 2.0 * (cross_term - bound_cross_term);
 
     fixed_point_error_d[0] = sqrt(fmax(0.0, movement + interaction));
+}
+
+__global__ void compute_restart_distances_kernel(
+    double *restart_distances_d,
+    const double *workspace_scalars_d)
+{
+    double primal_dist = workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM];
+    double dual_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
+    double slack_norm = workspace_scalars_d[WORKSPACE_SCALAR_CROSS_TERM];
+    double dual_dist = sqrt(dual_norm * dual_norm + slack_norm * slack_norm);
+
+    restart_distances_d[RESTART_DISTANCE_PRIMAL] = primal_dist;
+    restart_distances_d[RESTART_DISTANCE_DUAL] = dual_dist;
 }

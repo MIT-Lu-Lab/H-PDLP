@@ -63,6 +63,24 @@ enum {
     RESIDUAL_METRIC_COUNT = 8,
 };
 
+enum {
+    NORM_RESULT_OBJECTIVE = 0,
+    NORM_RESULT_BOUND = 1,
+    NORM_RESULT_COUNT = 2,
+};
+
+enum {
+    RESCALING_FACTOR_CONSTRAINT = 0,
+    RESCALING_FACTOR_OBJECTIVE = 1,
+    RESCALING_FACTOR_COUNT = 2,
+};
+
+enum {
+    RESTART_DISTANCE_PRIMAL = 0,
+    RESTART_DISTANCE_DUAL = 1,
+    RESTART_DISTANCE_COUNT = 2,
+};
+
 typedef struct
 {
     int num_rows;
@@ -215,6 +233,9 @@ typedef struct
     void *cub_reduce_workspace_bound;
     size_t cub_reduce_workspace_bytes;
     double *workspace_scalars_d;
+    double *norm_results_d;
+    double *rescaling_factors_d;
+    double *restart_distances_d;
     double *fixed_point_error_d;
     double *residual_metrics_d;
 } pdhg_solver_state_t;

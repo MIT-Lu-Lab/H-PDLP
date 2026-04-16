@@ -61,6 +61,10 @@ __global__ void compute_residual_metrics_kernel(
     double pdhg_dual_constraint_offset,
     double pdhg_dual_bound_offset,
     double objective_constant);
+__global__ void compute_norm_results_kernel(
+    double *norm_results_d,
+    const double *workspace_scalars_d,
+    int use_linf);
 __global__ void abs_vector_inplace_kernel(
     double *__restrict__ arr, int n);
 
@@ -558,25 +562,32 @@ void compute_objective_and_bound_norms(
 
     size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, workspace_result_d, state->num_variables));
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars,
+                                          workspace_result_d + WORKSPACE_SCALAR_PRIMAL_NORM, state->num_variables));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars, workspace_result_d, state->num_variables));
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars,
+                                          workspace_result_d + WORKSPACE_SCALAR_PRIMAL_NORM, state->num_variables));
     CUDA_CHECK(cudaGetLastError());
-
-    double obj_reduce = 0.0;
-    CUDA_CHECK(cudaMemcpy(&obj_reduce, workspace_result_d, sizeof(double), cudaMemcpyDeviceToHost));
-    *out_objective_norm = use_linf ? obj_reduce : sqrt(obj_reduce);
 
     cub_buffer_bytes = state->cub_reduce_workspace_bytes;
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, workspace_result_d, state->num_constraints));
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons,
+                                          workspace_result_d + WORKSPACE_SCALAR_DUAL_NORM, state->num_constraints));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons, workspace_result_d, state->num_constraints));
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons,
+                                          workspace_result_d + WORKSPACE_SCALAR_DUAL_NORM, state->num_constraints));
     CUDA_CHECK(cudaGetLastError());
 
-    double con_reduce = 0.0;
-    CUDA_CHECK(cudaMemcpy(&con_reduce, workspace_result_d, sizeof(double), cudaMemcpyDeviceToHost));
-    *out_bound_norm = use_linf ? con_reduce : sqrt(con_reduce);
+    compute_norm_results_kernel<<<1, 1>>>(
+        state->norm_results_d,
+        workspace_result_d,
+        use_linf);
+
+    double norm_results_h[NORM_RESULT_COUNT];
+    CUDA_CHECK(cudaMemcpy(norm_results_h, state->norm_results_d,
+                          NORM_RESULT_COUNT * sizeof(double), cudaMemcpyDeviceToHost));
+    *out_objective_norm = norm_results_h[NORM_RESULT_OBJECTIVE];
+    *out_bound_norm = norm_results_h[NORM_RESULT_BOUND];
 }
 
 __global__ void compute_objective_norm_entries_kernel(
@@ -978,6 +989,20 @@ __global__ void compute_residual_metrics_kernel(
     residual_metrics_d[RESIDUAL_METRIC_DUAL_OBJECTIVE] = dual_objective_value;
     residual_metrics_d[RESIDUAL_METRIC_OBJECTIVE_GAP] = objective_gap;
     residual_metrics_d[RESIDUAL_METRIC_RELATIVE_GAP] = relative_objective_gap;
+}
+
+__global__ void compute_norm_results_kernel(
+    double *norm_results_d,
+    const double *workspace_scalars_d,
+    int use_linf)
+{
+    double objective_reduce = workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM];
+    double bound_reduce = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
+
+    norm_results_d[NORM_RESULT_OBJECTIVE] =
+        use_linf ? objective_reduce : sqrt(objective_reduce);
+    norm_results_d[NORM_RESULT_BOUND] =
+        use_linf ? bound_reduce : sqrt(bound_reduce);
 }
 
 __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n)
