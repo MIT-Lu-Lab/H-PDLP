@@ -103,8 +103,10 @@ typedef struct
 
     double original_objective_norm;
     double original_bound_norm;
+    double original_constraint_norm;
     double rescaled_objective_norm;
     double rescaled_bound_norm;
+    double rescaled_constraint_norm;
 
     double *initial_primal_solution;
     double *current_primal_solution;
@@ -154,9 +156,6 @@ typedef struct
     double step_size_homogeneous;
 
     double primal_weight;
-    double sigma_A;
-    double objective_coupling_budget;
-    double step_size_factor;
     double step_size_base;
 
     int total_count;

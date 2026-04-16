@@ -272,6 +272,10 @@ void rescale_problem(
 
     clock_t start_rescaling = clock();
 
+    compute_objective_and_bound_norms(state, params,
+        &state->original_objective_norm, &state->original_bound_norm);
+    state->original_constraint_norm = estimate_maximum_singular_value(state, params);
+
     fill_ones_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_rescaling, num_constraints);
     fill_ones_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
@@ -310,6 +314,10 @@ void rescale_problem(
         bound_objective_rescaling(state);
     }
 
+    compute_objective_and_bound_norms(state, params,
+        &state->rescaled_objective_norm, &state->rescaled_bound_norm);
+    state->rescaled_constraint_norm = estimate_maximum_singular_value(state, params);
+
     state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
 
     CUDA_CHECK(cudaFree(constraint_rescaling));
@@ -317,7 +325,14 @@ void rescale_problem(
 
     if (params->verbose)
     {
-        printf("  %-15s : %.3g sec\n", "precondition time", state->rescaling_time_sec);
+        printf("  %-20s %15s %15s\n", "", "original", "rescaled");
+        printf("  %-20s %15.6e %15.6e\n", "sigma_max(A)",
+               state->original_constraint_norm, state->rescaled_constraint_norm);
+        printf("  %-20s %15.6e %15.6e\n", "||c||",
+               state->original_objective_norm, state->rescaled_objective_norm);
+        printf("  %-20s %15.6e %15.6e\n", "||b||",
+               state->original_bound_norm, state->rescaled_bound_norm);
+        printf("  %-20s : %.3g sec\n", "precondition time", state->rescaling_time_sec);
         printf("\n");
     }
 }
