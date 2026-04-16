@@ -48,8 +48,7 @@ __global__ void hsd_gradient_step_kernel(
     const double *__restrict__ product,
     double step_size,
     int n);
-__global__ void cone_project_kernel(
-    double *__restrict__ projected,
+__global__ void cone_newton_solve_kernel(
     const double *__restrict__ w_bar,
     const double *__restrict__ lb,
     const double *__restrict__ ub,
@@ -57,6 +56,13 @@ __global__ void cone_project_kernel(
     const double *__restrict__ hsd_scalars,
     double step_size, int scalar_offset,
     int n, int max_iter, double tol);
+__global__ void cone_box_project_kernel(
+    double *__restrict__ projected,
+    const double *__restrict__ w_bar,
+    const double *__restrict__ lb,
+    const double *__restrict__ ub,
+    const double *__restrict__ cone_state,
+    int n);
 __global__ void hsd_halpern_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
@@ -854,12 +860,19 @@ static void moreau_box_cone_project(
 {
     const int BLOCK = 256;
     size_t smem = 2 * BLOCK * sizeof(double);
-    cone_project_kernel<<<1, BLOCK, smem, stream>>>(
-        projected_vector, unprojected_vector,
-        lower_bound, upper_bound,
+    cone_newton_solve_kernel<<<1, BLOCK, smem, stream>>>(
+        unprojected_vector, lower_bound, upper_bound,
         cone_newton_buffer, hsd_scalars_d,
         step_size, scalar_offset,
         n, cone_params->max_iter, cone_params->tol);
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    int num_blocks = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    cone_box_project_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
+        projected_vector, unprojected_vector,
+        lower_bound, upper_bound,
+        cone_newton_buffer, n);
 }
 
 void hsd_update_primal_solution(pdhg_solver_state_t *state,
@@ -1394,8 +1407,7 @@ __global__ void hsd_gradient_step_kernel(
         out[i] = current[i] - step_size * product[i];
 }
 
-__global__ void cone_project_kernel(
-    double *__restrict__ projected,
+__global__ void cone_newton_solve_kernel(
     const double *__restrict__ w_bar,
     const double *__restrict__ lb,
     const double *__restrict__ ub,
@@ -1449,7 +1461,7 @@ __global__ void cone_project_kernel(
         s_ci[threadIdx.x] = my_ci;
         s_wi[threadIdx.x] = my_wi;
         __syncthreads();
-        for (int s = blockDim.x / 2; s > 32; s >>= 1)
+        for (int s = blockDim.x / 2; s > 0; s >>= 1)
         {
             if (threadIdx.x < s)
             {
@@ -1458,23 +1470,6 @@ __global__ void cone_project_kernel(
             }
             __syncthreads();
         }
-        if (threadIdx.x < 32)
-        {
-            volatile double *vc = s_ci, *vw = s_wi;
-            vc[threadIdx.x] += vc[threadIdx.x + 32];
-            vw[threadIdx.x] += vw[threadIdx.x + 32];
-            vc[threadIdx.x] += vc[threadIdx.x + 16];
-            vw[threadIdx.x] += vw[threadIdx.x + 16];
-            vc[threadIdx.x] += vc[threadIdx.x + 8];
-            vw[threadIdx.x] += vw[threadIdx.x + 8];
-            vc[threadIdx.x] += vc[threadIdx.x + 4];
-            vw[threadIdx.x] += vw[threadIdx.x + 4];
-            vc[threadIdx.x] += vc[threadIdx.x + 2];
-            vw[threadIdx.x] += vw[threadIdx.x + 2];
-            vc[threadIdx.x] += vc[threadIdx.x + 1];
-            vw[threadIdx.x] += vw[threadIdx.x + 1];
-        }
-        __syncthreads();
 
         if (threadIdx.x == 0)
         {
@@ -1503,15 +1498,26 @@ __global__ void cone_project_kernel(
 
     if (threadIdx.x == 0)
         cone_state[CONE_SCALE] = scale;
+}
 
-    for (int i = threadIdx.x; i < n; i += blockDim.x)
-    {
-        double vi = -w_bar[i];
-        double li = lb[i], ui = ub[i];
-        double lo_c = isfinite(li) ? li * scale : -INFINITY;
-        double hi_c = isfinite(ui) ? ui * scale : INFINITY;
-        projected[i] = w_bar[i] + fmin(fmax(vi, lo_c), hi_c);
-    }
+__global__ void cone_box_project_kernel(
+    double *__restrict__ projected,
+    const double *__restrict__ w_bar,
+    const double *__restrict__ lb,
+    const double *__restrict__ ub,
+    const double *__restrict__ cone_state,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+
+    double tau_star = cone_state[CONE_SCALE];
+    double vi = -w_bar[i];
+    double li = lb[i], ui = ub[i];
+    double lo_c = isfinite(li) ? li * tau_star : -INFINITY;
+    double hi_c = isfinite(ui) ? ui * tau_star : INFINITY;
+    projected[i] = w_bar[i] + fmin(fmax(vi, lo_c), hi_c);
 }
 
 __global__ void hsd_halpern_kernel(
