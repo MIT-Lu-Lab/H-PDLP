@@ -24,7 +24,10 @@ extern "C"
 #endif
 
     void rescale_problem(
-        const pdhg_parameters_t *params,
+        const scaling_parameters_t *scaling_params,
+        const power_iteration_parameters_t *power_iter_params,
+        norm_type_t optimality_norm,
+        bool verbose,
         pdhg_solver_state_t *state);
 
 #ifdef __cplusplus

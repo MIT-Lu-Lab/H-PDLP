@@ -35,7 +35,7 @@ extern "C"
         char presolve_status;
     } cuhsdlp_presolve_info_t;
 
-    cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, const pdhg_parameters_t *params);
+    cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool verbose);
 
     cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *original_prob);
     const char *get_presolve_status_str(enum PresolveStatus_ status);

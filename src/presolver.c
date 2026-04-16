@@ -70,14 +70,14 @@ static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob)
     return prob;
 }
 
-cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, const pdhg_parameters_t *params)
+cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool verbose)
 {
     if (original_prob->primal_start || original_prob->dual_start)
     {
         printf("Warning: Warm-starting is currently not supported when presolve is enabled.\n"
                "The provided initial solutions will be ignored.\n");
     }
-    if (params->verbose)
+    if (verbose)
     {
         printf("\nPresolving (PSLP %s)...\n", PSLP_VERSION);
     }
@@ -106,7 +106,7 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, const 
     info->presolve_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
 
     info->presolve_status = status;
-    if (params->verbose)
+    if (verbose)
     {
         printf("  %-15s  : %s\n", "status", get_presolve_status_str(status));
         printf("  %-15s  : %.3g sec\n", "presolve time", info->presolve_time);

@@ -66,13 +66,40 @@ extern "C"
 
     typedef struct
     {
-        double artificial_restart_threshold;
-        double sufficient_reduction_for_restart;
-        double necessary_reduction_for_restart;
+        int l_inf_ruiz_iterations;
+        bool has_pock_chambolle_alpha;
+        double pock_chambolle_alpha;
+        bool bound_objective_rescaling;
+        double matrix_zero_tol;
+    } scaling_parameters_t;
+
+    typedef struct
+    {
+        int max_iter;
+        double tol;
+    } power_iteration_parameters_t;
+
+    typedef struct
+    {
+        double step_size_factor;
+        double objective_coupling_budget;
         double k_p;
         double k_i;
         double k_d;
         double i_smooth;
+    } step_size_parameters_t;
+
+    typedef struct
+    {
+        int max_iter;
+        double tol;
+    } cone_parameters_t;
+
+    typedef struct
+    {
+        double artificial_restart_threshold;
+        double sufficient_reduction_for_restart;
+        double necessary_reduction_for_restart;
     } restart_parameters_t;
 
     typedef struct
@@ -86,24 +113,15 @@ extern "C"
     typedef struct
     {
         bool presolve;
-        int l_inf_ruiz_iterations;
-        bool has_pock_chambolle_alpha;
-        double pock_chambolle_alpha;
-        bool bound_objective_rescaling;
-        double matrix_zero_tol;
-
-        double reflection_coefficient;
-        double step_size_factor;
-        double objective_coupling_budget;
-        int singular_value_max_iter;
-        double singular_value_tol;
-        int cone_newton_max_iter;
-        double cone_newton_tol;
-
         bool verbose;
-        int termination_evaluation_frequency;
         norm_type_t optimality_norm;
+        double reflection_coefficient;
+        int termination_evaluation_frequency;
 
+        scaling_parameters_t scaling_params;
+        power_iteration_parameters_t power_iter_params;
+        step_size_parameters_t step_size_params;
+        cone_parameters_t cone_params;
         termination_criteria_t termination_criteria;
         restart_parameters_t restart_params;
     } pdhg_parameters_t;

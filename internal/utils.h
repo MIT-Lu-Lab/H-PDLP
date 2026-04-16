@@ -98,13 +98,13 @@ extern "C"
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
     void compute_objective_and_bound_norms(
         pdhg_solver_state_t *state,
-        const pdhg_parameters_t *params,
+        norm_type_t optimality_norm,
         double *out_objective_norm,
         double *out_bound_norm);
 
     double estimate_maximum_singular_value(
         pdhg_solver_state_t *state,
-        const pdhg_parameters_t *params);
+        const power_iteration_parameters_t *power_iter_params);
 
     void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose, bool is_restart);
     int get_print_frequency(int iter);

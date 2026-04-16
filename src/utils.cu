@@ -305,23 +305,29 @@ int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
 void set_default_parameters(pdhg_parameters_t *params)
 {
     params->presolve = true;
-    params->l_inf_ruiz_iterations = 10;
-    params->has_pock_chambolle_alpha = true;
-    params->pock_chambolle_alpha = 1.0;
-    params->bound_objective_rescaling = true;
-    params->matrix_zero_tol = 1e-9;
-
-    params->reflection_coefficient = 1.0;
-    params->step_size_factor = 0.998;
-    params->objective_coupling_budget = 0.05;
-    params->singular_value_max_iter = 5000;
-    params->singular_value_tol = 1e-4;
-    params->cone_newton_max_iter = 30;
-    params->cone_newton_tol = 1e-6;
-
     params->verbose = true;
-    params->termination_evaluation_frequency = 200;
     params->optimality_norm = NORM_TYPE_L2;
+    params->reflection_coefficient = 1.0;
+    params->termination_evaluation_frequency = 200;
+
+    params->scaling_params.l_inf_ruiz_iterations = 10;
+    params->scaling_params.has_pock_chambolle_alpha = true;
+    params->scaling_params.pock_chambolle_alpha = 1.0;
+    params->scaling_params.bound_objective_rescaling = true;
+    params->scaling_params.matrix_zero_tol = 1e-9;
+
+    params->power_iter_params.max_iter = 5000;
+    params->power_iter_params.tol = 1e-4;
+
+    params->step_size_params.step_size_factor = 0.998;
+    params->step_size_params.objective_coupling_budget = 0.05;
+    params->step_size_params.k_p = 0.99;
+    params->step_size_params.k_i = 0.01;
+    params->step_size_params.k_d = 0.0;
+    params->step_size_params.i_smooth = 0.3;
+
+    params->cone_params.max_iter = 30;
+    params->cone_params.tol = 1e-6;
 
     params->termination_criteria.eps_optimal_relative = 1e-4;
     params->termination_criteria.eps_feasible_relative = 1e-4;
@@ -331,10 +337,6 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->restart_params.artificial_restart_threshold = 0.36;
     params->restart_params.sufficient_reduction_for_restart = 0.2;
     params->restart_params.necessary_reduction_for_restart = 0.5;
-    params->restart_params.k_p = 0.99;
-    params->restart_params.k_i = 0.01;
-    params->restart_params.k_d = 0.0;
-    params->restart_params.i_smooth = 0.3;
 }
 
 const char *termination_reason_to_string(termination_reason_t reason)
@@ -398,7 +400,7 @@ static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_p
     int filtered_nnz = 0;
     for (int i = 0; i < num_rows; ++i)
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
-            if (fabs(vals[k]) > params->matrix_zero_tol)
+            if (fabs(vals[k]) > params->scaling_params.matrix_zero_tol)
                 ++filtered_nnz;
 
     if (filtered_nnz == nnz)
@@ -415,7 +417,7 @@ static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_p
     {
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
-            if (fabs(vals[k]) <= params->matrix_zero_tol)
+            if (fabs(vals[k]) <= params->scaling_params.matrix_zero_tol)
                 continue;
             new_col_ind[pos] = col_ind[k];
             new_vals[pos] = vals[k];
@@ -438,7 +440,7 @@ static void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_p
         printf("Dropped %d near-zero %s (|value| <= %.1e) from the constraint matrix\n",
                nnz - filtered_nnz,
                (nnz - filtered_nnz == 1 ? "entry" : "entries"),
-               params->matrix_zero_tol);
+               params->scaling_params.matrix_zero_tol);
     }
 }
 
@@ -484,23 +486,23 @@ void print_initial_info(const pdhg_parameters_t *params,
     }
 
     PRINT_DIFF_INT("l_inf_ruiz_iter",
-                   params->l_inf_ruiz_iterations,
-                   default_params.l_inf_ruiz_iterations);
+                   params->scaling_params.l_inf_ruiz_iterations,
+                   default_params.scaling_params.l_inf_ruiz_iterations);
     PRINT_DIFF_DBL("pock_chambolle_alpha",
-                   params->pock_chambolle_alpha,
-                   default_params.pock_chambolle_alpha);
+                   params->scaling_params.pock_chambolle_alpha,
+                   default_params.scaling_params.pock_chambolle_alpha);
     PRINT_DIFF_BOOL("has_pock_chambolle_alpha",
-                    params->has_pock_chambolle_alpha,
-                    default_params.has_pock_chambolle_alpha);
+                    params->scaling_params.has_pock_chambolle_alpha,
+                    default_params.scaling_params.has_pock_chambolle_alpha);
     PRINT_DIFF_BOOL("bound_obj_rescaling",
-                    params->bound_objective_rescaling,
-                    default_params.bound_objective_rescaling);
-    PRINT_DIFF_INT("singular_value_max_iter",
-                   params->singular_value_max_iter,
-                   default_params.singular_value_max_iter);
-    PRINT_DIFF_DBL("singular_value_tol",
-                   params->singular_value_tol,
-                   default_params.singular_value_tol);
+                    params->scaling_params.bound_objective_rescaling,
+                    default_params.scaling_params.bound_objective_rescaling);
+    PRINT_DIFF_INT("power_iter_max_iter",
+                   params->power_iter_params.max_iter,
+                   default_params.power_iter_params.max_iter);
+    PRINT_DIFF_DBL("power_iter_tol",
+                   params->power_iter_params.tol,
+                   default_params.power_iter_params.tol);
     PRINT_DIFF_INT("evaluation_freq",
                    params->termination_evaluation_frequency,
                    default_params.termination_evaluation_frequency);
@@ -508,14 +510,14 @@ void print_initial_info(const pdhg_parameters_t *params,
                     params->presolve,
                     default_params.presolve);
     PRINT_DIFF_DBL("matrix_zero_tol",
-                   params->matrix_zero_tol,
-                   default_params.matrix_zero_tol);
+                   params->scaling_params.matrix_zero_tol,
+                   default_params.scaling_params.matrix_zero_tol);
     PRINT_DIFF_INT("cone_newton_iter",
-                   params->cone_newton_max_iter,
-                   default_params.cone_newton_max_iter);
+                   params->cone_params.max_iter,
+                   default_params.cone_params.max_iter);
     PRINT_DIFF_DBL("cone_newton_tol",
-                   params->cone_newton_tol,
-                   default_params.cone_newton_tol);
+                   params->cone_params.tol,
+                   default_params.cone_params.tol);
 }
 
 #undef PRINT_DIFF_INT
@@ -524,11 +526,11 @@ void print_initial_info(const pdhg_parameters_t *params,
 
 void compute_objective_and_bound_norms(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params,
+    norm_type_t optimality_norm,
     double *out_objective_norm,
     double *out_bound_norm)
 {
-    const int use_linf = (params->optimality_norm == NORM_TYPE_L_INF);
+    const int use_linf = (optimality_norm == NORM_TYPE_L_INF);
 
     double *norm_entries_vars = state->primal_vec_buffer;
     double *norm_entries_cons = state->dual_vec_buffer;
@@ -607,7 +609,7 @@ __global__ void compute_bound_norm_entries_kernel(
 
 double estimate_maximum_singular_value(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params)
+    const power_iteration_parameters_t *power_iter_params)
 {
     int m = state->num_constraints;
     double *eigenvector_d = state->cone_projection_reduce_buffer_constraint;
@@ -630,7 +632,7 @@ double estimate_maximum_singular_value(
     const double one = 1.0;
     const double zero = 0.0;
 
-    for (int i = 0; i < params->singular_value_max_iter; ++i)
+    for (int i = 0; i < power_iter_params->max_iter; ++i)
     {
         CUDA_CHECK(cudaMemcpy(next_eigenvector_d, eigenvector_d, m * sizeof(double), cudaMemcpyDeviceToDevice));
         double eigenvector_norm;
@@ -658,7 +660,7 @@ double estimate_maximum_singular_value(
         double residual_norm;
         CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A, m, next_eigenvector_d, 1, &residual_norm));
 
-        if (residual_norm < params->singular_value_tol)
+        if (residual_norm < power_iter_params->tol)
             break;
     }
 

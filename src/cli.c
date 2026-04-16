@@ -201,34 +201,34 @@ int main(int argc, char *argv[])
             params.presolve = false;
             break;
         case 1002:
-            params.l_inf_ruiz_iterations = atoi(optarg);
+            params.scaling_params.l_inf_ruiz_iterations = atoi(optarg);
             break;
         case 1003:
-            params.has_pock_chambolle_alpha = false;
+            params.scaling_params.has_pock_chambolle_alpha = false;
             break;
         case 1004:
-            params.pock_chambolle_alpha = atof(optarg);
+            params.scaling_params.pock_chambolle_alpha = atof(optarg);
             break;
         case 1005:
-            params.bound_objective_rescaling = false;
+            params.scaling_params.bound_objective_rescaling = false;
             break;
         case 1006:
-            params.step_size_factor = atof(optarg);
+            params.step_size_params.step_size_factor = atof(optarg);
             break;
         case 1007:
-            params.objective_coupling_budget = atof(optarg);
+            params.step_size_params.objective_coupling_budget = atof(optarg);
             break;
         case 1008:
-            params.singular_value_max_iter = atoi(optarg);
+            params.power_iter_params.max_iter = atoi(optarg);
             break;
         case 1009:
-            params.singular_value_tol = atof(optarg);
+            params.power_iter_params.tol = atof(optarg);
             break;
         case 1010:
-            params.cone_newton_max_iter = atoi(optarg);
+            params.cone_params.max_iter = atoi(optarg);
             break;
         case 1011:
-            params.cone_newton_tol = atof(optarg);
+            params.cone_params.tol = atof(optarg);
             break;
         case 1012:
             params.termination_criteria.time_sec_limit = atof(optarg);

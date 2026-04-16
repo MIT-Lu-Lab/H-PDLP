@@ -259,10 +259,13 @@ static void bound_objective_rescaling(
 }
 
 void rescale_problem(
-    const pdhg_parameters_t *params,
+    const scaling_parameters_t *scaling_params,
+    const power_iteration_parameters_t *power_iter_params,
+    norm_type_t optimality_norm,
+    bool verbose,
     pdhg_solver_state_t *state)
 {
-    if (params->verbose)
+    if (verbose)
     {
         printf("\nPreconditioning...\n");
     }
@@ -272,9 +275,9 @@ void rescale_problem(
 
     clock_t start_rescaling = clock();
 
-    compute_objective_and_bound_norms(state, params,
+    compute_objective_and_bound_norms(state, optimality_norm,
         &state->original_objective_norm, &state->original_bound_norm);
-    state->original_constraint_norm = estimate_maximum_singular_value(state, params);
+    state->original_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
 
     fill_ones_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_rescaling, num_constraints);
@@ -286,44 +289,44 @@ void rescale_problem(
     CUDA_CHECK(cudaMalloc(&constraint_rescaling, num_constraints * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&variable_rescaling, num_variables * sizeof(double)));
 
-    if (params->l_inf_ruiz_iterations > 0)
+    if (scaling_params->l_inf_ruiz_iterations > 0)
     {
-        if (params->verbose)
+        if (verbose)
         {
-            printf("  Ruiz scaling (%d iterations)\n", params->l_inf_ruiz_iterations);
+            printf("  Ruiz scaling (%d iterations)\n", scaling_params->l_inf_ruiz_iterations);
         }
-        ruiz_rescaling(state, params->l_inf_ruiz_iterations, constraint_rescaling, variable_rescaling);
+        ruiz_rescaling(state, scaling_params->l_inf_ruiz_iterations, constraint_rescaling, variable_rescaling);
     }
-    if (params->has_pock_chambolle_alpha)
+    if (scaling_params->has_pock_chambolle_alpha)
     {
-        if (params->verbose)
+        if (verbose)
         {
-            printf("  Pock-Chambolle scaling (alpha=%.4f)\n", params->pock_chambolle_alpha);
+            printf("  Pock-Chambolle scaling (alpha=%.4f)\n", scaling_params->pock_chambolle_alpha);
         }
-        pock_chambolle_rescaling(state, params->pock_chambolle_alpha, constraint_rescaling, variable_rescaling);
+        pock_chambolle_rescaling(state, scaling_params->pock_chambolle_alpha, constraint_rescaling, variable_rescaling);
     }
 
     state->constraint_bound_rescaling = 1.0;
     state->objective_vector_rescaling = 1.0;
-    if (params->bound_objective_rescaling)
+    if (scaling_params->bound_objective_rescaling)
     {
-        if (params->verbose)
+        if (verbose)
         {
             printf("  Bound-objective scaling\n");
         }
         bound_objective_rescaling(state);
     }
 
-    compute_objective_and_bound_norms(state, params,
+    compute_objective_and_bound_norms(state, optimality_norm,
         &state->rescaled_objective_norm, &state->rescaled_bound_norm);
-    state->rescaled_constraint_norm = estimate_maximum_singular_value(state, params);
+    state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
 
     state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
 
     CUDA_CHECK(cudaFree(constraint_rescaling));
     CUDA_CHECK(cudaFree(variable_rescaling));
 
-    if (params->verbose)
+    if (verbose)
     {
         printf("  %-20s %15s %15s\n", "", "original", "rescaled");
         printf("  %-20s %15.6e %15.6e\n", "sigma_max(A)",
