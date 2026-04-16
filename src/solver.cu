@@ -266,6 +266,7 @@ cuhsdlp_result_t *optimize(
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 
+
         check_termination_criteria(state, &params->termination_criteria);
         if (state->termination_reason != TERMINATION_REASON_UNSPECIFIED)
         {
@@ -1618,8 +1619,8 @@ __global__ void cone_projection_apply_kernel(
     double li = lb[i];
     double ui = ub[i];
 
-    double lo_clamp = isfinite(li) ? li * tau_star : vi;
-    double hi_clamp = isfinite(ui) ? ui * tau_star : vi;
+    double lo_clamp = isfinite(li) ? li * tau_star : -INFINITY;
+    double hi_clamp = isfinite(ui) ? ui * tau_star : INFINITY;
     double proj_i = fmin(fmax(vi, lo_clamp), hi_clamp);
 
     out_y[i] = w_bar[i] + proj_i;
