@@ -42,12 +42,6 @@ __global__ void build_transpose_map(
     const int *__restrict__ At_col_ind,
     int nnz,
     int *__restrict__ A_to_At);
-__global__ void fill_finite_bounds_kernel(
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    double *__restrict__ lb_finite,
-    double *__restrict__ ub_finite,
-    int n);
 __global__ void hsd_gradient_step_kernel(
     double *__restrict__ out,
     const double *__restrict__ current,
@@ -618,22 +612,6 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution, state->initial_primal_solution, var_bytes, cudaMemcpyDeviceToDevice));
     CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution, state->initial_dual_solution, con_bytes, cudaMemcpyDeviceToDevice));
 
-    CUDA_CHECK(cudaMalloc(&state->constraint_lower_bound_finite_val, con_bytes));
-    CUDA_CHECK(cudaMalloc(&state->constraint_upper_bound_finite_val, con_bytes));
-    CUDA_CHECK(cudaMalloc(&state->variable_lower_bound_finite_val, var_bytes));
-    CUDA_CHECK(cudaMalloc(&state->variable_upper_bound_finite_val, var_bytes));
-
-    fill_finite_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(state->constraint_lower_bound,
-                                                                             state->constraint_upper_bound,
-                                                                             state->constraint_lower_bound_finite_val,
-                                                                             state->constraint_upper_bound_finite_val,
-                                                                             n_cons);
-
-    fill_finite_bounds_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(state->variable_lower_bound,
-                                                                               state->variable_upper_bound,
-                                                                               state->variable_lower_bound_finite_val,
-                                                                               state->variable_upper_bound_finite_val,
-                                                                               n_vars);
 
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
@@ -1326,14 +1304,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->constraint_lower_bound));
     if (state->constraint_upper_bound)
         CUDA_CHECK(cudaFree(state->constraint_upper_bound));
-    if (state->constraint_lower_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->constraint_lower_bound_finite_val));
-    if (state->constraint_upper_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->constraint_upper_bound_finite_val));
-    if (state->variable_lower_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->variable_lower_bound_finite_val));
-    if (state->variable_upper_bound_finite_val)
-        CUDA_CHECK(cudaFree(state->variable_upper_bound_finite_val));
     if (state->constraint_matrix->row_ptr)
         CUDA_CHECK(cudaFree(state->constraint_matrix->row_ptr));
     if (state->constraint_matrix->col_ind)
@@ -1476,22 +1446,6 @@ __global__ void build_transpose_map(
     }
 }
 
-__global__ void fill_finite_bounds_kernel(const double *__restrict__ lb,
-                                          const double *__restrict__ ub,
-                                          double *__restrict__ lb_finite,
-                                          double *__restrict__ ub_finite,
-                                          int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    double Li = lb[i];
-    double Ui = ub[i];
-
-    lb_finite[i] = isfinite(Li) ? Li : 0.0;
-    ub_finite[i] = isfinite(Ui) ? Ui : 0.0;
-}
 
 __global__ void hsd_gradient_step_kernel(
     double *__restrict__ out,

@@ -175,11 +175,6 @@ typedef struct
     double objective_vector_rescaling;
     double rescaling_time_sec;
 
-    double *constraint_lower_bound_finite_val;
-    double *constraint_upper_bound_finite_val;
-    double *variable_lower_bound_finite_val;
-    double *variable_upper_bound_finite_val;
-
     double *primal_residual;
     double absolute_primal_residual;
     double relative_primal_residual;
