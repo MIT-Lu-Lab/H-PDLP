@@ -65,6 +65,17 @@ __global__ void compute_norm_results_kernel(
     double *norm_results_d,
     const double *workspace_scalars_d,
     int use_linf);
+__global__ void normalize_power_iteration_vector_kernel(
+    double *normalized_vector_d,
+    const double *vector_d,
+    const double *power_iteration_scalars_d,
+    int n);
+__global__ void compute_power_iteration_residual_kernel(
+    double *residual_d,
+    const double *vector_d,
+    const double *normalized_vector_d,
+    const double *power_iteration_scalars_d,
+    int n);
 __global__ void abs_vector_inplace_kernel(
     double *__restrict__ arr, int n);
 
@@ -634,32 +645,37 @@ double estimate_maximum_singular_value(
     const power_iteration_parameters_t *power_iter_params)
 {
     int m = state->num_constraints;
-    double *eigenvector_d = state->power_iteration_vector_d;
-    double *next_eigenvector_d = state->delta_dual_solution;
-
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
+    double *power_iteration_vector_d = state->power_iteration_vector_d;
+    double *power_iteration_normalized_vector_d = state->power_iteration_normalized_vector_d;
+    double *power_iteration_scalars_d = state->power_iteration_scalars_d;
 
     size_t curand_count = ((size_t)m + 1) & ~(size_t)1;
-    CURAND_CHECK(curandGenerateNormalDouble(state->curand_gen, eigenvector_d, curand_count, 0.0, 1.0));
-
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_HOST));
+    CURAND_CHECK(curandGenerateNormalDouble(state->curand_gen, power_iteration_vector_d, curand_count, 0.0, 1.0));
 
     double sigma_max_sq = 1.0;
     const double one = 1.0;
     const double zero = 0.0;
+    double residual_norm = INFINITY;
 
     for (int i = 0; i < power_iter_params->max_iter; ++i)
     {
-        CUDA_CHECK(cudaMemcpy(next_eigenvector_d, eigenvector_d, m * sizeof(double), cudaMemcpyDeviceToDevice));
-        double eigenvector_norm;
-        CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A, m, next_eigenvector_d, 1, &eigenvector_norm));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A,
+            m,
+            power_iteration_vector_d,
+            1,
+            power_iteration_scalars_d + POWER_ITERATION_SCALAR_VECTOR_NORM));
 
-        double inv_eigenvector_norm = 1.0 / eigenvector_norm;
-        CUBLAS_CHECK(cublasDscal(state->blas_handle_A, m, &inv_eigenvector_norm, next_eigenvector_d, 1));
+        normalize_power_iteration_vector_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+            power_iteration_normalized_vector_d,
+            power_iteration_vector_d,
+            power_iteration_scalars_d,
+            m);
+        CUDA_CHECK(cudaGetLastError());
 
         CUSPARSE_CHECK(cusparseSpMV(
             state->sparse_handle_A, CUSPARSE_OPERATION_NON_TRANSPOSE,
-            &one, state->matAt, state->spmv_power_iteration_next_vector, &zero, state->spmv_power_iteration_product,
+            &one, state->matAt, state->spmv_power_iteration_normalized_vector, &zero, state->spmv_power_iteration_product,
             CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->dual_spmv_buffer));
 
         CUSPARSE_CHECK(cusparseSpMV(
@@ -667,20 +683,51 @@ double estimate_maximum_singular_value(
             &one, state->matA, state->spmv_power_iteration_product, &zero, state->spmv_power_iteration_vector,
             CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, state->primal_spmv_buffer));
 
-        CUBLAS_CHECK(cublasDdot(state->blas_handle_A, m, next_eigenvector_d, 1, eigenvector_d, 1, &sigma_max_sq));
+        CUBLAS_CHECK(cublasDdot(
+            state->blas_handle_A,
+            m,
+            power_iteration_normalized_vector_d,
+            1,
+            power_iteration_vector_d,
+            1,
+            power_iteration_scalars_d + POWER_ITERATION_SCALAR_SIGMA_SQUARED));
 
-        double neg_sigma_sq = -sigma_max_sq;
-        CUBLAS_CHECK(cublasDscal(state->blas_handle_A, m, &neg_sigma_sq, next_eigenvector_d, 1));
-        CUBLAS_CHECK(cublasDaxpy(state->blas_handle_A, m, &one, eigenvector_d, 1, next_eigenvector_d, 1));
+        compute_power_iteration_residual_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+            power_iteration_normalized_vector_d,
+            power_iteration_vector_d,
+            power_iteration_normalized_vector_d,
+            power_iteration_scalars_d,
+            m);
+        CUDA_CHECK(cudaGetLastError());
 
-        double residual_norm;
-        CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A, m, next_eigenvector_d, 1, &residual_norm));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A,
+            m,
+            power_iteration_normalized_vector_d,
+            1,
+            power_iteration_scalars_d + POWER_ITERATION_SCALAR_RESIDUAL_NORM));
+
+        CUDA_CHECK(cudaMemcpyAsync(
+            &residual_norm,
+            power_iteration_scalars_d + POWER_ITERATION_SCALAR_RESIDUAL_NORM,
+            sizeof(double),
+            cudaMemcpyDeviceToHost,
+            state->stream_A));
+        CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+        CUDA_CHECK(cudaEventSynchronize(state->event_A));
 
         if (residual_norm < power_iter_params->tol)
             break;
     }
 
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_DEVICE));
+    CUDA_CHECK(cudaMemcpyAsync(
+        &sigma_max_sq,
+        power_iteration_scalars_d + POWER_ITERATION_SCALAR_SIGMA_SQUARED,
+        sizeof(double),
+        cudaMemcpyDeviceToHost,
+        state->stream_A));
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaEventSynchronize(state->event_A));
 
     return sqrt(sigma_max_sq);
 }
@@ -1003,6 +1050,33 @@ __global__ void compute_norm_results_kernel(
         use_linf ? objective_reduce : sqrt(objective_reduce);
     norm_results_d[NORM_RESULT_BOUND] =
         use_linf ? bound_reduce : sqrt(bound_reduce);
+}
+
+__global__ void normalize_power_iteration_vector_kernel(
+    double *normalized_vector_d,
+    const double *vector_d,
+    const double *power_iteration_scalars_d,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    double vector_norm = power_iteration_scalars_d[POWER_ITERATION_SCALAR_VECTOR_NORM];
+    normalized_vector_d[i] = (vector_norm > 0.0) ? (vector_d[i] / vector_norm) : 0.0;
+}
+
+__global__ void compute_power_iteration_residual_kernel(
+    double *residual_d,
+    const double *vector_d,
+    const double *normalized_vector_d,
+    const double *power_iteration_scalars_d,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    double sigma_squared = power_iteration_scalars_d[POWER_ITERATION_SCALAR_SIGMA_SQUARED];
+    residual_d[i] = vector_d[i] - sigma_squared * normalized_vector_d[i];
 }
 
 __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n)

@@ -292,11 +292,11 @@ void rescale_problem(
     int num_variables = state->num_variables;
     int num_constraints = state->num_constraints;
 
-    clock_t start_rescaling = clock();
-
     compute_objective_and_bound_norms(state, optimality_norm,
         &state->original_objective_norm, &state->original_bound_norm);
     state->original_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
+
+    clock_t start_rescaling = clock();
 
     fill_ones_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_rescaling, num_constraints);
@@ -336,11 +336,10 @@ void rescale_problem(
         bound_objective_rescaling(state);
     }
 
-    compute_objective_and_bound_norms(state, optimality_norm,
-        &state->rescaled_objective_norm, &state->rescaled_bound_norm);
-    state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
-
     state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
+
+    compute_objective_and_bound_norms(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
+    state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
 
     CUDA_CHECK(cudaFree(constraint_rescaling));
     CUDA_CHECK(cudaFree(variable_rescaling));

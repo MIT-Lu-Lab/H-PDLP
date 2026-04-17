@@ -52,15 +52,10 @@ enum {
 };
 
 enum {
-    RESIDUAL_METRIC_ABSOLUTE_PRIMAL = 0,
-    RESIDUAL_METRIC_RELATIVE_PRIMAL = 1,
-    RESIDUAL_METRIC_ABSOLUTE_DUAL = 2,
-    RESIDUAL_METRIC_RELATIVE_DUAL = 3,
-    RESIDUAL_METRIC_PRIMAL_OBJECTIVE = 4,
-    RESIDUAL_METRIC_DUAL_OBJECTIVE = 5,
-    RESIDUAL_METRIC_OBJECTIVE_GAP = 6,
-    RESIDUAL_METRIC_RELATIVE_GAP = 7,
-    RESIDUAL_METRIC_COUNT = 8,
+    POWER_ITERATION_SCALAR_VECTOR_NORM = 0,
+    POWER_ITERATION_SCALAR_SIGMA_SQUARED = 1,
+    POWER_ITERATION_SCALAR_RESIDUAL_NORM = 2,
+    POWER_ITERATION_SCALAR_COUNT = 3,
 };
 
 enum {
@@ -79,6 +74,18 @@ enum {
     RESTART_DISTANCE_PRIMAL = 0,
     RESTART_DISTANCE_DUAL = 1,
     RESTART_DISTANCE_COUNT = 2,
+};
+
+enum {
+    RESIDUAL_METRIC_ABSOLUTE_PRIMAL = 0,
+    RESIDUAL_METRIC_RELATIVE_PRIMAL = 1,
+    RESIDUAL_METRIC_ABSOLUTE_DUAL = 2,
+    RESIDUAL_METRIC_RELATIVE_DUAL = 3,
+    RESIDUAL_METRIC_PRIMAL_OBJECTIVE = 4,
+    RESIDUAL_METRIC_DUAL_OBJECTIVE = 5,
+    RESIDUAL_METRIC_OBJECTIVE_GAP = 6,
+    RESIDUAL_METRIC_RELATIVE_GAP = 7,
+    RESIDUAL_METRIC_COUNT = 8,
 };
 
 typedef struct
@@ -172,6 +179,9 @@ typedef struct
     double pdhg_dual_bound_offset;
 
     double *power_iteration_vector_d;
+    double *power_iteration_normalized_vector_d;
+    double *power_iteration_product_d;
+    double *power_iteration_scalars_d;
     double *hsd_scalars_d;
     double *cone_newton_constraint_d;
     double *cone_newton_bound_d;
@@ -226,7 +236,7 @@ typedef struct
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
     cusparseDnVecDescr_t spmv_power_iteration_vector;
-    cusparseDnVecDescr_t spmv_power_iteration_next_vector;
+    cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
     cusparseDnVecDescr_t spmv_power_iteration_product;
 
     void *cub_reduce_workspace;

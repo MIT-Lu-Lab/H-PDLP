@@ -504,8 +504,11 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     state->pdhg_dual_bound_offset = 1.0;
 
     {
-        size_t max_bytes = (var_bytes > con_bytes) ? var_bytes : con_bytes;
-        CUDA_CHECK(cudaMalloc(&state->power_iteration_vector_d, 2 * max_bytes));
+        size_t power_iteration_vector_count = ((size_t)state->num_constraints + 1) & ~(size_t)1;
+        CUDA_CHECK(cudaMalloc(&state->power_iteration_vector_d, power_iteration_vector_count * sizeof(double)));
+        CUDA_CHECK(cudaMalloc(&state->power_iteration_normalized_vector_d, power_iteration_vector_count * sizeof(double)));
+        CUDA_CHECK(cudaMalloc(&state->power_iteration_product_d, var_bytes));
+        CUDA_CHECK(cudaMalloc(&state->power_iteration_scalars_d, POWER_ITERATION_SCALAR_COUNT * sizeof(double)));
     }
     CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->cone_newton_constraint_d, CONE_BUFFER_SIZE * sizeof(double)));
@@ -573,8 +576,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_primal_product, state->num_constraints, state->primal_product, CUDA_R_64F));
     CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_dual_product, state->num_variables, state->dual_product, CUDA_R_64F));
     CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_power_iteration_vector, state->num_constraints, state->power_iteration_vector_d, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_power_iteration_next_vector, state->num_constraints, state->delta_dual_solution, CUDA_R_64F));
-    CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_power_iteration_product, state->num_variables, state->delta_primal_solution, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_power_iteration_normalized_vector, state->num_constraints, state->power_iteration_normalized_vector_d, CUDA_R_64F));
+    CUSPARSE_CHECK(cusparseCreateDnVec(&state->spmv_power_iteration_product, state->num_variables, state->power_iteration_product_d, CUDA_R_64F));
 
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(state->sparse_handle_A,
                                            CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -1278,8 +1281,8 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_product));
     if (state->spmv_power_iteration_vector)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_vector));
-    if (state->spmv_power_iteration_next_vector)
-        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_next_vector));
+    if (state->spmv_power_iteration_normalized_vector)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_normalized_vector));
     if (state->spmv_power_iteration_product)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_product));
     if (state->primal_spmv_buffer)
@@ -1385,6 +1388,12 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->delta_dual_slack));
     if (state->power_iteration_vector_d)
         CUDA_CHECK(cudaFree(state->power_iteration_vector_d));
+    if (state->power_iteration_normalized_vector_d)
+        CUDA_CHECK(cudaFree(state->power_iteration_normalized_vector_d));
+    if (state->power_iteration_product_d)
+        CUDA_CHECK(cudaFree(state->power_iteration_product_d));
+    if (state->power_iteration_scalars_d)
+        CUDA_CHECK(cudaFree(state->power_iteration_scalars_d));
     if (state->hsd_scalars_d)
         CUDA_CHECK(cudaFree(state->hsd_scalars_d));
     if (state->cone_newton_constraint_d)
