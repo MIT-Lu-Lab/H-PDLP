@@ -151,7 +151,9 @@ typedef struct
     double *power_iteration_vector_d;
     double *power_iteration_normalized_vector_d;
     double *power_iteration_product_d;
-    double *power_iteration_scalars_d;
+    double *power_iteration_vector_norm_scalar_d;
+    double *power_iteration_sigma_squared_scalar_d;
+    double *power_iteration_residual_norm_scalar_d;
     double *hsd_scalars_d;
     double *cone_newton_constraint_d;
     double *cone_newton_bound_d;
@@ -217,5 +219,10 @@ typedef struct
     double *dscal_alpha_d;
     double *fixed_point_error_d;
     double *residual_metrics_d;
+    double *reduce_staging_h;
+    double *power_iteration_sigma_sq_h;
+    double *power_iteration_residual_norm_h;
+    double *residual_metrics_h;
+    double *fixed_point_error_h;
 } pdhg_solver_state_t;
 
