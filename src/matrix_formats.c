@@ -16,7 +16,6 @@ limitations under the License.
 
 #include "matrix_formats.h"
 #include "utils.h"
-#include <stdio.h>
 #include <stdlib.h>
 
 typedef struct
@@ -43,15 +42,15 @@ static int build_csr_entries(int m, int n,
                              CooEntry **entries_out,
                              int *nnz_out,
                              matrix_format_status_t *status_out);
-static int sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
-                             int **row_ptr, int **col_ind,
-                             double **vals, int *nnz_out);
-static int canonicalize_sorted_rows_csr(int m,
-                                        const int *input_row_ptr,
-                                        const int *input_col_ind,
-                                        const double *input_vals,
-                                        int **row_ptr, int **col_ind,
-                                        double **vals, int *nnz_out);
+static void sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
+                              int **row_ptr, int **col_ind,
+                              double **vals, int *nnz_out);
+static void canonicalize_sorted_rows_csr(int m,
+                                         const int *input_row_ptr,
+                                         const int *input_col_ind,
+                                         const double *input_vals,
+                                         int **row_ptr, int **col_ind,
+                                         double **vals, int *nnz_out);
 static void init_empty_csr(int m, int **row_ptr, int **col_ind,
                            double **vals, int *nnz_out);
 
@@ -374,9 +373,9 @@ static int build_csr_entries(int m, int n,
     return 0;
 }
 
-static int sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
-                             int **row_ptr, int **col_ind,
-                             double **vals, int *nnz_out)
+static void sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
+                              int **row_ptr, int **col_ind,
+                              double **vals, int *nnz_out)
 {
     *row_ptr = (int *)safe_calloc((size_t)(m + 1), sizeof(int));
 
@@ -418,15 +417,14 @@ static int sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
     }
 
     *nnz_out = out;
-    return 0;
 }
 
-static int canonicalize_sorted_rows_csr(int m,
-                                        const int *input_row_ptr,
-                                        const int *input_col_ind,
-                                        const double *input_vals,
-                                        int **row_ptr, int **col_ind,
-                                        double **vals, int *nnz_out)
+static void canonicalize_sorted_rows_csr(int m,
+                                         const int *input_row_ptr,
+                                         const int *input_col_ind,
+                                         const double *input_vals,
+                                         int **row_ptr, int **col_ind,
+                                         double **vals, int *nnz_out)
 {
     *row_ptr = (int *)safe_calloc((size_t)(m + 1), sizeof(int));
 
@@ -472,7 +470,6 @@ static int canonicalize_sorted_rows_csr(int m,
     }
 
     *nnz_out = out;
-    return 0;
 }
 
 static void init_empty_csr(int m, int **row_ptr, int **col_ind,
