@@ -36,19 +36,13 @@ enum {
 };
 
 enum {
-    CONE_SCALE = 0,
-    CONE_BUFFER_SIZE = 1,
-};
-
-enum {
     WORKSPACE_SCALAR_PRIMAL_NORM      = 0,
     WORKSPACE_SCALAR_DUAL_NORM        = 1,
     WORKSPACE_SCALAR_CROSS_TERM       = 2,
     WORKSPACE_SCALAR_BOUND_DUAL_NORM  = 3,
     WORKSPACE_SCALAR_BOUND_CROSS_TERM = 4,
-    WORKSPACE_SCALAR_INV_TAU          = 5,
-    WORKSPACE_SCALAR_C_DOT_X          = 6,
-    WORKSPACE_SCALAR_COUNT            = 7,
+    WORKSPACE_SCALAR_C_DOT_X          = 5,
+    WORKSPACE_SCALAR_COUNT            = 6,
 };
 
 enum {
@@ -56,24 +50,6 @@ enum {
     POWER_ITERATION_SCALAR_SIGMA_SQUARED = 1,
     POWER_ITERATION_SCALAR_RESIDUAL_NORM = 2,
     POWER_ITERATION_SCALAR_COUNT = 3,
-};
-
-enum {
-    NORM_RESULT_OBJECTIVE = 0,
-    NORM_RESULT_BOUND = 1,
-    NORM_RESULT_COUNT = 2,
-};
-
-enum {
-    RESCALING_FACTOR_CONSTRAINT = 0,
-    RESCALING_FACTOR_OBJECTIVE = 1,
-    RESCALING_FACTOR_COUNT = 2,
-};
-
-enum {
-    RESTART_DISTANCE_PRIMAL = 0,
-    RESTART_DISTANCE_DUAL = 1,
-    RESTART_DISTANCE_COUNT = 2,
 };
 
 enum {
@@ -85,7 +61,11 @@ enum {
     RESIDUAL_METRIC_DUAL_OBJECTIVE = 5,
     RESIDUAL_METRIC_OBJECTIVE_GAP = 6,
     RESIDUAL_METRIC_RELATIVE_GAP = 7,
-    RESIDUAL_METRIC_COUNT = 8,
+    RESIDUAL_METRIC_CURRENT_PRIMAL_SCALE = 8,
+    RESIDUAL_METRIC_PDHG_PRIMAL_SCALE = 9,
+    RESIDUAL_METRIC_PDHG_DUAL_CONSTRAINT_OFFSET = 10,
+    RESIDUAL_METRIC_PDHG_DUAL_BOUND_OFFSET = 11,
+    RESIDUAL_METRIC_COUNT = 12,
 };
 
 typedef struct
@@ -163,19 +143,9 @@ typedef struct
     double *reflected_dual_slack;
     double *delta_dual_slack;
 
-    double initial_primal_scale;
     double current_primal_scale;
-    double reflected_primal_scale;
     double pdhg_primal_scale;
-    
-    double initial_dual_constraint_offset;
-    double current_dual_constraint_offset;
-    double reflected_dual_constraint_offset;
     double pdhg_dual_constraint_offset;
-
-    double initial_dual_bound_offset;
-    double current_dual_bound_offset;
-    double reflected_dual_bound_offset;
     double pdhg_dual_bound_offset;
 
     double *power_iteration_vector_d;
@@ -242,9 +212,9 @@ typedef struct
     void *cub_reduce_workspace;
     size_t cub_reduce_workspace_bytes;
     double *workspace_scalars_d;
-    double *norm_results_d;
-    double *rescaling_factors_d;
-    double *restart_distances_d;
+    double *constraint_bound_rescaling_d;
+    double *objective_vector_rescaling_d;
+    double *dscal_alpha_d;
     double *fixed_point_error_d;
     double *residual_metrics_d;
 } pdhg_solver_state_t;

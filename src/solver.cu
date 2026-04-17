@@ -119,18 +119,16 @@ __global__ void rescale_solution_kernel(
 __global__ void compute_fixed_point_error_kernel(
     double *fixed_point_error_d,
     const double *workspace_scalars_d,
+    const double *hsd_scalars_d,
     double step_size_primal,
     double step_size_dual,
-    double step_size_homogeneous,
-    double delta_primal_scale,
-    double delta_constraint_offset,
-    double delta_bound_offset);
-__global__ void compute_restart_distances_kernel(
-    double *restart_distances_d,
-    const double *workspace_scalars_d);
-
+    double step_size_homogeneous);
+__global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
+__global__ void restart_hsd_scalars_kernel(double *hsd_scalars_d);
+__global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau);
 static void check_params_validity(const pdhg_parameters_t *params);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
+static void fetch_fixed_point_error_to_host(pdhg_solver_state_t *state);
 static pdhg_solver_state_t *initialize_solver_state(
     lp_problem_t *working_problem,
     const pdhg_parameters_t *params);
@@ -140,8 +138,6 @@ static void transpose_csr_and_build_map(
     int **transpose_col_ind,
     double **transpose_val,
     int **transpose_map);
-static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state);
-static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state, 
     const pdhg_parameters_t *params);
@@ -244,8 +240,8 @@ cuhsdlp_result_t *optimize(
 
         if (do_restart)
         {
-            sync_hsd_scalars_to_host(state);
             compute_fixed_point_error(state);
+            fetch_fixed_point_error_to_host(state);
             state->initial_fixed_point_error = state->fixed_point_error;
             do_restart = false;
         }
@@ -271,7 +267,6 @@ cuhsdlp_result_t *optimize(
         hsd_project_and_update_dual_slack(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
         hsd_update_primal_solution(state, params->termination_evaluation_frequency, params->reflection_coefficient, true);
 
-        sync_hsd_scalars_to_host(state);
         compute_fixed_point_error(state);
         compute_residual(state, params->optimality_norm);
         state->inner_count += params->termination_evaluation_frequency;
@@ -519,18 +514,8 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     ALLOC_ZERO(state->dual_vec_buffer, con_bytes);
 
     state->current_primal_scale = 1.0;
-    state->reflected_primal_scale = 1.0;
-    state->initial_primal_scale = 1.0;
     state->pdhg_primal_scale = 1.0;
-
-    state->current_dual_constraint_offset = 1.0;
-    state->reflected_dual_constraint_offset = 1.0;
-    state->initial_dual_constraint_offset = 1.0;
     state->pdhg_dual_constraint_offset = 1.0;
-
-    state->current_dual_bound_offset = 1.0;
-    state->reflected_dual_bound_offset = 1.0;
-    state->initial_dual_bound_offset = 1.0;
     state->pdhg_dual_bound_offset = 1.0;
 
     {
@@ -541,10 +526,10 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
         CUDA_CHECK(cudaMalloc(&state->power_iteration_scalars_d, POWER_ITERATION_SCALAR_COUNT * sizeof(double)));
     }
     CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->cone_newton_constraint_d, CONE_BUFFER_SIZE * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->cone_newton_bound_d, CONE_BUFFER_SIZE * sizeof(double)));
-    CUDA_CHECK(cudaMemset(state->cone_newton_constraint_d, 0, CONE_BUFFER_SIZE * sizeof(double)));
-    CUDA_CHECK(cudaMemset(state->cone_newton_bound_d, 0, CONE_BUFFER_SIZE * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->cone_newton_constraint_d, sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->cone_newton_bound_d, sizeof(double)));
+    CUDA_CHECK(cudaMemset(state->cone_newton_constraint_d, 0, sizeof(double)));
+    CUDA_CHECK(cudaMemset(state->cone_newton_bound_d, 0, sizeof(double)));
 
     if (working_problem->primal_start)
     {
@@ -561,13 +546,13 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 #undef ALLOC_ZERO
 
     CUDA_CHECK(cudaMalloc(&state->workspace_scalars_d, WORKSPACE_SCALAR_COUNT * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->norm_results_d, NORM_RESULT_COUNT * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->rescaling_factors_d, RESCALING_FACTOR_COUNT * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->restart_distances_d, RESTART_DISTANCE_COUNT * sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->constraint_bound_rescaling_d, sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->objective_vector_rescaling_d, sizeof(double)));
+    CUDA_CHECK(cudaMalloc(&state->dscal_alpha_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->fixed_point_error_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->residual_metrics_d, RESIDUAL_METRIC_COUNT * sizeof(double)));
 
-    sync_hsd_scalars_to_device(state);
+    init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
 
     size_t primal_spmv_buffer_size;
     size_t dual_spmv_buffer_size;
@@ -713,51 +698,6 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     }
 
     return state;
-}
-
-static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state)
-{
-    double h[HSD_SCALARS_COUNT];
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
-    CUDA_CHECK(cudaMemcpyAsync(h, state->hsd_scalars_d,
-                               HSD_SCALARS_COUNT * sizeof(double),
-                               cudaMemcpyDeviceToHost,
-                               state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    state->current_primal_scale              = h[HSD_PRIMAL_SCALE    + HSD_CURRENT];
-    state->reflected_primal_scale            = h[HSD_PRIMAL_SCALE    + HSD_REFLECTED];
-    state->pdhg_primal_scale                 = h[HSD_PRIMAL_SCALE    + HSD_PDHG];
-    state->initial_primal_scale              = h[HSD_PRIMAL_SCALE    + HSD_INITIAL];
-    state->current_dual_constraint_offset    = h[HSD_DUAL_CONSTRAINT + HSD_CURRENT];
-    state->reflected_dual_constraint_offset  = h[HSD_DUAL_CONSTRAINT + HSD_REFLECTED];
-    state->pdhg_dual_constraint_offset       = h[HSD_DUAL_CONSTRAINT + HSD_PDHG];
-    state->initial_dual_constraint_offset    = h[HSD_DUAL_CONSTRAINT + HSD_INITIAL];
-    state->current_dual_bound_offset         = h[HSD_DUAL_BOUND      + HSD_CURRENT];
-    state->reflected_dual_bound_offset       = h[HSD_DUAL_BOUND      + HSD_REFLECTED];
-    state->pdhg_dual_bound_offset            = h[HSD_DUAL_BOUND      + HSD_PDHG];
-    state->initial_dual_bound_offset         = h[HSD_DUAL_BOUND      + HSD_INITIAL];
-}
-
-static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state)
-{
-    double h[HSD_SCALARS_COUNT];
-    h[HSD_PRIMAL_SCALE    + HSD_CURRENT]   = state->current_primal_scale;
-    h[HSD_PRIMAL_SCALE    + HSD_REFLECTED]  = state->reflected_primal_scale;
-    h[HSD_PRIMAL_SCALE    + HSD_PDHG]       = state->pdhg_primal_scale;
-    h[HSD_PRIMAL_SCALE    + HSD_INITIAL]    = state->initial_primal_scale;
-    h[HSD_DUAL_CONSTRAINT + HSD_CURRENT]    = state->current_dual_constraint_offset;
-    h[HSD_DUAL_CONSTRAINT + HSD_REFLECTED]  = state->reflected_dual_constraint_offset;
-    h[HSD_DUAL_CONSTRAINT + HSD_PDHG]       = state->pdhg_dual_constraint_offset;
-    h[HSD_DUAL_CONSTRAINT + HSD_INITIAL]    = state->initial_dual_constraint_offset;
-    h[HSD_DUAL_BOUND      + HSD_CURRENT]    = state->current_dual_bound_offset;
-    h[HSD_DUAL_BOUND      + HSD_REFLECTED]  = state->reflected_dual_bound_offset;
-    h[HSD_DUAL_BOUND      + HSD_PDHG]       = state->pdhg_dual_bound_offset;
-    h[HSD_DUAL_BOUND      + HSD_INITIAL]    = state->initial_dual_bound_offset;
-    CUDA_CHECK(cudaMemcpy(state->hsd_scalars_d, h, HSD_SCALARS_COUNT * sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemsetAsync(state->cone_newton_constraint_d, 0, CONE_BUFFER_SIZE * sizeof(double), state->stream_A));
-    CUDA_CHECK(cudaMemsetAsync(state->cone_newton_bound_d, 0, CONE_BUFFER_SIZE * sizeof(double), state->stream_A));
 }
 
 static void compute_step_sizes(pdhg_solver_state_t *state, const step_size_parameters_t *step_size_params)
@@ -1076,20 +1016,18 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
                             1,
                             state->workspace_scalars_d + WORKSPACE_SCALAR_BOUND_CROSS_TERM));
 
-    double delta_primal_scale = state->reflected_primal_scale - state->pdhg_primal_scale;
-    double delta_constraint_offset = state->reflected_dual_constraint_offset - state->pdhg_dual_constraint_offset;
-    double delta_bound_offset = state->reflected_dual_bound_offset - state->pdhg_dual_bound_offset;
-
     compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
         state->fixed_point_error_d,
         state->workspace_scalars_d,
+        state->hsd_scalars_d,
         state->step_size_primal,
         state->step_size_dual,
-        state->step_size_homogeneous,
-        delta_primal_scale,
-        delta_constraint_offset,
-        delta_bound_offset);
+        state->step_size_homogeneous);
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+}
 
+static void fetch_fixed_point_error_to_host(pdhg_solver_state_t *state)
+{
     CUDA_CHECK(cudaMemcpyAsync(&state->fixed_point_error,
                                state->fixed_point_error_d,
                                sizeof(double),
@@ -1120,19 +1058,17 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables, state->delta_dual_slack, 1, state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
 
-    compute_restart_distances_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->restart_distances_d,
-        state->workspace_scalars_d);
-
-    double restart_distances_h[RESTART_DISTANCE_COUNT];
-    CUDA_CHECK(cudaMemcpyAsync(restart_distances_h, state->restart_distances_d,
-                               RESTART_DISTANCE_COUNT * sizeof(double),
+    double restart_scalars_h[3];
+    CUDA_CHECK(cudaMemcpyAsync(restart_scalars_h,
+                               state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM,
+                               3 * sizeof(double),
                                cudaMemcpyDeviceToHost,
                                state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    double primal_dist = restart_distances_h[RESTART_DISTANCE_PRIMAL];
-    double dual_dist = restart_distances_h[RESTART_DISTANCE_DUAL];
+    double primal_dist = restart_scalars_h[0];
+    double dual_dist = sqrt(restart_scalars_h[1] * restart_scalars_h[1] +
+                            restart_scalars_h[2] * restart_scalars_h[2]);
     double ratio_infeas = state->relative_dual_residual / state->relative_primal_residual;
 
     if (primal_dist > 1e-16 && dual_dist > 1e-16 && primal_dist < 1e12 && dual_dist < 1e12 && ratio_infeas > 1e-8 &&
@@ -1184,19 +1120,11 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
                                state->pdhg_dual_slack, state->var_bytes,
                                cudaMemcpyDeviceToDevice, state->stream_A));
 
-    state->initial_primal_scale = state->pdhg_primal_scale;
     state->current_primal_scale = state->pdhg_primal_scale;
-    state->reflected_primal_scale = state->pdhg_primal_scale;
 
-    state->initial_dual_constraint_offset = state->pdhg_dual_constraint_offset;
-    state->current_dual_constraint_offset = state->pdhg_dual_constraint_offset;
-    state->reflected_dual_constraint_offset = state->pdhg_dual_constraint_offset;
-
-    state->initial_dual_bound_offset = state->pdhg_dual_bound_offset;
-    state->current_dual_bound_offset = state->pdhg_dual_bound_offset;
-    state->reflected_dual_bound_offset = state->pdhg_dual_bound_offset;
-
-    sync_hsd_scalars_to_device(state);
+    restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
+    CUDA_CHECK(cudaMemsetAsync(state->cone_newton_constraint_d, 0, sizeof(double), state->stream_A));
+    CUDA_CHECK(cudaMemsetAsync(state->cone_newton_bound_d, 0, sizeof(double), state->stream_A));
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
@@ -1208,20 +1136,21 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
     if (!isfinite(tau) || tau <= 1.0)
         return;
     double inv_tau = 1.0 / tau;
-    CUDA_CHECK(cudaMemcpyAsync(state->workspace_scalars_d + WORKSPACE_SCALAR_INV_TAU, &inv_tau, sizeof(double),
+    CUDA_CHECK(cudaMemcpyAsync(state->dscal_alpha_d, &inv_tau, sizeof(double),
                                 cudaMemcpyHostToDevice, state->stream_A));
     CUBLAS_CHECK(cublasDscal(state->blas_handle_A,
                              state->num_variables,
-                             state->workspace_scalars_d + WORKSPACE_SCALAR_INV_TAU,
+                             state->dscal_alpha_d,
                              state->pdhg_primal_solution, 1));
     CUBLAS_CHECK(cublasDscal(state->blas_handle_A,
                              state->num_constraints,
-                             state->workspace_scalars_d + WORKSPACE_SCALAR_INV_TAU,
+                             state->dscal_alpha_d,
                              state->pdhg_dual_solution, 1));
     CUBLAS_CHECK(cublasDscal(state->blas_handle_A,
                              state->num_variables,
-                             state->workspace_scalars_d + WORKSPACE_SCALAR_INV_TAU,
+                             state->dscal_alpha_d,
                              state->pdhg_dual_slack, 1));
+    normalize_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d, inv_tau);
     state->pdhg_primal_scale = 1.0;
     state->pdhg_dual_constraint_offset *= inv_tau;
     state->pdhg_dual_bound_offset *= inv_tau;
@@ -1444,12 +1373,12 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace));
     if (state->workspace_scalars_d)
         CUDA_CHECK(cudaFree(state->workspace_scalars_d));
-    if (state->norm_results_d)
-        CUDA_CHECK(cudaFree(state->norm_results_d));
-    if (state->rescaling_factors_d)
-        CUDA_CHECK(cudaFree(state->rescaling_factors_d));
-    if (state->restart_distances_d)
-        CUDA_CHECK(cudaFree(state->restart_distances_d));
+    if (state->constraint_bound_rescaling_d)
+        CUDA_CHECK(cudaFree(state->constraint_bound_rescaling_d));
+    if (state->objective_vector_rescaling_d)
+        CUDA_CHECK(cudaFree(state->objective_vector_rescaling_d));
+    if (state->dscal_alpha_d)
+        CUDA_CHECK(cudaFree(state->dscal_alpha_d));
     if (state->fixed_point_error_d)
         CUDA_CHECK(cudaFree(state->fixed_point_error_d));
     if (state->residual_metrics_d)
@@ -1508,7 +1437,7 @@ __global__ void cone_newton_solve_kernel(
 
     if (threadIdx.x == 0)
     {
-        scale = cone_state[CONE_SCALE];
+        scale = *cone_state;
         tau_lo = 0.0;
         tau_hi = INFINITY;
         neg_scalar = step_size * hsd_scalars[HSD_PRIMAL_SCALE + HSD_REFLECTED]
@@ -1577,7 +1506,7 @@ __global__ void cone_newton_solve_kernel(
     }
 
     if (threadIdx.x == 0)
-        cone_state[CONE_SCALE] = scale;
+        *cone_state = scale;
 }
 
 __global__ void cone_box_project_kernel(
@@ -1592,7 +1521,7 @@ __global__ void cone_box_project_kernel(
     if (i >= n)
         return;
 
-    double tau_star = cone_state[CONE_SCALE];
+    double tau_star = *cone_state;
     double vi = -w_bar[i];
     double li = lb[i], ui = ub[i];
     double lo_c = isfinite(li) ? li * tau_star : -INFINITY;
@@ -1630,7 +1559,7 @@ __global__ void hsd_halpern_kernel(
         double weight = (double)(k) / (double)(k + 1);
         double unprojected = hsd_scalars_d[scalar_offset + HSD_CURRENT]
                            - dual_step * hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED];
-        double projected = unprojected + cone_newton_buffer[CONE_SCALE];
+        double projected = unprojected + *cone_newton_buffer;
         if (is_major)
         {
             hsd_scalars_d[scalar_offset + HSD_PDHG] = projected;
@@ -1768,13 +1697,20 @@ __global__ void compute_delta_kernel(const double *__restrict__ initial_primal,
 __global__ void compute_fixed_point_error_kernel(
     double *fixed_point_error_d,
     const double *workspace_scalars_d,
+    const double *hsd_scalars_d,
     double step_size_primal,
     double step_size_dual,
-    double step_size_homogeneous,
-    double delta_primal_scale,
-    double delta_constraint_offset,
-    double delta_bound_offset)
+    double step_size_homogeneous)
 {
+    double delta_primal_scale =
+        hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED] -
+        hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG];
+    double delta_constraint_offset =
+        hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_REFLECTED] -
+        hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_PDHG];
+    double delta_bound_offset =
+        hsd_scalars_d[HSD_DUAL_BOUND + HSD_REFLECTED] -
+        hsd_scalars_d[HSD_DUAL_BOUND + HSD_PDHG];
     double primal_norm = workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM];
     double dual_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
     double cross_term = workspace_scalars_d[WORKSPACE_SCALAR_CROSS_TERM];
@@ -1794,15 +1730,27 @@ __global__ void compute_fixed_point_error_kernel(
     fixed_point_error_d[0] = sqrt(fmax(0.0, movement + interaction));
 }
 
-__global__ void compute_restart_distances_kernel(
-    double *restart_distances_d,
-    const double *workspace_scalars_d)
+__global__ void init_hsd_scalars_kernel(double *hsd_scalars_d)
 {
-    double primal_dist = workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM];
-    double dual_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
-    double slack_norm = workspace_scalars_d[WORKSPACE_SCALAR_CROSS_TERM];
-    double dual_dist = sqrt(dual_norm * dual_norm + slack_norm * slack_norm);
+    for (int i = 0; i < HSD_SCALARS_COUNT; ++i)
+        hsd_scalars_d[i] = 1.0;
+}
 
-    restart_distances_d[RESTART_DISTANCE_PRIMAL] = primal_dist;
-    restart_distances_d[RESTART_DISTANCE_DUAL] = dual_dist;
+__global__ void restart_hsd_scalars_kernel(double *hsd_scalars_d)
+{
+    const int bases[3] = {HSD_PRIMAL_SCALE, HSD_DUAL_CONSTRAINT, HSD_DUAL_BOUND};
+    for (int i = 0; i < 3; ++i)
+    {
+        double pdhg = hsd_scalars_d[bases[i] + HSD_PDHG];
+        hsd_scalars_d[bases[i] + HSD_CURRENT] = pdhg;
+        hsd_scalars_d[bases[i] + HSD_REFLECTED] = pdhg;
+        hsd_scalars_d[bases[i] + HSD_INITIAL] = pdhg;
+    }
+}
+
+__global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau)
+{
+    hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG] = 1.0;
+    hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_PDHG] *= inv_tau;
+    hsd_scalars_d[HSD_DUAL_BOUND + HSD_PDHG] *= inv_tau;
 }

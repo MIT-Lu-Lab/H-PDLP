@@ -59,7 +59,8 @@ __global__ void compute_csr_row_powsum_kernel(
     double degree,
     double *__restrict__ row_powsum_values);
 __global__ void compute_bound_objective_scales_kernel(
-    double *rescaling_factors_d,
+    double *cons_scale_d,
+    double *obj_scale_d,
     const double *workspace_scalars_d);
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
@@ -74,17 +75,17 @@ __global__ void scale_bounds_kernel(
     double *__restrict__ cons_lb,
     double *__restrict__ cons_ub,
     double *__restrict__ init_dual_sol,
-    int n_cons,
-    double cons_scale,
-    double obj_scale);
+    const double *__restrict__ cons_scale_d,
+    const double *__restrict__ obj_scale_d,
+    int n_cons);
 __global__ void scale_objective_kernel(
     double *__restrict__ obj_vec,
     double *__restrict__ var_lb,
     double *__restrict__ var_ub,
     double *__restrict__ init_primal_sol,
-    int n_vars,
-    double cons_scale,
-    double obj_scale);
+    const double *__restrict__ cons_scale_d,
+    const double *__restrict__ obj_scale_d,
+    int n_vars);
 static void scale_problem(
     pdhg_solver_state_t *state,
     double *constraint_rescaling,
@@ -232,49 +233,46 @@ static void bound_objective_rescaling(
                                    state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM));
 
     compute_bound_objective_scales_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->rescaling_factors_d,
+        state->constraint_bound_rescaling_d,
+        state->objective_vector_rescaling_d,
         state->workspace_scalars_d);
 
-    double scaling_factors_h[RESCALING_FACTOR_COUNT];
-    CUDA_CHECK(cudaMemcpyAsync(scaling_factors_h, state->rescaling_factors_d,
-                               RESCALING_FACTOR_COUNT * sizeof(double),
-                               cudaMemcpyDeviceToHost,
-                               state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
-    double constraint_scale = scaling_factors_h[RESCALING_FACTOR_CONSTRAINT];
-    double objective_scale = scaling_factors_h[RESCALING_FACTOR_OBJECTIVE];
-
-    scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->constraint_lower_bound,
         state->constraint_upper_bound,
         state->initial_dual_solution,
-        num_constraints,
-        constraint_scale,
-        objective_scale);
+        state->constraint_bound_rescaling_d,
+        state->objective_vector_rescaling_d,
+        num_constraints);
 
-    scale_objective_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+    scale_objective_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->objective_vector,
         state->variable_lower_bound,
         state->variable_upper_bound,
         state->initial_primal_solution,
-        num_variables,
-        constraint_scale,
-        objective_scale);
+        state->constraint_bound_rescaling_d,
+        state->objective_vector_rescaling_d,
+        num_variables);
 
-    state->constraint_bound_rescaling = constraint_scale;
-    state->objective_vector_rescaling = objective_scale;
+    CUDA_CHECK(cudaMemcpyAsync(&state->constraint_bound_rescaling,
+                               state->constraint_bound_rescaling_d,
+                               sizeof(double), cudaMemcpyDeviceToHost, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(&state->objective_vector_rescaling,
+                               state->objective_vector_rescaling_d,
+                               sizeof(double), cudaMemcpyDeviceToHost, state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
 __global__ void compute_bound_objective_scales_kernel(
-    double *rescaling_factors_d,
+    double *cons_scale_d,
+    double *obj_scale_d,
     const double *workspace_scalars_d)
 {
     double bound_norm = sqrt(workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM]);
     double objective_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
 
-    rescaling_factors_d[RESCALING_FACTOR_CONSTRAINT] = 1.0 / (bound_norm + 1.0);
-    rescaling_factors_d[RESCALING_FACTOR_OBJECTIVE] = 1.0 / (objective_norm + 1.0);
+    *cons_scale_d = 1.0 / (bound_norm + 1.0);
+    *obj_scale_d = 1.0 / (objective_norm + 1.0);
 }
 
 void rescale_problem(
@@ -327,6 +325,9 @@ void rescale_problem(
 
     state->constraint_bound_rescaling = 1.0;
     state->objective_vector_rescaling = 1.0;
+    const double one = 1.0;
+    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &one, sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &one, sizeof(double), cudaMemcpyHostToDevice));
     if (scaling_params->bound_objective_rescaling)
     {
         if (verbose)
@@ -506,13 +507,15 @@ __global__ void compute_bound_contrib_kernel(double *__restrict__ contrib,
 __global__ void scale_bounds_kernel(double *__restrict__ cons_lb,
                                     double *__restrict__ cons_ub,
                                     double *__restrict__ init_dual_sol,
-                                    int n_cons,
-                                    double cons_scale,
-                                    double obj_scale)
+                                    const double *__restrict__ cons_scale_d,
+                                    const double *__restrict__ obj_scale_d,
+                                    int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_cons)
         return;
+    double cons_scale = *cons_scale_d;
+    double obj_scale = *obj_scale_d;
     cons_lb[i] *= cons_scale;
     cons_ub[i] *= cons_scale;
     init_dual_sol[i] *= obj_scale;
@@ -522,13 +525,15 @@ __global__ void scale_objective_kernel(double *__restrict__ obj_vec,
                                        double *__restrict__ var_lb,
                                        double *__restrict__ var_ub,
                                        double *__restrict__ init_primal_sol,
-                                       int n_vars,
-                                       double cons_scale,
-                                       double obj_scale)
+                                       const double *__restrict__ cons_scale_d,
+                                       const double *__restrict__ obj_scale_d,
+                                       int n_vars)
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n_vars)
         return;
+    double cons_scale = *cons_scale_d;
+    double obj_scale = *obj_scale_d;
     var_lb[j] *= cons_scale;
     var_ub[j] *= cons_scale;
     obj_vec[j] *= obj_scale;
