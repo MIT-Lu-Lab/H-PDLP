@@ -72,6 +72,18 @@ __global__ void compute_power_iteration_residual_kernel(
     int n);
 __global__ void abs_vector_inplace_kernel(
     double *__restrict__ arr, int n);
+static void reduce_device_vector(
+    pdhg_solver_state_t *state,
+    const double *input,
+    int length,
+    double *output,
+    bool use_linf);
+static void copy_residual_metrics_to_host(
+    pdhg_solver_state_t *state,
+    double residual_metrics_h[RESIDUAL_METRIC_COUNT]);
+static void store_residual_metrics(
+    pdhg_solver_state_t *state,
+    const double residual_metrics_h[RESIDUAL_METRIC_COUNT]);
 
 const double HOST_ONE = 1.0;
 const double HOST_ZERO = 0.0;
@@ -364,23 +376,12 @@ void compute_objective_and_bound_norms(
         norm_entries_cons, state->num_constraints, use_linf);
     CUDA_CHECK(cudaGetLastError());
 
-    size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
-    if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars,
-                                          state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM, state->num_variables, state->stream_A));
-    else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_vars,
-                                          state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM, state->num_variables, state->stream_A));
-    CUDA_CHECK(cudaGetLastError());
-
-    cub_buffer_bytes = state->cub_reduce_workspace_bytes;
-    if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons,
-                                          state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM, state->num_constraints, state->stream_A));
-    else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes, norm_entries_cons,
-                                          state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM, state->num_constraints, state->stream_A));
-    CUDA_CHECK(cudaGetLastError());
+    reduce_device_vector(state, norm_entries_vars, state->num_variables,
+                         state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM,
+                         use_linf);
+    reduce_device_vector(state, norm_entries_cons, state->num_constraints,
+                         state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM,
+                         use_linf);
 
     double reduced_h[2];
     CUDA_CHECK(cudaMemcpyAsync(reduced_h,
@@ -625,6 +626,8 @@ void check_termination_criteria(
 
 void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 {
+    const bool use_linf = (optimality_norm == NORM_TYPE_L_INF);
+
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -671,26 +674,17 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
 
-    if (optimality_norm == NORM_TYPE_L_INF)
+    if (use_linf)
     {
         abs_vector_inplace_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
             state->primal_residual, state->num_constraints);
         abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
             state->dual_residual, state->num_variables);
 
-        size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
-            state->primal_residual, state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM, state->num_constraints, state->stream_A));
-        cub_buffer_bytes = state->cub_reduce_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
-            state->dual_residual, state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM, state->num_variables, state->stream_A));
-
-        CUBLAS_CHECK(cublasDdot(
-            state->blas_handle_A,
-            state->num_variables,
-            state->objective_vector, 1,
-            state->pdhg_primal_solution, 1,
-            state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
+        reduce_device_vector(state, state->primal_residual, state->num_constraints,
+                             state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM, true);
+        reduce_device_vector(state, state->dual_residual, state->num_variables,
+                             state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM, true);
     }
     else
     {
@@ -706,13 +700,14 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->dual_residual, 1,
             state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM));
 
-        CUBLAS_CHECK(cublasDdot(
-            state->blas_handle_A,
-            state->num_variables,
-            state->objective_vector, 1,
-            state->pdhg_primal_solution, 1,
-            state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
     }
+
+    CUBLAS_CHECK(cublasDdot(
+        state->blas_handle_A,
+        state->num_variables,
+        state->objective_vector, 1,
+        state->pdhg_primal_solution, 1,
+        state->workspace_scalars_d + WORKSPACE_SCALAR_CROSS_TERM));
 
     compute_residual_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
         state->residual_metrics_d,
@@ -725,6 +720,31 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->objective_constant);
 
     double residual_metrics_h[RESIDUAL_METRIC_COUNT];
+    copy_residual_metrics_to_host(state, residual_metrics_h);
+    store_residual_metrics(state, residual_metrics_h);
+}
+
+static void reduce_device_vector(
+    pdhg_solver_state_t *state,
+    const double *input,
+    int length,
+    double *output,
+    bool use_linf)
+{
+    size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
+    if (use_linf)
+        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace, cub_buffer_bytes,
+                                          input, output, length, state->stream_A));
+    else
+        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes,
+                                          input, output, length, state->stream_A));
+    CUDA_CHECK(cudaGetLastError());
+}
+
+static void copy_residual_metrics_to_host(
+    pdhg_solver_state_t *state,
+    double residual_metrics_h[RESIDUAL_METRIC_COUNT])
+{
     CUDA_CHECK(cudaMemcpyAsync(residual_metrics_h, state->residual_metrics_d,
                                RESIDUAL_METRIC_COUNT * sizeof(double),
                                cudaMemcpyDeviceToHost,
@@ -735,7 +755,12 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
                                cudaMemcpyDeviceToHost,
                                state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+}
 
+static void store_residual_metrics(
+    pdhg_solver_state_t *state,
+    const double residual_metrics_h[RESIDUAL_METRIC_COUNT])
+{
     state->absolute_primal_residual = residual_metrics_h[RESIDUAL_METRIC_ABSOLUTE_PRIMAL];
     state->relative_primal_residual = residual_metrics_h[RESIDUAL_METRIC_RELATIVE_PRIMAL];
     state->absolute_dual_residual = residual_metrics_h[RESIDUAL_METRIC_ABSOLUTE_DUAL];
