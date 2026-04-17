@@ -78,6 +78,9 @@ const double HOST_ZERO = 0.0;
 
 void *safe_malloc(size_t size)
 {
+    if (size == 0)
+        size = 1;
+
     void *ptr = malloc(size);
     if (ptr == NULL)
     {
@@ -89,6 +92,12 @@ void *safe_malloc(size_t size)
 
 void *safe_calloc(size_t num, size_t size)
 {
+    if (num == 0 || size == 0)
+    {
+        num = 1;
+        size = 1;
+    }
+
     void *ptr = calloc(num, size);
     if (ptr == NULL)
     {
@@ -101,10 +110,8 @@ void *safe_calloc(size_t num, size_t size)
 void *safe_realloc(void *ptr, size_t new_size)
 {
     if (new_size == 0)
-    {
-        free(ptr);
-        return NULL;
-    }
+        new_size = 1;
+
     void *tmp = realloc(ptr, new_size);
     if (!tmp)
     {
@@ -261,6 +268,9 @@ void print_initial_info(const pdhg_parameters_t *params,
 {
     pdhg_parameters_t default_params;
     set_default_parameters(&default_params);
+
+    filter_constraint_matrix_entries(problem, params);
+
     if (!params->verbose)
     {
         return;
@@ -273,8 +283,6 @@ void print_initial_info(const pdhg_parameters_t *params,
     printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
     printf("\n");
-
-    filter_constraint_matrix_entries(problem, params);
 
     printf(
         "Problem: %d rows, %d columns, %d nonzeros\n",

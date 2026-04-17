@@ -27,6 +27,7 @@ static void fill_or_copy(
     double **dst, int n,
     const double *src,
     double fill_val);
+static void copy_start_vector(double **dst, const double *src, int n);
 
 lp_problem_t *create_lp_problem(
     const double *objective_c,
@@ -71,12 +72,29 @@ static void fill_or_copy(
     const double *src,
     double fill_val)
 {
-    *dst = (double *)safe_malloc((size_t)n * sizeof(double));
+    size_t bytes = (size_t)n * sizeof(double);
+    *dst = (double *)safe_malloc(bytes);
     if (src)
-        memcpy(*dst, src, (size_t)n * sizeof(double));
-    else
-        for (int i = 0; i < n; ++i)
-            (*dst)[i] = fill_val;
+    {
+        memcpy(*dst, src, bytes);
+        return;
+    }
+
+    if (fill_val == 0.0)
+    {
+        memset(*dst, 0, bytes);
+        return;
+    }
+
+    for (int i = 0; i < n; ++i)
+        (*dst)[i] = fill_val;
+}
+
+static void copy_start_vector(double **dst, const double *src, int n)
+{
+    size_t bytes = (size_t)n * sizeof(double);
+    *dst = (double *)safe_malloc(bytes);
+    memcpy(*dst, src, bytes);
 }
 
 void cuhsdlp_result_free(cuhsdlp_result_t *results)
@@ -132,13 +150,11 @@ void set_start_values(
 
     if (primal)
     {
-        prob->primal_start = (double *)safe_malloc(n * sizeof(double));
-        memcpy(prob->primal_start, primal, n * sizeof(double));
+        copy_start_vector(&prob->primal_start, primal, n);
     }
     if (dual)
     {
-        prob->dual_start = (double *)safe_malloc(m * sizeof(double));
-        memcpy(prob->dual_start, dual, m * sizeof(double));
+        copy_start_vector(&prob->dual_start, dual, m);
     }
 }
 

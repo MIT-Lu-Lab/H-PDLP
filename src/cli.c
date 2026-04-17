@@ -19,7 +19,9 @@ limitations under the License.
 #include "presolver.h"
 #include "solver.h"
 #include "utils.h"
+#include <errno.h>
 #include <getopt.h>
+#include <limits.h>
 #include <libgen.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -58,42 +60,78 @@ char *extract_instance_name(const char *filename)
     return instance_name;
 }
 
-void save_solution(const double *data, int size, const char *output_dir,
-                   const char *instance_name, const char *suffix)
+static FILE *open_output_file(const char *output_dir, const char *instance_name,
+                              const char *suffix, const char *description)
 {
     char *file_path = get_output_path(output_dir, instance_name, suffix);
-    if (file_path == NULL || data == NULL)
-        return;
+    if (file_path == NULL)
+        return NULL;
 
     FILE *outfile = fopen(file_path, "w");
     if (outfile == NULL)
+        perror(description);
+
+    free(file_path);
+    return outfile;
+}
+
+static bool parse_int_arg(const char *option_name, const char *value, int *out)
+{
+    char *end = NULL;
+    errno = 0;
+    long parsed = strtol(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' ||
+        parsed < INT_MIN || parsed > INT_MAX)
     {
-        perror("Error opening solution file");
-        free(file_path);
-        return;
+        fprintf(stderr, "Error: invalid integer for %s: %s\n", option_name, value);
+        return false;
     }
+
+    *out = (int)parsed;
+    return true;
+}
+
+static bool parse_double_arg(const char *option_name, const char *value, double *out)
+{
+    char *end = NULL;
+    errno = 0;
+    double parsed = strtod(value, &end);
+    if (errno != 0 || end == value || *end != '\0')
+    {
+        fprintf(stderr, "Error: invalid floating-point value for %s: %s\n",
+                option_name, value);
+        return false;
+    }
+
+    *out = parsed;
+    return true;
+}
+
+void save_solution(const double *data, int size, const char *output_dir,
+                   const char *instance_name, const char *suffix)
+{
+    if (data == NULL)
+        return;
+
+    FILE *outfile = open_output_file(output_dir, instance_name, suffix,
+                                     "Error opening solution file");
+    if (outfile == NULL)
+        return;
 
     for (int i = 0; i < size; ++i)
         fprintf(outfile, "%.10g\n", data[i]);
 
     fclose(outfile);
-    free(file_path);
 }
 
 void save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
                          const char *instance_name)
 {
-    char *file_path = get_output_path(output_dir, instance_name, "_summary.txt");
-    if (file_path == NULL)
+    FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt",
+                                     "Error opening summary file");
+    if (outfile == NULL)
         return;
 
-    FILE *outfile = fopen(file_path, "w");
-    if (outfile == NULL)
-    {
-        perror("Error opening summary file");
-        free(file_path);
-        return;
-    }
     fprintf(outfile, "Termination Reason: %s\n",
             termination_reason_to_string(result->termination_reason));
     if (result->presolve_time > 0.0)
@@ -118,7 +156,6 @@ void save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
     fprintf(outfile, "Columns: %d\n", result->num_variables);
     fprintf(outfile, "Nonzeros: %d\n", result->num_nonzeros);
     fclose(outfile);
-    free(file_path);
 }
 
 void print_usage(const char *prog_name)
@@ -197,49 +234,75 @@ int main(int argc, char *argv[])
             params.presolve = false;
             break;
         case 1002:
-            params.scaling_params.l_inf_ruiz_iterations = atoi(optarg);
+            if (!parse_int_arg("--l_inf_ruiz_iter", optarg,
+                               &params.scaling_params.l_inf_ruiz_iterations))
+                return 1;
             break;
         case 1003:
             params.scaling_params.has_pock_chambolle_alpha = false;
             break;
         case 1004:
-            params.scaling_params.pock_chambolle_alpha = atof(optarg);
+            if (!parse_double_arg("--pock_chambolle_alpha", optarg,
+                                  &params.scaling_params.pock_chambolle_alpha))
+                return 1;
             break;
         case 1005:
             params.scaling_params.bound_objective_rescaling = false;
             break;
         case 1006:
-            params.step_size_params.step_size_factor = atof(optarg);
+            if (!parse_double_arg("--step_size_factor", optarg,
+                                  &params.step_size_params.step_size_factor))
+                return 1;
             break;
         case 1007:
-            params.step_size_params.objective_coupling_budget = atof(optarg);
+            if (!parse_double_arg("--objective_coupling_budget", optarg,
+                                  &params.step_size_params.objective_coupling_budget))
+                return 1;
             break;
         case 1008:
-            params.power_iter_params.max_iter = atoi(optarg);
+            if (!parse_int_arg("--singular_value_max_iter", optarg,
+                               &params.power_iter_params.max_iter))
+                return 1;
             break;
         case 1009:
-            params.power_iter_params.tol = atof(optarg);
+            if (!parse_double_arg("--singular_value_tol", optarg,
+                                  &params.power_iter_params.tol))
+                return 1;
             break;
         case 1010:
-            params.cone_params.max_iter = atoi(optarg);
+            if (!parse_int_arg("--cone_newton_max_iter", optarg,
+                               &params.cone_params.max_iter))
+                return 1;
             break;
         case 1011:
-            params.cone_params.tol = atof(optarg);
+            if (!parse_double_arg("--cone_newton_tol", optarg,
+                                  &params.cone_params.tol))
+                return 1;
             break;
         case 1012:
-            params.termination_criteria.time_sec_limit = atof(optarg);
+            if (!parse_double_arg("--time_limit", optarg,
+                                  &params.termination_criteria.time_sec_limit))
+                return 1;
             break;
         case 1013:
-            params.termination_criteria.iteration_limit = atoi(optarg);
+            if (!parse_int_arg("--iter_limit", optarg,
+                               &params.termination_criteria.iteration_limit))
+                return 1;
             break;
         case 1014:
-            params.termination_criteria.eps_optimal_relative = atof(optarg);
+            if (!parse_double_arg("--eps_opt", optarg,
+                                  &params.termination_criteria.eps_optimal_relative))
+                return 1;
             break;
         case 1015:
-            params.termination_criteria.eps_feasible_relative = atof(optarg);
+            if (!parse_double_arg("--eps_feas", optarg,
+                                  &params.termination_criteria.eps_feasible_relative))
+                return 1;
             break;
         case 1016:
-            params.termination_evaluation_frequency = atoi(optarg);
+            if (!parse_int_arg("--eval_freq", optarg,
+                               &params.termination_evaluation_frequency))
+                return 1;
             break;
         case 1017:
         {
