@@ -397,7 +397,6 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
         CUDA_CHECK(cub::DeviceReduce::Max((void *)NULL, tb_max, (double *)NULL, (double *)NULL, max_n));
         state->cub_reduce_workspace_bytes = (tb_sum > tb_max) ? tb_sum : tb_max;
         CUDA_CHECK(cudaMalloc(&state->cub_reduce_workspace, state->cub_reduce_workspace_bytes));
-        CUDA_CHECK(cudaMalloc(&state->cub_reduce_workspace_bound, state->cub_reduce_workspace_bytes));
     }
 
 #define ALLOC_AND_COPY(dest, src, bytes)  \
@@ -1402,8 +1401,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaFree(state->cone_newton_bound_d));
     if (state->cub_reduce_workspace)
         CUDA_CHECK(cudaFree(state->cub_reduce_workspace));
-    if (state->cub_reduce_workspace_bound)
-        CUDA_CHECK(cudaFree(state->cub_reduce_workspace_bound));
     if (state->workspace_scalars_d)
         CUDA_CHECK(cudaFree(state->workspace_scalars_d));
     if (state->norm_results_d)

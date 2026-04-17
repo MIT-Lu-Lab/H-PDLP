@@ -240,7 +240,6 @@ typedef struct
     cusparseDnVecDescr_t spmv_power_iteration_product;
 
     void *cub_reduce_workspace;
-    void *cub_reduce_workspace_bound;
     size_t cub_reduce_workspace_bytes;
     double *workspace_scalars_d;
     double *norm_results_d;
