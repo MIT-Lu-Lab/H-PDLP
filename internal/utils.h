@@ -87,10 +87,6 @@ extern "C"
     void *safe_calloc(size_t num, size_t size);
     void *safe_realloc(void *ptr, size_t new_size);
 
-    int dense_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind, double **vals, int *nnz_out);
-    int csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind, double **vals, int *nnz_out);
-    int coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind, double **vals, int *nnz_out);
-
     void set_default_parameters(pdhg_parameters_t *params);
     const char *termination_reason_to_string(termination_reason_t reason);
     void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem);

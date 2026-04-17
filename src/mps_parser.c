@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "mps_parser.h"
 #include "cuhsdlp.h"
+#include "matrix_formats.h"
 #include "utils.h"
 #include <ctype.h>
 #include <math.h>
@@ -397,8 +398,6 @@ static int parse_ranges_section(MpsParserState *state, char **tokens,
                                 int n_tokens);
 static int parse_bounds_section(MpsParserState *state, char **tokens,
                                 int n_tokens);
-static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo,
-                          size_t num_constraints);
 
 typedef enum
 {
@@ -530,7 +529,6 @@ lp_problem_t *read_mps_file(const char *filename)
 
     prob->num_variables = state.col_map.size;
     prob->num_constraints = state.row_map.size;
-    prob->constraint_matrix_num_nonzeros = state.coo_matrix.nnz;
     prob->objective_constant =
         state.is_maximize ? -state.objective_constant : state.objective_constant;
 
@@ -557,7 +555,20 @@ lp_problem_t *read_mps_file(const char *filename)
         }
     }
 
-    if (mps_coo_to_csr(prob, &state.coo_matrix, prob->num_constraints) != 0)
+    matrix_desc_t desc = {0};
+    desc.m = prob->num_constraints;
+    desc.n = prob->num_variables;
+    desc.fmt = matrix_coo;
+    desc.data.coo.nnz = (int)state.coo_matrix.nnz;
+    desc.data.coo.row_ind = state.coo_matrix.row_indices;
+    desc.data.coo.col_ind = state.coo_matrix.col_indices;
+    desc.data.coo.vals = state.coo_matrix.values;
+
+    if (coo_to_csr(&desc,
+                   &prob->constraint_matrix_row_pointers,
+                   &prob->constraint_matrix_col_indices,
+                   &prob->constraint_matrix_values,
+                   &prob->constraint_matrix_num_nonzeros) != 0)
     {
         fprintf(stderr, "ERROR: Failed to convert matrix to CSR format.\n");
         lp_problem_free(prob);
@@ -859,44 +870,6 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
         state->var_lower_bounds[col_idx] = 0.0;
         state->var_upper_bounds[col_idx] = 1.0;
     }
-    return 0;
-}
-
-static int mps_coo_to_csr(lp_problem_t *prob, CooMatrix *coo,
-                          size_t num_constraints)
-{
-    prob->constraint_matrix_row_pointers =
-        safe_calloc(num_constraints + 1, sizeof(int));
-    prob->constraint_matrix_col_indices = safe_malloc(coo->nnz * sizeof(int));
-    prob->constraint_matrix_values = safe_malloc(coo->nnz * sizeof(double));
-
-    for (size_t i = 0; i < coo->nnz; ++i)
-    {
-        prob->constraint_matrix_row_pointers[coo->row_indices[i] + 1]++;
-    }
-
-    for (size_t i = 1; i <= num_constraints; ++i)
-    {
-        prob->constraint_matrix_row_pointers[i] +=
-            prob->constraint_matrix_row_pointers[i - 1];
-    }
-
-    int *row_pos = safe_malloc((num_constraints + 1) * sizeof(int));
-    memcpy(row_pos, prob->constraint_matrix_row_pointers,
-           (num_constraints + 1) * sizeof(int));
-
-    for (size_t i = 0; i < coo->nnz; ++i)
-    {
-        int row = coo->row_indices[i];
-        int dest_idx = row_pos[row];
-
-        prob->constraint_matrix_col_indices[dest_idx] = coo->col_indices[i];
-        prob->constraint_matrix_values[dest_idx] = coo->values[i];
-
-        row_pos[row]++;
-    }
-
-    free(row_pos);
     return 0;
 }
 

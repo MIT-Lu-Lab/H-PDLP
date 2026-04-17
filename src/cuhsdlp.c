@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "cuhsdlp.h"
+#include "matrix_formats.h"
 #include "solver.h"
 #include "utils.h"
 #include <math.h>
@@ -41,70 +42,16 @@ lp_problem_t *create_lp_problem(
     prob->num_variables = A_desc->n;
     prob->num_constraints = A_desc->m;
 
-    switch (A_desc->fmt)
+    matrix_format_status_t matrix_status = matrix_desc_to_csr(
+        A_desc,
+        &prob->constraint_matrix_row_pointers,
+        &prob->constraint_matrix_col_indices,
+        &prob->constraint_matrix_values,
+        &prob->constraint_matrix_num_nonzeros);
+    if (matrix_status != MATRIX_FORMAT_OK)
     {
-    case matrix_dense:
-        dense_to_csr(A_desc,
-                     &prob->constraint_matrix_row_pointers,
-                     &prob->constraint_matrix_col_indices,
-                     &prob->constraint_matrix_values,
-                     &prob->constraint_matrix_num_nonzeros);
-        break;
-
-    case matrix_csc:
-    {
-        int *row_ptr = NULL, *col_ind = NULL;
-        double *vals = NULL;
-        int nnz = 0;
-        if (csc_to_csr(A_desc, &row_ptr, &col_ind, &vals, &nnz) != 0)
-        {
-            fprintf(stderr, "[interface] CSC->CSR failed.\n");
-            free(prob);
-            return NULL;
-        }
-        prob->constraint_matrix_num_nonzeros = nnz;
-        prob->constraint_matrix_row_pointers = row_ptr;
-        prob->constraint_matrix_col_indices = col_ind;
-        prob->constraint_matrix_values = vals;
-        break;
-    }
-
-    case matrix_coo:
-    {
-        int *row_ptr = NULL, *col_ind = NULL;
-        double *vals = NULL;
-        int nnz = 0;
-        if (coo_to_csr(A_desc, &row_ptr, &col_ind, &vals, &nnz) != 0)
-        {
-            fprintf(stderr, "[interface] COO->CSR failed.\n");
-            free(prob);
-            return NULL;
-        }
-        prob->constraint_matrix_num_nonzeros = nnz;
-        prob->constraint_matrix_row_pointers = row_ptr;
-        prob->constraint_matrix_col_indices = col_ind;
-        prob->constraint_matrix_values = vals;
-        break;
-    }
-
-    case matrix_csr:
-        prob->constraint_matrix_num_nonzeros = A_desc->data.csr.nnz;
-        prob->constraint_matrix_row_pointers =
-            (int *)safe_malloc((size_t)(A_desc->m + 1) * sizeof(int));
-        prob->constraint_matrix_col_indices =
-            (int *)safe_malloc((size_t)A_desc->data.csr.nnz * sizeof(int));
-        prob->constraint_matrix_values =
-            (double *)safe_malloc((size_t)A_desc->data.csr.nnz * sizeof(double));
-        memcpy(prob->constraint_matrix_row_pointers, A_desc->data.csr.row_ptr,
-               (size_t)(A_desc->m + 1) * sizeof(int));
-        memcpy(prob->constraint_matrix_col_indices, A_desc->data.csr.col_ind,
-               (size_t)A_desc->data.csr.nnz * sizeof(int));
-        memcpy(prob->constraint_matrix_values, A_desc->data.csr.vals,
-               (size_t)A_desc->data.csr.nnz * sizeof(double));
-        break;
-
-    default:
-        fprintf(stderr, "[interface] unsupported matrix format %d.\n", A_desc->fmt);
+        fprintf(stderr, "invalid input matrix: %s.\n",
+                matrix_format_status_message(matrix_status));
         free(prob);
         return NULL;
     }

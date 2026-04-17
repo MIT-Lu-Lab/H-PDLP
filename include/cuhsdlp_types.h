@@ -177,8 +177,6 @@ extern "C"
         int n;
         matrix_format_t fmt;
 
-        double zero_tolerance;
-
         union MatrixData
         {
             struct MatrixDense

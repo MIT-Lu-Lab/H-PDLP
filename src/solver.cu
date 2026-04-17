@@ -28,20 +28,13 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 __global__ void build_row_ind(
     const int *__restrict__ row_ptr,
     int num_rows,
-    int nnz,
     int *__restrict__ row_ind);
-__global__ void build_transpose_map(
-    const int *__restrict__ A_row_ind,
-    const int *__restrict__ A_col_ind,
-    const int *__restrict__ At_row_ptr,
-    const int *__restrict__ At_col_ind,
-    int nnz,
-    int *__restrict__ A_to_At);
 __global__ void hsd_gradient_step_kernel(
     double *__restrict__ out,
     const double *__restrict__ current,
@@ -141,6 +134,12 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state);
 static pdhg_solver_state_t *initialize_solver_state(
     lp_problem_t *working_problem,
     const pdhg_parameters_t *params);
+static void transpose_csr_and_build_map(
+    const lp_problem_t *problem,
+    int **transpose_row_ptr,
+    int **transpose_col_ind,
+    double **transpose_val,
+    int **transpose_map);
 static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state);
 static void sync_hsd_scalars_to_device(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
@@ -331,6 +330,52 @@ static void check_params_validity(const pdhg_parameters_t *params)
     }
 }
 
+static void transpose_csr_and_build_map(
+    const lp_problem_t *problem,
+    int **transpose_row_ptr,
+    int **transpose_col_ind,
+    double **transpose_val,
+    int **transpose_map)
+{
+    const int num_rows = problem->num_constraints;
+    const int num_cols = problem->num_variables;
+    const int nnz = problem->constraint_matrix_num_nonzeros;
+    const int *row_ptr = problem->constraint_matrix_row_pointers;
+    const int *col_ind = problem->constraint_matrix_col_indices;
+    const double *val = problem->constraint_matrix_values;
+    const size_t alloc_nnz = (nnz > 0) ? (size_t)nnz : 1;
+    const size_t alloc_cols = (num_cols > 0) ? (size_t)num_cols : 1;
+
+    *transpose_row_ptr = (int *)safe_calloc((size_t)(num_cols + 1), sizeof(int));
+    *transpose_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
+    *transpose_val = (double *)safe_malloc(alloc_nnz * sizeof(double));
+    *transpose_map = (int *)safe_malloc(alloc_nnz * sizeof(int));
+
+    for (int k = 0; k < nnz; ++k)
+        (*transpose_row_ptr)[col_ind[k] + 1]++;
+
+    for (int j = 0; j < num_cols; ++j)
+        (*transpose_row_ptr)[j + 1] += (*transpose_row_ptr)[j];
+
+    int *next = (int *)safe_malloc(alloc_cols * sizeof(int));
+    if (num_cols > 0)
+        memcpy(next, *transpose_row_ptr, (size_t)num_cols * sizeof(int));
+
+    for (int i = 0; i < num_rows; ++i)
+    {
+        for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
+        {
+            int j = col_ind[k];
+            int pos = next[j]++;
+            (*transpose_col_ind)[pos] = i;
+            (*transpose_val)[pos] = val[k];
+            (*transpose_map)[k] = pos;
+        }
+    }
+
+    free(next);
+}
+
 static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_problem,
                                                     const pdhg_parameters_t *params)
 {
@@ -408,49 +453,35 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
     ALLOC_AND_COPY(state->constraint_matrix->val, working_problem->constraint_matrix_values, nnz * sizeof(double));
 
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix->row_ind, nnz * sizeof(int)));
-    build_row_ind<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
-        state->constraint_matrix->row_ptr, n_cons, nnz, state->constraint_matrix->row_ind);
+    build_row_ind<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix->row_ptr, n_cons, state->constraint_matrix->row_ind);
     CUDA_CHECK(cudaGetLastError());
 
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ptr, (n_vars + 1) * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->col_ind, nnz * sizeof(int)));
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->val, nnz * sizeof(double)));
+    int *transpose_row_ptr_h = NULL;
+    int *transpose_col_ind_h = NULL;
+    int *transpose_map_h = NULL;
+    double *transpose_val_h = NULL;
+    transpose_csr_and_build_map(working_problem,
+                                &transpose_row_ptr_h,
+                                &transpose_col_ind_h,
+                                &transpose_val_h,
+                                &transpose_map_h);
 
-    size_t buffer_size = 0;
-    void *buffer = nullptr;
-    CUSPARSE_CHECK(cusparseCsr2cscEx2_bufferSize(
-        state->sparse_handle_A, state->constraint_matrix->num_rows, state->constraint_matrix->num_cols, state->constraint_matrix->num_nonzeros,
-        state->constraint_matrix->val, state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind,
-        state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind,
-        CUDA_R_64F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
-        CUSPARSE_CSR2CSC_ALG_DEFAULT, &buffer_size));
-    CUDA_CHECK(cudaMalloc(&buffer, buffer_size));
-
-    CUSPARSE_CHECK(cusparseCsr2cscEx2(
-        state->sparse_handle_A, state->constraint_matrix->num_rows, state->constraint_matrix->num_cols, state->constraint_matrix->num_nonzeros,
-        state->constraint_matrix->val, state->constraint_matrix->row_ptr, state->constraint_matrix->col_ind,
-        state->constraint_matrix_t->val, state->constraint_matrix_t->row_ptr, state->constraint_matrix_t->col_ind,
-        CUDA_R_64F, CUSPARSE_ACTION_NUMERIC, CUSPARSE_INDEX_BASE_ZERO,
-        CUSPARSE_CSR2CSC_ALG_DEFAULT, buffer));
-
-    CUDA_CHECK(cudaFree(buffer));
+    ALLOC_AND_COPY(state->constraint_matrix_t->row_ptr, transpose_row_ptr_h, (n_vars + 1) * sizeof(int));
+    ALLOC_AND_COPY(state->constraint_matrix_t->col_ind, transpose_col_ind_h, nnz * sizeof(int));
+    ALLOC_AND_COPY(state->constraint_matrix_t->val, transpose_val_h, nnz * sizeof(double));
 
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ind, nnz * sizeof(int)));
-    build_row_ind<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
-        state->constraint_matrix_t->row_ptr, n_vars, nnz, state->constraint_matrix_t->row_ind);
+    build_row_ind<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        state->constraint_matrix_t->row_ptr, n_vars, state->constraint_matrix_t->row_ind);
     CUDA_CHECK(cudaGetLastError());
 
-    CUDA_CHECK(cudaMalloc(&state->constraint_matrix->transpose_map, nnz * sizeof(int)));
-    CUDA_CHECK(cudaMemset(state->constraint_matrix->transpose_map, 0xFF, nnz * sizeof(int)));
+    ALLOC_AND_COPY(state->constraint_matrix->transpose_map, transpose_map_h, nnz * sizeof(int));
     state->constraint_matrix_t->transpose_map = NULL;
-    build_transpose_map<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
-        state->constraint_matrix->row_ind,
-        state->constraint_matrix->col_ind,
-        state->constraint_matrix_t->row_ptr,
-        state->constraint_matrix_t->col_ind,
-        nnz,
-        state->constraint_matrix->transpose_map);
-    CUDA_CHECK(cudaGetLastError());
+    free(transpose_row_ptr_h);
+    free(transpose_col_ind_h);
+    free(transpose_val_h);
+    free(transpose_map_h);
 
     ALLOC_AND_COPY(state->variable_lower_bound, working_problem->variable_lower_bound, var_bytes);
     ALLOC_AND_COPY(state->variable_upper_bound, working_problem->variable_upper_bound, var_bytes);
@@ -1424,59 +1455,15 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
 
 __global__ void build_row_ind(const int *__restrict__ row_ptr,
                               int num_rows,
-                              int nnz,
                               int *__restrict__ row_ind)
 {
-    int k = blockIdx.x * blockDim.x + threadIdx.x;
-    if (k >= nnz)
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row >= num_rows)
         return;
 
-    int lo = 0, hi = num_rows;
-    while (lo < hi)
-    {
-        int mid = (lo + hi) >> 1;
-        if (row_ptr[mid + 1] <= k)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    row_ind[k] = lo;
+    for (int k = row_ptr[row]; k < row_ptr[row + 1]; ++k)
+        row_ind[k] = row;
 }
-
-__global__ void build_transpose_map(
-    const int *__restrict__ A_row_ind,
-    const int *__restrict__ A_col_ind,
-    const int *__restrict__ At_row_ptr,
-    const int *__restrict__ At_col_ind,
-    int nnz,
-    int *__restrict__ A_to_At)
-{
-    int k = blockIdx.x * blockDim.x + threadIdx.x;
-    if (k >= nnz)
-        return;
-
-    int i = A_row_ind[k];
-    int j = A_col_ind[k];
-
-    int lo = At_row_ptr[j];
-    int hi = At_row_ptr[j + 1] - 1;
-
-    while (lo <= hi)
-    {
-        int mid = (lo + hi) >> 1;
-        int col = At_col_ind[mid];
-        if (col == i)
-        {
-            A_to_At[k] = mid;
-            return;
-        }
-        else if (col < i)
-            lo = mid + 1;
-        else
-            hi = mid - 1;
-    }
-}
-
 
 __global__ void hsd_gradient_step_kernel(
     double *__restrict__ out,
