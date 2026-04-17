@@ -717,10 +717,15 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
 static void sync_hsd_scalars_to_host(pdhg_solver_state_t *state)
 {
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
     double h[HSD_SCALARS_COUNT];
-    CUDA_CHECK(cudaMemcpy(h, state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
+    CUDA_CHECK(cudaMemcpyAsync(h, state->hsd_scalars_d,
+                               HSD_SCALARS_COUNT * sizeof(double),
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     state->current_primal_scale              = h[HSD_PRIMAL_SCALE    + HSD_CURRENT];
     state->reflected_primal_scale            = h[HSD_PRIMAL_SCALE    + HSD_REFLECTED];
     state->pdhg_primal_scale                 = h[HSD_PRIMAL_SCALE    + HSD_PDHG];
@@ -1085,9 +1090,12 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         delta_constraint_offset,
         delta_bound_offset);
 
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaEventSynchronize(state->event_A));
-    CUDA_CHECK(cudaMemcpy(&state->fixed_point_error, state->fixed_point_error_d, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpyAsync(&state->fixed_point_error,
+                               state->fixed_point_error_d,
+                               sizeof(double),
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
 static void perform_restart(pdhg_solver_state_t *state, const step_size_parameters_t *step_size_params)
@@ -1116,13 +1124,12 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
         state->restart_distances_d,
         state->workspace_scalars_d);
 
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaEventSynchronize(state->event_A));
-
     double restart_distances_h[RESTART_DISTANCE_COUNT];
-    CUDA_CHECK(cudaMemcpy(restart_distances_h, state->restart_distances_d,
-                          RESTART_DISTANCE_COUNT * sizeof(double),
-                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpyAsync(restart_distances_h, state->restart_distances_d,
+                               RESTART_DISTANCE_COUNT * sizeof(double),
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
     double primal_dist = restart_distances_h[RESTART_DISTANCE_PRIMAL];
     double dual_dist = restart_distances_h[RESTART_DISTANCE_DUAL];
@@ -1225,24 +1232,27 @@ static cuhsdlp_result_t *create_result_from_state(pdhg_solver_state_t *state, co
     cuhsdlp_result_t *results = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
 
     rescale_solution(state);
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
     results->primal_solution = (double *)safe_malloc(state->var_bytes);
     results->dual_solution = (double *)safe_malloc(state->con_bytes);
     results->reduced_cost = (double *)safe_malloc(state->var_bytes);
 
-    CUDA_CHECK(cudaMemcpy(results->primal_solution,
-                          state->pdhg_primal_solution,
-                          state->var_bytes, 
-                          cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(results->dual_solution,
-                          state->pdhg_dual_solution,
-                          state->con_bytes, 
-                          cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(results->reduced_cost,
-                          state->pdhg_dual_slack,
-                          state->var_bytes, 
-                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpyAsync(results->primal_solution,
+                               state->pdhg_primal_solution,
+                               state->var_bytes,
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(results->dual_solution,
+                               state->pdhg_dual_solution,
+                               state->con_bytes,
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(results->reduced_cost,
+                               state->pdhg_dual_slack,
+                               state->var_bytes,
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
     results->num_variables = original_problem->num_variables;
     results->num_constraints = original_problem->num_constraints;

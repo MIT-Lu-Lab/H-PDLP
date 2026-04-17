@@ -235,12 +235,12 @@ static void bound_objective_rescaling(
         state->rescaling_factors_d,
         state->workspace_scalars_d);
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
     double scaling_factors_h[RESCALING_FACTOR_COUNT];
-    CUDA_CHECK(cudaMemcpy(scaling_factors_h, state->rescaling_factors_d,
-                          RESCALING_FACTOR_COUNT * sizeof(double),
-                          cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpyAsync(scaling_factors_h, state->rescaling_factors_d,
+                               RESCALING_FACTOR_COUNT * sizeof(double),
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
     double constraint_scale = scaling_factors_h[RESCALING_FACTOR_CONSTRAINT];
     double objective_scale = scaling_factors_h[RESCALING_FACTOR_OBJECTIVE];
