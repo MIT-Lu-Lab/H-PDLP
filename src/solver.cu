@@ -722,8 +722,8 @@ static void allocate_solver_work_vectors(
 
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
 {
-    state->current_primal_scale = 1.0;
-    state->pdhg_primal_scale = 1.0;
+    state->current_homogeneous_scale = 1.0;
+    state->pdhg_homogeneous_scale = 1.0;
     state->pdhg_dual_constraint_offset = 1.0;
     state->pdhg_dual_bound_offset = 1.0;
 }
@@ -1242,7 +1242,7 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
                                state->pdhg_dual_slack, state->var_bytes,
                                cudaMemcpyDeviceToDevice, state->stream_A));
 
-    state->current_primal_scale = state->pdhg_primal_scale;
+    state->current_homogeneous_scale = state->pdhg_homogeneous_scale;
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
     CUDA_CHECK(cudaMemsetAsync(state->cone_newton_constraint_d, 0, sizeof(double), state->stream_A));
@@ -1254,7 +1254,7 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
 
 static void normalize_hsd_variables(pdhg_solver_state_t *state)
 {
-    double tau = state->pdhg_primal_scale;
+    double tau = state->pdhg_homogeneous_scale;
     if (!isfinite(tau) || tau <= 1.0)
         return;
     double inv_tau = 1.0 / tau;
@@ -1273,7 +1273,7 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
                              state->dscal_alpha_d,
                              state->pdhg_dual_slack, 1));
     normalize_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d, inv_tau);
-    state->pdhg_primal_scale = 1.0;
+    state->pdhg_homogeneous_scale = 1.0;
     state->pdhg_dual_constraint_offset *= inv_tau;
     state->pdhg_dual_bound_offset *= inv_tau;
 }
@@ -1322,7 +1322,7 @@ static cuhsdlp_result_t *create_result_from_state(pdhg_solver_state_t *state, co
     results->termination_reason = state->termination_reason;
 
     results->restart_count = state->restart_count;
-    results->homogeneous_scale = state->pdhg_primal_scale;
+    results->homogeneous_scale = state->pdhg_homogeneous_scale;
     results->final_step_size_primal = state->step_size_primal;
     results->final_step_size_dual = state->step_size_dual;
     results->final_step_size_homogeneous = state->step_size_homogeneous;
@@ -1340,7 +1340,7 @@ static void rescale_solution(pdhg_solver_state_t *state)
         state->constraint_rescaling,
         state->objective_vector_rescaling,
         state->constraint_bound_rescaling,
-        state->pdhg_primal_scale,
+        state->pdhg_homogeneous_scale,
         state->num_variables,
         state->num_constraints);
 }

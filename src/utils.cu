@@ -587,7 +587,7 @@ void check_termination_criteria(
 {
     solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
 
-    double primal_scale = solver_state->pdhg_primal_scale;
+    double primal_scale = solver_state->pdhg_homogeneous_scale;
     double optimality_tolerance = criteria->eps_optimal_relative;
 
     if (primal_scale > 1e-8)
@@ -784,8 +784,8 @@ static void store_residual_metrics(
     state->dual_objective_value = residual_metrics_h[RESIDUAL_METRIC_DUAL_OBJECTIVE];
     state->objective_gap = residual_metrics_h[RESIDUAL_METRIC_OBJECTIVE_GAP];
     state->relative_objective_gap = residual_metrics_h[RESIDUAL_METRIC_RELATIVE_GAP];
-    state->current_primal_scale = residual_metrics_h[RESIDUAL_METRIC_CURRENT_PRIMAL_SCALE];
-    state->pdhg_primal_scale = residual_metrics_h[RESIDUAL_METRIC_PDHG_PRIMAL_SCALE];
+    state->current_homogeneous_scale = residual_metrics_h[RESIDUAL_METRIC_CURRENT_PRIMAL_SCALE];
+    state->pdhg_homogeneous_scale = residual_metrics_h[RESIDUAL_METRIC_PDHG_PRIMAL_SCALE];
     state->pdhg_dual_constraint_offset = residual_metrics_h[RESIDUAL_METRIC_PDHG_DUAL_CONSTRAINT_OFFSET];
     state->pdhg_dual_bound_offset = residual_metrics_h[RESIDUAL_METRIC_PDHG_DUAL_BOUND_OFFSET];
 }
@@ -928,7 +928,7 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, boo
                state->step_size_primal,
                state->step_size_dual,
                state->step_size_homogeneous,
-               state->current_primal_scale);
+               state->current_homogeneous_scale);
     }
 }
 

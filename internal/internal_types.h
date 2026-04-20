@@ -143,8 +143,8 @@ typedef struct
     double *reflected_dual_slack;
     double *delta_dual_slack;
 
-    double current_primal_scale;
-    double pdhg_primal_scale;
+    double current_homogeneous_scale;
+    double pdhg_homogeneous_scale;
     double pdhg_dual_constraint_offset;
     double pdhg_dual_bound_offset;
 
