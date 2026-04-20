@@ -70,7 +70,7 @@ __global__ void hsd_halpern_kernel(
     double dual_step,
     int scalar_offset,
     bool is_major);
-__global__ void hsd_primal_scale_update_kernel(
+__global__ void hsd_homogeneous_scale_update_kernel(
     double *hsd_scalars_d,
     const double *c_dot_x_d,
     double primal_step,
@@ -192,7 +192,7 @@ static void initialize_iterates_from_starts(
     size_t var_bytes,
     size_t con_bytes);
 static void initialize_solver_progress(pdhg_solver_state_t *state);
-void hsd_update_primal_scale(
+void hsd_update_homogeneous_scale(
     pdhg_solver_state_t *state, 
     const int k_offset,
     const double reflection_coefficient,
@@ -848,7 +848,7 @@ static void run_hsd_iteration_step(
     double reflection_coefficient,
     bool is_major)
 {
-    hsd_update_primal_scale(state, k_offset, reflection_coefficient, is_major);
+    hsd_update_homogeneous_scale(state, k_offset, reflection_coefficient, is_major);
     CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
     hsd_prepare_dual_solution_update(state, cone_params);
@@ -858,7 +858,7 @@ static void run_hsd_iteration_step(
     hsd_update_primal_solution(state, k_offset, reflection_coefficient, is_major);
 }
 
-void hsd_update_primal_scale(
+void hsd_update_homogeneous_scale(
     pdhg_solver_state_t *state,
     const int k_offset,
     const double reflection_coefficient,
@@ -872,7 +872,7 @@ void hsd_update_primal_scale(
                             state->current_primal_solution, 1,
                             state->workspace_scalars_d + WORKSPACE_SCALAR_C_DOT_X));
 
-    hsd_primal_scale_update_kernel<<<1, 1, 0, state->stream_A>>>(
+    hsd_homogeneous_scale_update_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_scalars_d,
         state->workspace_scalars_d + WORKSPACE_SCALAR_C_DOT_X,
         homogeneous_step,
@@ -1714,7 +1714,7 @@ __global__ void hsd_halpern_kernel(
 }
 
 
-__global__ void hsd_primal_scale_update_kernel(
+__global__ void hsd_homogeneous_scale_update_kernel(
     double *hsd_scalars_d,
     const double *c_dot_x_d,
     double primal_step,
