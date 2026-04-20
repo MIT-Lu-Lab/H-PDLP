@@ -29,7 +29,7 @@ enum {
     HSD_REFLECTED = 1,
     HSD_PDHG      = 2,
     HSD_INITIAL   = 3,
-    HSD_PRIMAL_SCALE    = 0,
+    HSD_SCALE           = 0,
     HSD_DUAL_CONSTRAINT = 4,
     HSD_DUAL_BOUND      = 8,
     HSD_SCALARS_COUNT   = 12,

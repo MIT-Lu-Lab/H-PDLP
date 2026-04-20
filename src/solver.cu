@@ -1582,7 +1582,7 @@ __global__ void cone_newton_solve_kernel(
         scale = *cone_state;
         tau_lo = 0.0;
         tau_hi = INFINITY;
-        neg_scalar = step_size * hsd_scalars[HSD_PRIMAL_SCALE + HSD_REFLECTED]
+        neg_scalar = step_size * hsd_scalars[HSD_SCALE + HSD_REFLECTED]
                    - hsd_scalars[scalar_offset + HSD_CURRENT];
         converged = 0;
     }
@@ -1700,7 +1700,7 @@ __global__ void hsd_halpern_kernel(
         int k = base_count + k_offset;
         double weight = (double)(k) / (double)(k + 1);
         double unprojected = hsd_scalars_d[scalar_offset + HSD_CURRENT]
-                           - dual_step * hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED];
+                           - dual_step * hsd_scalars_d[HSD_SCALE + HSD_REFLECTED];
         double projected = unprojected + *cone_newton_buffer;
         if (is_major)
         {
@@ -1727,19 +1727,19 @@ __global__ void hsd_primal_scale_update_kernel(
     double gradient = c_dot_x
                     + hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_CURRENT]
                     + hsd_scalars_d[HSD_DUAL_BOUND      + HSD_CURRENT];
-    double projected = fmax(0.0, hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_CURRENT] + primal_step * gradient);
+    double projected = fmax(0.0, hsd_scalars_d[HSD_SCALE + HSD_CURRENT] + primal_step * gradient);
 
     if (is_major)
     {
-        hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG] = projected;
+        hsd_scalars_d[HSD_SCALE + HSD_PDHG] = projected;
     }
 
     int k = inner_count + k_offset;
     double weight = (double)(k) / (double)(k + 1);
-    double reflected = 2.0 * projected - hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_CURRENT];
-    double mixed = reflection_coefficient * reflected + (1.0 - reflection_coefficient) * hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_CURRENT];
-    hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_CURRENT] = weight * mixed + (1.0 - weight) * hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_INITIAL];
-    hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED] = reflected;
+    double reflected = 2.0 * projected - hsd_scalars_d[HSD_SCALE + HSD_CURRENT];
+    double mixed = reflection_coefficient * reflected + (1.0 - reflection_coefficient) * hsd_scalars_d[HSD_SCALE + HSD_CURRENT];
+    hsd_scalars_d[HSD_SCALE + HSD_CURRENT] = weight * mixed + (1.0 - weight) * hsd_scalars_d[HSD_SCALE + HSD_INITIAL];
+    hsd_scalars_d[HSD_SCALE + HSD_REFLECTED] = reflected;
 }
 
 __global__ void hsd_primal_solution_update_kernel(
@@ -1761,7 +1761,7 @@ __global__ void hsd_primal_solution_update_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
-    double tau_refl = hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED];
+    double tau_refl = hsd_scalars_d[HSD_SCALE + HSD_REFLECTED];
     int k = base_count + k_offset;
     double weight = (double)(k) / (double)(k + 1);
 
@@ -1845,8 +1845,8 @@ __global__ void compute_fixed_point_error_kernel(
     double step_size_homogeneous)
 {
     double delta_primal_scale =
-        hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_REFLECTED] -
-        hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG];
+        hsd_scalars_d[HSD_SCALE + HSD_REFLECTED] -
+        hsd_scalars_d[HSD_SCALE + HSD_PDHG];
     double delta_constraint_offset =
         hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_REFLECTED] -
         hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_PDHG];
@@ -1880,7 +1880,7 @@ __global__ void init_hsd_scalars_kernel(double *hsd_scalars_d)
 
 __global__ void restart_hsd_scalars_kernel(double *hsd_scalars_d)
 {
-    const int bases[3] = {HSD_PRIMAL_SCALE, HSD_DUAL_CONSTRAINT, HSD_DUAL_BOUND};
+    const int bases[3] = {HSD_SCALE, HSD_DUAL_CONSTRAINT, HSD_DUAL_BOUND};
     for (int i = 0; i < 3; ++i)
     {
         double pdhg = hsd_scalars_d[bases[i] + HSD_PDHG];
@@ -1892,7 +1892,7 @@ __global__ void restart_hsd_scalars_kernel(double *hsd_scalars_d)
 
 __global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau)
 {
-    hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG] = 1.0;
+    hsd_scalars_d[HSD_SCALE + HSD_PDHG] = 1.0;
     hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_PDHG] *= inv_tau;
     hsd_scalars_d[HSD_DUAL_BOUND + HSD_PDHG] *= inv_tau;
 }

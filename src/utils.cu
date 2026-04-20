@@ -809,7 +809,7 @@ __global__ void compute_residual_kernel(
     int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double tau = hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG];
+    double tau = hsd_scalars_d[HSD_SCALE + HSD_PDHG];
     double inv_tau = (fabs(tau) > 1e-30) ? 1.0 / tau : 0.0;
 
     if (i < n_cons)
@@ -837,7 +837,7 @@ __global__ void compute_residual_metrics_kernel(
     double original_objective_norm,
     double objective_constant)
 {
-    double primal_scale = hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG];
+    double primal_scale = hsd_scalars_d[HSD_SCALE + HSD_PDHG];
     double inv_primal_scale = (fabs(primal_scale) > 1e-30) ? 1.0 / primal_scale : 0.0;
     double pdhg_dual_constraint_offset = hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_PDHG];
     double pdhg_dual_bound_offset = hsd_scalars_d[HSD_DUAL_BOUND + HSD_PDHG];
@@ -866,8 +866,8 @@ __global__ void compute_residual_metrics_kernel(
     residual_metrics_d[RESIDUAL_METRIC_DUAL_OBJECTIVE] = dual_objective_value;
     residual_metrics_d[RESIDUAL_METRIC_OBJECTIVE_GAP] = objective_gap;
     residual_metrics_d[RESIDUAL_METRIC_RELATIVE_GAP] = relative_objective_gap;
-    residual_metrics_d[RESIDUAL_METRIC_CURRENT_PRIMAL_SCALE] = hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_CURRENT];
-    residual_metrics_d[RESIDUAL_METRIC_PDHG_PRIMAL_SCALE] = hsd_scalars_d[HSD_PRIMAL_SCALE + HSD_PDHG];
+    residual_metrics_d[RESIDUAL_METRIC_CURRENT_PRIMAL_SCALE] = hsd_scalars_d[HSD_SCALE + HSD_CURRENT];
+    residual_metrics_d[RESIDUAL_METRIC_PDHG_PRIMAL_SCALE] = hsd_scalars_d[HSD_SCALE + HSD_PDHG];
     residual_metrics_d[RESIDUAL_METRIC_PDHG_DUAL_CONSTRAINT_OFFSET] = hsd_scalars_d[HSD_DUAL_CONSTRAINT + HSD_PDHG];
     residual_metrics_d[RESIDUAL_METRIC_PDHG_DUAL_BOUND_OFFSET] = hsd_scalars_d[HSD_DUAL_BOUND + HSD_PDHG];
 }
