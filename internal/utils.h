@@ -114,8 +114,15 @@ extern "C"
 
     bool optimality_criteria_met(
         const pdhg_solver_state_t *state,
-        double rel_opt_tol,
-        double rel_feas_tol);
+        const termination_criteria_t *criteria);
+
+    bool primal_infeasibility_criteria_met(
+        const pdhg_solver_state_t *state,
+        const termination_criteria_t *criteria);
+
+    bool dual_infeasibility_criteria_met(
+        const pdhg_solver_state_t *state,
+        const termination_criteria_t *criteria);
 
     void check_termination_criteria(
         pdhg_solver_state_t *solver_state,

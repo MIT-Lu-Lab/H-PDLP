@@ -46,7 +46,7 @@ __global__ void scale_csr_nnz_kernel(
     const int *__restrict__ cons_to_transpose_pos,
     const double *__restrict__ var_rescaling,
     const double *__restrict__ cons_rescaling,
-    int nnz);
+    int n_nnzs);
 __global__ void compute_csr_row_absmax_kernel(
     const int *__restrict__ row_ptr,
     const double *__restrict__ matrix_vals,
@@ -61,7 +61,8 @@ __global__ void compute_csr_row_powsum_kernel(
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
-    const double *workspace_scalars_d);
+    const double *bound_norm,
+    const double *objective_norm);
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
@@ -110,12 +111,13 @@ static void scale_problem(
 {
     int num_variables = state->num_variables;
     int num_constraints = state->num_constraints;
+    int num_nonzeros = state->constraint_matrix->num_nonzeros;
 
     scale_variables_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         state->objective_vector,
         state->variable_lower_bound,
         state->variable_upper_bound,
-        state->initial_primal_solution,
+        state->initial_primal_solution_d,
         variable_rescaling,
         num_variables);
     CUDA_CHECK(cudaGetLastError());
@@ -123,7 +125,7 @@ static void scale_problem(
     scale_constraints_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_lower_bound,
         state->constraint_upper_bound,
-        state->initial_dual_solution,
+        state->initial_dual_solution_d,
         constraint_rescaling,
         num_constraints);
     CUDA_CHECK(cudaGetLastError());
@@ -136,7 +138,7 @@ static void scale_problem(
         state->constraint_matrix->transpose_map,
         variable_rescaling,
         constraint_rescaling,
-        state->constraint_matrix->num_nonzeros);
+        num_nonzeros);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -158,7 +160,7 @@ static void ruiz_rescaling(
             constraint_rescaling);
         clamp_sqrt_and_accum_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
             constraint_rescaling,
-            state->constraint_rescaling,
+            state->constraint_rescaling_d,
             num_constraints);
 
         compute_csr_row_absmax_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
@@ -168,7 +170,7 @@ static void ruiz_rescaling(
             variable_rescaling);
         clamp_sqrt_and_accum_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
             variable_rescaling,
-            state->variable_rescaling,
+            state->variable_rescaling_d,
             num_variables);
 
         scale_problem(state, constraint_rescaling, variable_rescaling);
@@ -192,7 +194,7 @@ static void pock_chambolle_rescaling(
         constraint_rescaling);
     clamp_sqrt_and_accum_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         constraint_rescaling,
-        state->constraint_rescaling,
+        state->constraint_rescaling_d,
         num_constraints);
 
     compute_csr_row_powsum_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
@@ -203,7 +205,7 @@ static void pock_chambolle_rescaling(
         variable_rescaling);
     clamp_sqrt_and_accum_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         variable_rescaling,
-        state->variable_rescaling,
+        state->variable_rescaling_d,
         num_variables);
 
     scale_problem(state, constraint_rescaling, variable_rescaling);
@@ -215,32 +217,41 @@ static void bound_objective_rescaling(
     const int num_constraints = state->num_constraints;
     const int num_variables = state->num_variables;
 
-    double *bound_contrib_d = state->dual_vec_buffer;
+    double *bound_contrib_d = state->dual_vec_buffer_d;
     compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         bound_contrib_d,
         state->constraint_lower_bound,
         state->constraint_upper_bound,
         num_constraints);
 
-    size_t cub_buffer_bytes = state->cub_reduce_workspace_bytes;
-    CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace, cub_buffer_bytes,
-                                       bound_contrib_d, state->workspace_scalars_d + WORKSPACE_SCALAR_PRIMAL_NORM,
-                                       num_constraints, state->stream_A));
+    CUDA_CHECK(cub::DeviceReduce::Sum(
+        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_bytes,
+        bound_contrib_d,
+        state->precond_bound_norm_mp,
+        num_constraints,
+        state->stream_A));
 
-    CUBLAS_CHECK(cublasDnrm2_v2_64(state->blas_handle_A,
-                                   state->num_variables,
-                                   state->objective_vector, 1,
-                                   state->workspace_scalars_d + WORKSPACE_SCALAR_DUAL_NORM));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A,
+        state->num_variables,
+        state->objective_vector,
+        1,
+        state->precond_objective_norm_mp));
+
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    *state->precond_bound_norm_mp = sqrt(*state->precond_bound_norm_mp);
 
     compute_bound_objective_scales_kernel<<<1, 1, 0, state->stream_A>>>(
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
-        state->workspace_scalars_d);
+        state->precond_bound_norm_mp,
+        state->precond_objective_norm_mp);
 
     scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->constraint_lower_bound,
         state->constraint_upper_bound,
-        state->initial_dual_solution,
+        state->initial_dual_solution_d,
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
         num_constraints);
@@ -249,7 +260,7 @@ static void bound_objective_rescaling(
         state->objective_vector,
         state->variable_lower_bound,
         state->variable_upper_bound,
-        state->initial_primal_solution,
+        state->initial_primal_solution_d,
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
         num_variables);
@@ -266,13 +277,11 @@ static void bound_objective_rescaling(
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
-    const double *workspace_scalars_d)
+    const double *bound_norm,
+    const double *objective_norm)
 {
-    double bound_norm = sqrt(workspace_scalars_d[WORKSPACE_SCALAR_PRIMAL_NORM]);
-    double objective_norm = workspace_scalars_d[WORKSPACE_SCALAR_DUAL_NORM];
-
-    *cons_scale_d = 1.0 / (bound_norm + 1.0);
-    *obj_scale_d = 1.0 / (objective_norm + 1.0);
+    *cons_scale_d = 1.0 / (bound_norm[0] + 1.0);
+    *obj_scale_d = 1.0 / (objective_norm[0] + 1.0);
 }
 
 void rescale_problem(
@@ -297,9 +306,11 @@ void rescale_problem(
     clock_t start_rescaling = clock();
 
     fill_ones_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
-        state->constraint_rescaling, num_constraints);
+        state->constraint_rescaling_d, 
+        num_constraints);
     fill_ones_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
-        state->variable_rescaling, num_variables);
+        state->variable_rescaling_d, 
+        num_variables);
 
     double *constraint_rescaling = NULL;
     double *variable_rescaling = NULL;
@@ -325,9 +336,8 @@ void rescale_problem(
 
     state->constraint_bound_rescaling = 1.0;
     state->objective_vector_rescaling = 1.0;
-    const double one = 1.0;
-    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &one, sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &one, sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &HOST_ONE, sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &HOST_ONE, sizeof(double), cudaMemcpyHostToDevice));
     if (scaling_params->bound_objective_rescaling)
     {
         if (verbose)
@@ -393,17 +403,18 @@ __global__ void scale_constraints_kernel(double *__restrict__ cons_lb,
     init_dual_sol[i] *= ei;
 }
 
-__global__ void scale_csr_nnz_kernel(const int *__restrict__ cons_row_ind,
-                                     const int *__restrict__ cons_col_ind,
-                                     double *__restrict__ cons_val,
-                                     double *__restrict__ cons_transpose_val,
-                                     const int *__restrict__ cons_to_transpose_pos,
-                                     const double *__restrict__ var_rescaling,
-                                     const double *__restrict__ cons_rescaling,
-                                     int nnz)
+__global__ void scale_csr_nnz_kernel(
+    const int *__restrict__ cons_row_ind,
+    const int *__restrict__ cons_col_ind,
+    double *__restrict__ cons_val,
+    double *__restrict__ cons_transpose_val,
+    const int *__restrict__ cons_to_transpose_pos,
+    const double *__restrict__ var_rescaling,
+    const double *__restrict__ cons_rescaling,
+    int n_nnzs)
 {
     for (int k = blockIdx.x * blockDim.x + threadIdx.x;
-         k < nnz;
+         k < n_nnzs;
          k += gridDim.x * blockDim.x)
     {
         int i = cons_row_ind[k];
@@ -414,10 +425,11 @@ __global__ void scale_csr_nnz_kernel(const int *__restrict__ cons_row_ind,
     }
 }
 
-__global__ void compute_csr_row_absmax_kernel(const int *__restrict__ row_ptr,
-                                              const double *__restrict__ matrix_vals,
-                                              int n_rows,
-                                              double *__restrict__ row_absmax_values)
+__global__ void compute_csr_row_absmax_kernel(
+    const int *__restrict__ row_ptr,
+    const double *__restrict__ matrix_vals,
+    int n_rows,
+    double *__restrict__ row_absmax_values)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_rows)
@@ -435,7 +447,9 @@ __global__ void compute_csr_row_absmax_kernel(const int *__restrict__ row_ptr,
     row_absmax_values[i] = m;
 }
 
-__device__ __forceinline__ double pow_fast(double v, double p)
+__device__ __forceinline__ double pow_fast(
+    double v, 
+    double p)
 {
     if (p == 2.0)
         return v * v;
@@ -446,11 +460,12 @@ __device__ __forceinline__ double pow_fast(double v, double p)
     return pow(v, p);
 }
 
-__global__ void compute_csr_row_powsum_kernel(const int *__restrict__ row_ptr,
-                                              const double *__restrict__ matrix_vals,
-                                              int n_rows,
-                                              double degree,
-                                              double *__restrict__ row_powsum_values)
+__global__ void compute_csr_row_powsum_kernel(
+    const int *__restrict__ row_ptr,
+    const double *__restrict__ matrix_vals,
+    int n_rows,
+    double degree,
+    double *__restrict__ row_powsum_values)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_rows)
@@ -467,9 +482,10 @@ __global__ void compute_csr_row_powsum_kernel(const int *__restrict__ row_ptr,
     row_powsum_values[i] = acc;
 }
 
-__global__ void clamp_sqrt_and_accum_kernel(double *__restrict__ scaling_factors,
-                                            double *__restrict__ cumulative_rescaling,
-                                            int n_vars)
+__global__ void clamp_sqrt_and_accum_kernel(
+    double *__restrict__ scaling_factors,
+    double *__restrict__ cumulative_rescaling,
+    int n_vars)
 {
     for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n_vars; t += blockDim.x * gridDim.x)
     {
@@ -480,10 +496,11 @@ __global__ void clamp_sqrt_and_accum_kernel(double *__restrict__ scaling_factors
     }
 }
 
-__global__ void compute_bound_contrib_kernel(double *__restrict__ contrib,
-                                             const double *__restrict__ cons_lb,
-                                             const double *__restrict__ cons_ub,
-                                             int n_cons)
+__global__ void compute_bound_contrib_kernel(
+    double *__restrict__ contrib,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_cons)
@@ -504,12 +521,13 @@ __global__ void compute_bound_contrib_kernel(double *__restrict__ contrib,
     contrib[i] = acc;
 }
 
-__global__ void scale_bounds_kernel(double *__restrict__ cons_lb,
-                                    double *__restrict__ cons_ub,
-                                    double *__restrict__ init_dual_sol,
-                                    const double *__restrict__ cons_scale_d,
-                                    const double *__restrict__ obj_scale_d,
-                                    int n_cons)
+__global__ void scale_bounds_kernel(
+    double *__restrict__ cons_lb,
+    double *__restrict__ cons_ub,
+    double *__restrict__ init_dual_sol,
+    const double *__restrict__ cons_scale_d,
+    const double *__restrict__ obj_scale_d,
+    int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n_cons)
@@ -521,12 +539,13 @@ __global__ void scale_bounds_kernel(double *__restrict__ cons_lb,
     init_dual_sol[i] *= obj_scale;
 }
 
-__global__ void scale_objective_kernel(double *__restrict__ obj_vec,
-                                       double *__restrict__ var_lb,
-                                       double *__restrict__ var_ub,
-                                       double *__restrict__ init_primal_sol,
-                                       const double *__restrict__ cons_scale_d,
-                                       const double *__restrict__ obj_scale_d,
+__global__ void scale_objective_kernel(
+    double *__restrict__ obj_vec,
+    double *__restrict__ var_lb,
+    double *__restrict__ var_ub,
+    double *__restrict__ init_primal_sol,
+    const double *__restrict__ cons_scale_d,
+    const double *__restrict__ obj_scale_d,
                                        int n_vars)
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x;
