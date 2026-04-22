@@ -47,7 +47,7 @@ __global__ void compute_residual_kernel(
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ primal_sol,
-    const double *__restrict__ hsd_scalars_d,
+    const double *scale_pdhg,
     double *__restrict__ homogeneous_dual_res,
     double *__restrict__ constraint_recession_res,
     double *__restrict__ variable_recession_res,
@@ -61,9 +61,21 @@ __global__ void compute_support_function_contrib_kernel(
     int n);
 __global__ void compute_residual_metrics_kernel(
     pdhg_metrics_t *metrics_d,
-    const double *pdhg_reduce_d,
-    const double *farkas_reduce_d,
-    const double *hsd_scalars_d,
+    const double *primal_norm,
+    const double *dual_norm,
+    const double *primal_cross,
+    const double *farkas_dual_solution_norm,
+    const double *farkas_dual_slack_norm,
+    const double *farkas_homogeneous_dual_norm,
+    const double *farkas_constraint_recession,
+    const double *farkas_variable_recession,
+    const double *farkas_support_constraint,
+    const double *farkas_support_variable,
+    const double *scale_initial,
+    const double *scale_current,
+    const double *scale_pdhg,
+    const double *dual_constraint_pdhg,
+    const double *dual_bound_pdhg,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
@@ -664,7 +676,7 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->variable_lower_bound,
         state->variable_upper_bound,
         state->pdhg_primal_solution_d,
-        state->hsd_scalars_d,
+        state->hsd_scale_pdhg_d,
         state->homogeneous_dual_residual_d,
         state->constraint_recession_residual_d,
         state->variable_recession_residual_d,
@@ -686,15 +698,15 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
             state->variable_recession_residual_d, state->num_variables);
 
         reduce_device_vector(state, state->primal_residual_d, state->num_constraints,
-                             state->pdhg_reduce_d + PDHG_PRIMAL_NORM, true);
+                             state->pdhg_primal_norm_d, true);
         reduce_device_vector(state, state->dual_residual_d, state->num_variables,
-                             state->pdhg_reduce_d + PDHG_DUAL_NORM, true);
+                             state->pdhg_dual_norm_d, true);
         reduce_device_vector(state, state->homogeneous_dual_residual_d, state->num_variables,
-                             state->farkas_reduce_d + FARKAS_HOMOGENEOUS_DUAL_NORM, true);
+                             state->farkas_homogeneous_dual_norm_d, true);
         reduce_device_vector(state, state->constraint_recession_residual_d, state->num_constraints,
-                             state->farkas_reduce_d + FARKAS_CONSTRAINT_RECESSION, true);
+                             state->farkas_constraint_recession_d, true);
         reduce_device_vector(state, state->variable_recession_residual_d, state->num_variables,
-                             state->farkas_reduce_d + FARKAS_VARIABLE_RECESSION, true);
+                             state->farkas_variable_recession_d, true);
 
         CUDA_CHECK(cudaMemcpyAsync(state->primal_vec_buffer_d, state->pdhg_primal_solution_d,
                                    state->var_bytes, cudaMemcpyDeviceToDevice, state->stream_A));
@@ -708,37 +720,37 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         abs_vector_inplace_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
             state->dual_vec_buffer_d, state->num_constraints);
         reduce_device_vector(state, state->dual_vec_buffer_d, state->num_constraints,
-                             state->farkas_reduce_d + FARKAS_DUAL_SOLUTION_NORM, true);
+                             state->farkas_dual_solution_norm_d, true);
 
         CUDA_CHECK(cudaMemcpyAsync(state->primal_vec_buffer_d, state->pdhg_dual_slack_d,
                                    state->var_bytes, cudaMemcpyDeviceToDevice, state->stream_A));
         abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
             state->primal_vec_buffer_d, state->num_variables);
         reduce_device_vector(state, state->primal_vec_buffer_d, state->num_variables,
-                             state->farkas_reduce_d + FARKAS_DUAL_SLACK_NORM, true);
+                             state->farkas_dual_slack_norm_d, true);
     }
     else
     {
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_constraints,
             state->primal_residual_d, 1,
-            state->pdhg_reduce_d + PDHG_PRIMAL_NORM));
+            state->pdhg_primal_norm_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_variables,
             state->dual_residual_d, 1,
-            state->pdhg_reduce_d + PDHG_DUAL_NORM));
+            state->pdhg_dual_norm_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_variables,
             state->homogeneous_dual_residual_d, 1,
-            state->farkas_reduce_d + FARKAS_HOMOGENEOUS_DUAL_NORM));
+            state->farkas_homogeneous_dual_norm_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_constraints,
             state->constraint_recession_residual_d, 1,
-            state->farkas_reduce_d + FARKAS_CONSTRAINT_RECESSION));
+            state->farkas_constraint_recession_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_variables,
             state->variable_recession_residual_d, 1,
-            state->farkas_reduce_d + FARKAS_VARIABLE_RECESSION));
+            state->farkas_variable_recession_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_variables,
             state->pdhg_primal_solution_d, 1,
@@ -746,11 +758,11 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_constraints,
             state->pdhg_dual_solution_d, 1,
-            state->farkas_reduce_d + FARKAS_DUAL_SOLUTION_NORM));
+            state->farkas_dual_solution_norm_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_variables,
             state->pdhg_dual_slack_d, 1,
-            state->farkas_reduce_d + FARKAS_DUAL_SLACK_NORM));
+            state->farkas_dual_slack_norm_d));
     }
 
     CUBLAS_CHECK(cublasDdot(
@@ -758,7 +770,7 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->num_variables,
         state->objective_vector, 1,
         state->pdhg_primal_solution_d, 1,
-        state->pdhg_reduce_d + PDHG_PRIMAL_CROSS));
+        state->pdhg_primal_cross_d));
 
     compute_support_function_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->dual_vec_buffer_d,
@@ -770,7 +782,7 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->cub_reduce_workspace,
         state->cub_reduce_workspace_bytes,
         state->dual_vec_buffer_d,
-        state->farkas_reduce_d + FARKAS_SUPPORT_CONSTRAINT,
+        state->farkas_support_constraint_d,
         state->num_constraints, state->stream_A));
 
     compute_support_function_contrib_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -783,14 +795,26 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->cub_reduce_workspace,
         state->cub_reduce_workspace_bytes,
         state->primal_vec_buffer_d,
-        state->farkas_reduce_d + FARKAS_SUPPORT_VARIABLE,
+        state->farkas_support_variable_d,
         state->num_variables, state->stream_A));
 
     compute_residual_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
         state->metrics_d,
-        state->pdhg_reduce_d,
-        state->farkas_reduce_d,
-        state->hsd_scalars_d,
+        state->pdhg_primal_norm_d,
+        state->pdhg_dual_norm_d,
+        state->pdhg_primal_cross_d,
+        state->farkas_dual_solution_norm_d,
+        state->farkas_dual_slack_norm_d,
+        state->farkas_homogeneous_dual_norm_d,
+        state->farkas_constraint_recession_d,
+        state->farkas_variable_recession_d,
+        state->farkas_support_constraint_d,
+        state->farkas_support_variable_d,
+        state->hsd_scale_initial_d,
+        state->hsd_scale_current_d,
+        state->hsd_scale_pdhg_d,
+        state->hsd_dual_constraint_pdhg_d,
+        state->hsd_dual_bound_pdhg_d,
         state->constraint_bound_rescaling,
         state->objective_vector_rescaling,
         state->original_bound_norm,
@@ -837,7 +861,7 @@ __global__ void compute_residual_kernel(
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ primal_sol,
-    const double *__restrict__ hsd_scalars_d,
+    const double *scale_pdhg,
     double *__restrict__ homogeneous_dual_res,
     double *__restrict__ constraint_recession_res,
     double *__restrict__ variable_recession_res,
@@ -845,7 +869,7 @@ __global__ void compute_residual_kernel(
     int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double tau = hsd_scalars_d[HSD_IDX(HSD_SCALE, HSD_PDHG)];
+    double tau = *scale_pdhg;
     double inv_tau = (fabs(tau) > 1e-30) ? 1.0 / tau : 0.0;
 
     if (i < n_cons)
@@ -904,9 +928,21 @@ __global__ void compute_support_function_contrib_kernel(
 
 __global__ void compute_residual_metrics_kernel(
     pdhg_metrics_t *metrics_d,
-    const double *pdhg_reduce_d,
-    const double *farkas_reduce_d,
-    const double *hsd_scalars_d,
+    const double *primal_norm,
+    const double *dual_norm,
+    const double *primal_cross,
+    const double *farkas_dual_solution_norm,
+    const double *farkas_dual_slack_norm,
+    const double *farkas_homogeneous_dual_norm,
+    const double *farkas_constraint_recession,
+    const double *farkas_variable_recession,
+    const double *farkas_support_constraint,
+    const double *farkas_support_variable,
+    const double *scale_initial,
+    const double *scale_current,
+    const double *scale_pdhg,
+    const double *dual_constraint_pdhg,
+    const double *dual_bound_pdhg,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
@@ -914,13 +950,13 @@ __global__ void compute_residual_metrics_kernel(
     double original_constraint_norm,
     double objective_constant)
 {
-    double primal_scale = hsd_scalars_d[HSD_IDX(HSD_SCALE, HSD_PDHG)];
+    double primal_scale = *scale_pdhg;
     double inv_primal_scale = (fabs(primal_scale) > 1e-30) ? 1.0 / primal_scale : 0.0;
-    double pdhg_dual_constraint_offset = hsd_scalars_d[HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_PDHG)];
-    double pdhg_dual_bound_offset = hsd_scalars_d[HSD_IDX(HSD_DUAL_BOUND, HSD_PDHG)];
-    double absolute_primal_residual = pdhg_reduce_d[PDHG_PRIMAL_NORM] / constraint_bound_rescaling;
-    double absolute_dual_residual = pdhg_reduce_d[PDHG_DUAL_NORM] / objective_vector_rescaling;
-    double objective_dot_primal = pdhg_reduce_d[PDHG_PRIMAL_CROSS];
+    double pdhg_dual_constraint_offset = *dual_constraint_pdhg;
+    double pdhg_dual_bound_offset = *dual_bound_pdhg;
+    double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;
+    double absolute_dual_residual = (*dual_norm) / objective_vector_rescaling;
+    double objective_dot_primal = *primal_cross;
     double scaled_dual_constraint_offset = pdhg_dual_constraint_offset * inv_primal_scale;
     double scaled_dual_bound_offset = pdhg_dual_bound_offset * inv_primal_scale;
 
@@ -937,46 +973,45 @@ __global__ void compute_residual_metrics_kernel(
 
     metrics_d->absolute_primal_residual = absolute_primal_residual;
     metrics_d->relative_primal_residual = relative_primal_residual;
-    metrics_d->absolute_dual_residual = absolute_dual_residual;
-    metrics_d->relative_dual_residual = relative_dual_residual;
+    metrics_d->absolute_dual_residual   = absolute_dual_residual;
+    metrics_d->relative_dual_residual   = relative_dual_residual;
     metrics_d->primal_objective = primal_objective_value;
-    metrics_d->dual_objective = dual_objective_value;
-    metrics_d->objective_gap = objective_gap;
+    metrics_d->dual_objective   = dual_objective_value;
+    metrics_d->objective_gap    = objective_gap;
     metrics_d->relative_objective_gap = relative_objective_gap;
-    metrics_d->initial_homogeneous_scale = hsd_scalars_d[HSD_IDX(HSD_SCALE, HSD_INITIAL)];
-    metrics_d->current_homogeneous_scale = hsd_scalars_d[HSD_IDX(HSD_SCALE, HSD_CURRENT)];
-    metrics_d->pdhg_homogeneous_scale    = hsd_scalars_d[HSD_IDX(HSD_SCALE, HSD_PDHG)];
-    metrics_d->pdhg_dual_constraint_offset = hsd_scalars_d[HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_PDHG)];
-    metrics_d->pdhg_dual_bound_offset      = hsd_scalars_d[HSD_IDX(HSD_DUAL_BOUND, HSD_PDHG)];
+    metrics_d->initial_homogeneous_scale   = *scale_initial;
+    metrics_d->current_homogeneous_scale   = *scale_current;
+    metrics_d->pdhg_homogeneous_scale      = primal_scale;
+    metrics_d->pdhg_dual_constraint_offset = pdhg_dual_constraint_offset;
+    metrics_d->pdhg_dual_bound_offset      = pdhg_dual_bound_offset;
 
-    double yc_norm = farkas_reduce_d[FARKAS_DUAL_SOLUTION_NORM];
-    double yv_norm = farkas_reduce_d[FARKAS_DUAL_SLACK_NORM];
+    double yc_norm = *farkas_dual_solution_norm;
+    double yv_norm = *farkas_dual_slack_norm;
     double dual_solution_norm = sqrt(yc_norm * yc_norm + yv_norm * yv_norm);
     double primal_solution_norm = metrics_d->primal_solution_norm;
 
     metrics_d->dual_solution_norm = dual_solution_norm;
 
-    double homogeneous_dual_norm = farkas_reduce_d[FARKAS_HOMOGENEOUS_DUAL_NORM];
+    double homogeneous_dual_norm = *farkas_homogeneous_dual_norm;
     double inv_dual_norm = (dual_solution_norm > 1.0e-30) ? 1.0 / dual_solution_norm : 0.0;
     double abs_p_infeas_residual = homogeneous_dual_norm * inv_dual_norm / objective_vector_rescaling;
     double rel_p_infeas_residual = abs_p_infeas_residual / (1.0 + original_constraint_norm);
     metrics_d->relative_primal_infeasibility_residual = rel_p_infeas_residual;
 
-    double support_total = farkas_reduce_d[FARKAS_SUPPORT_CONSTRAINT]
-                         + farkas_reduce_d[FARKAS_SUPPORT_VARIABLE];
+    double support_total = (*farkas_support_constraint) + (*farkas_support_variable);
     double support_normalized = support_total * inv_dual_norm;
     double rel_p_infeas_objective = support_normalized / (1.0 + original_bound_norm);
     metrics_d->relative_primal_infeasibility_objective = rel_p_infeas_objective;
 
-    double constr_recc = farkas_reduce_d[FARKAS_CONSTRAINT_RECESSION] / constraint_bound_rescaling;
-    double var_recc    = farkas_reduce_d[FARKAS_VARIABLE_RECESSION] / objective_vector_rescaling;
+    double constr_recc = (*farkas_constraint_recession) / constraint_bound_rescaling;
+    double var_recc    = (*farkas_variable_recession) / objective_vector_rescaling;
     double inv_primal_norm = (primal_solution_norm > 1.0e-30) ? 1.0 / primal_solution_norm : 0.0;
     double rel_constr_recc = (constr_recc * inv_primal_norm) / (1.0 + original_bound_norm);
     double rel_var_recc    = (var_recc    * inv_primal_norm) / (1.0 + original_bound_norm);
     double rel_d_infeas_residual = fmax(rel_constr_recc, rel_var_recc);
     metrics_d->relative_dual_infeasibility_residual = rel_d_infeas_residual;
 
-    double c_dot_x = pdhg_reduce_d[PDHG_PRIMAL_CROSS];
+    double c_dot_x = *primal_cross;
     double rel_d_infeas_objective = (c_dot_x * inv_primal_norm)
                                   / ((1.0 + original_objective_norm) * objective_vector_rescaling);
     metrics_d->relative_dual_infeasibility_objective = rel_d_infeas_objective;

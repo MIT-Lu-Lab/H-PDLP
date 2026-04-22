@@ -62,6 +62,7 @@ enum FarkasReduction {
     FARKAS_SUPPORT_VARIABLE      = 6,
     FARKAS_COUNT                 = 7,
 };
+
 typedef struct
 {
     int num_rows;
@@ -189,6 +190,18 @@ typedef struct
 
     double *hsd_scalars_d;
     double *hsd_inverse_scale_d;
+    double *hsd_scale_initial_d;
+    double *hsd_scale_current_d;
+    double *hsd_scale_pdhg_d;
+    double *hsd_scale_reflected_d;
+    double *hsd_dual_constraint_initial_d;
+    double *hsd_dual_constraint_current_d;
+    double *hsd_dual_constraint_pdhg_d;
+    double *hsd_dual_constraint_reflected_d;
+    double *hsd_dual_bound_initial_d;
+    double *hsd_dual_bound_current_d;
+    double *hsd_dual_bound_pdhg_d;
+    double *hsd_dual_bound_reflected_d;
 
     double *power_iteration_vector_d;
     double *power_iteration_normalized_vector_d;
@@ -221,7 +234,21 @@ typedef struct
     double  last_trial_fixed_point_error;
 
     double *pdhg_reduce_d;
+    double *pdhg_primal_norm_d;
+    double *pdhg_dual_norm_d;
+    double *pdhg_slack_norm_d;
+    double *pdhg_primal_cross_d;
+    double *pdhg_dual_cross_d;
+    double *pdhg_slack_cross_d;
+
     double *farkas_reduce_d;
+    double *farkas_dual_solution_norm_d;
+    double *farkas_dual_slack_norm_d;
+    double *farkas_homogeneous_dual_norm_d;
+    double *farkas_constraint_recession_d;
+    double *farkas_variable_recession_d;
+    double *farkas_support_constraint_d;
+    double *farkas_support_variable_d;
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;
