@@ -572,8 +572,8 @@ bool primal_infeasibility_criteria_met(
 {
     if (state->metrics_h->dual_solution_norm * criteria->eps_feasible_relative <= 1.0e-15)
         return false;
-    return state->metrics_h->relative_primal_infeasibility_residual  < criteria->eps_feasible_relative &&
-           state->metrics_h->relative_primal_infeasibility_objective > criteria->eps_optimal_relative;
+    return state->metrics_h->relative_primal_infeasibility_residual  < criteria->eps_feasible_relative * 1e-2 &&
+           state->metrics_h->relative_primal_infeasibility_objective > criteria->eps_optimal_relative * 1e-2;
 }
 
 bool dual_infeasibility_criteria_met(
@@ -582,8 +582,8 @@ bool dual_infeasibility_criteria_met(
 {
     if (state->metrics_h->primal_solution_norm * criteria->eps_feasible_relative <= 1.0e-15)
         return false;
-    return state->metrics_h->relative_dual_infeasibility_residual  < criteria->eps_feasible_relative &&
-           state->metrics_h->relative_dual_infeasibility_objective < -criteria->eps_optimal_relative;
+    return state->metrics_h->relative_dual_infeasibility_residual  < criteria->eps_feasible_relative * 1e-2 &&
+           state->metrics_h->relative_dual_infeasibility_objective < -criteria->eps_optimal_relative * 1e-2;
 }
 
 void check_termination_criteria(
