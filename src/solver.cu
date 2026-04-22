@@ -1347,7 +1347,7 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
     double tau = state->metrics_h->pdhg_homogeneous_scale;
     if (!isfinite(tau) || tau == 1.0)
         return;
-    double inv_tau = 1.0 / fmax(tau, 1.0e-12);
+    double inv_tau = 1.0 / fmax(tau, 1.0e-4);
     CUDA_CHECK(cudaMemcpyAsync(
         state->hsd_inverse_scale_d,
         &inv_tau, sizeof(double),
