@@ -95,7 +95,7 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 | `--objective_coupling_budget` | `float` | Objective coupling budget fraction. | `0.05` |
 | `--singular_value_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
 | `--singular_value_tol` | `float` | Power-iteration tolerance. | `1e-4` |
-| `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `20` |
+| `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `30` |
 | `--cone_newton_tol` | `float` | Newton tolerance for cone projection. | `1e-6` |
 
 **Termination**
