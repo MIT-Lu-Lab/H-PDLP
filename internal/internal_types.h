@@ -210,8 +210,8 @@ typedef struct
     double *power_iter_sigma_squared_mp;
     double *power_iter_residual_norm_mp;
 
-    double *cone_newton_constraint_d;
-    double *cone_newton_bound_d;
+    double *cone_constraint_scale_d;
+    double *cone_bound_scale_d;
 
     double *primal_residual_d;
     double *dual_residual_d;
