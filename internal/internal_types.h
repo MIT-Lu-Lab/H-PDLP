@@ -63,6 +63,15 @@ enum FarkasReduction {
     FARKAS_COUNT                 = 7,
 };
 
+enum ConeNewtonScalars {
+    CONE_NEWTON_SCALE             = 0,
+    CONE_NEWTON_SCALE_LOW         = 1,
+    CONE_NEWTON_SCALE_HIGH        = 2,
+    CONE_NEWTON_UNPROJECTED_SCALE = 3,
+    CONE_NEWTON_CONVERGED         = 4,
+    CONE_NEWTON_SCALARS_COUNT     = 5,
+};
+
 typedef struct
 {
     int num_rows;
@@ -74,6 +83,14 @@ typedef struct
     double *val;
     int *transpose_map;
 } cu_sparse_matrix_csr_t;
+
+typedef struct {
+    double *scalars_d;
+    double *denom_per_d;
+    double *numer_per_d;
+    double *denom_d;
+    double *numer_d;
+} cone_projection_state_t;
 
 typedef struct {
     double absolute_primal_residual;
@@ -210,14 +227,14 @@ typedef struct
     double *power_iter_sigma_squared_mp;
     double *power_iter_residual_norm_mp;
 
-    double *cone_constraint_scale_d;
-    double *cone_bound_scale_d;
-
     double *primal_residual_d;
     double *dual_residual_d;
     double *homogeneous_dual_residual_d;
     double *constraint_recession_residual_d;
     double *variable_recession_residual_d;
+
+    cone_projection_state_t constraint_cone_state;
+    cone_projection_state_t bound_cone_state;
 
     double step_size_primal;
     double step_size_dual;
