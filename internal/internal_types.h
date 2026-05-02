@@ -90,6 +90,7 @@ typedef struct {
     double *numer_per_d;
     double *denom_d;
     double *numer_d;
+    double *converged_mp;
 } cone_projection_state_t;
 
 typedef struct {

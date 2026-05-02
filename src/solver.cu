@@ -752,6 +752,10 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaHostAlloc(&state->power_iter_sigma_squared_mp, sizeof(double), cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&state->power_iter_residual_norm_mp, sizeof(double), cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&state->fixed_point_error_mp, sizeof(double), cudaHostAllocMapped));
+    CUDA_CHECK(cudaHostAlloc(&state->constraint_cone_state.converged_mp, sizeof(double), cudaHostAllocMapped));
+    *state->constraint_cone_state.converged_mp = 0.0;
+    CUDA_CHECK(cudaHostAlloc(&state->bound_cone_state.converged_mp, sizeof(double), cudaHostAllocMapped));
+    *state->bound_cone_state.converged_mp = 0.0;
 }
 
 static void allocate_device_scalars(pdhg_solver_state_t *state)
@@ -1093,8 +1097,8 @@ static void solve_cone_newton(
     cudaStream_t stream)
 {
     reset_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(cone_state->scalars_d);
+    *cone_state->converged_mp = 0.0;
 
-    double converged_h = 0.0;
     for (int iter = 0; iter < cone_params->max_iter; ++iter)
     {
         compute_cone_newton_contributions_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
@@ -1113,16 +1117,16 @@ static void solve_cone_newton(
             cone_state->numer_per_d, cone_state->numer_d, n, stream));
 
         update_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(
-            cone_state->scalars_d, 
-            cone_state->denom_d, 
-            cone_state->numer_d, 
+            cone_state->scalars_d,
+            cone_state->denom_d,
+            cone_state->numer_d,
             cone_params->tol);
 
-        CUDA_CHECK(cudaMemcpyAsync(&converged_h,
+        CUDA_CHECK(cudaMemcpyAsync(cone_state->converged_mp,
             cone_state->scalars_d + CONE_NEWTON_CONVERGED, sizeof(double),
             cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
-        if (converged_h != 0.0)
+        if (*cone_state->converged_mp != 0.0)
             break;
     }
 }
@@ -1708,6 +1712,8 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_HOST_BUFFER(state->power_iter_sigma_squared_mp);
     FREE_HOST_BUFFER(state->power_iter_residual_norm_mp);
     FREE_HOST_BUFFER(state->fixed_point_error_mp);
+    FREE_HOST_BUFFER(state->constraint_cone_state.converged_mp);
+    FREE_HOST_BUFFER(state->bound_cone_state.converged_mp);
 
 #undef FREE_HOST_BUFFER
 }
