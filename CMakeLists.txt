@@ -123,10 +123,10 @@ add_compile_definitions(PSLP_VERSION=\"${PSLP_VERSION_TAG}\")
 # SOURCE DISCOVERY & TARGET DEFINITION
 # -----------------------------------------------------------------------------
 # Using file(GLOB) for convenience, but explicit lists are recommended for robust builds
-file(GLOB C_SOURCES
+file(GLOB_RECURSE C_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
 )
-file(GLOB CU_SOURCES
+file(GLOB_RECURSE CU_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu"
 )
 # Exclude cli.c from library builds

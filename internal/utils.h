@@ -88,8 +88,8 @@ extern "C"
     void *safe_realloc(void *ptr, size_t new_size);
 
     void set_default_parameters(pdhg_parameters_t *params);
-    const char *termination_reason_to_string(termination_reason_t reason);
-    void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem);
+
+    void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params);
 
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
     void compute_objective_and_bound_norms(
@@ -102,9 +102,6 @@ extern "C"
         pdhg_solver_state_t *state,
         const power_iteration_parameters_t *power_iter_params);
 
-    void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose, bool is_restart);
-    int get_print_frequency(int iter);
-
     __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n);
 
     void reduce_device_vector(
@@ -113,10 +110,6 @@ extern "C"
         int length,
         double *output,
         bool use_linf);
-
-    void pdhg_final_log(
-        const cuhsdlp_result_t *result,
-        const pdhg_parameters_t *params);
 
 #ifdef __cplusplus
 }

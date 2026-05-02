@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "cuhsdlp.h"
+#include "display.h"
 #include "mps_parser.h"
 #include "presolver.h"
 #include "solver.h"

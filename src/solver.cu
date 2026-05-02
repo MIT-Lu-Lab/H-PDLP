@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "cone_projector.h"
 #include "cuhsdlp.h"
+#include "display.h"
 #include "internal_types.h"
 #include "preconditioner.h"
 #include "presolver.h"
@@ -231,7 +232,6 @@ void hsd_update_primal_solution(
 static void perform_restart(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
-static void print_iteration_header(bool verbose);
 static void destroy_solver_gpu_handles(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
 static void free_solver_device_buffers(pdhg_solver_state_t *state);
@@ -247,6 +247,7 @@ cuhsdlp_result_t *optimize(
     lp_problem_t *original_problem)
 {
     check_params_validity(params);
+    filter_constraint_matrix_entries(original_problem, params);
     print_initial_info(params, original_problem);
 
     cuhsdlp_presolve_info_t *presolve_info = NULL;
@@ -1416,39 +1417,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
     free_device_sparse_matrix(state->constraint_matrix_t);
 
     free(state);
-}
-
-static void print_iteration_header(bool verbose)
-{
-    if (!verbose)
-        return;
-
-    printf("-----------------------------------------------------------"
-           "-----------------------------------------------------------------\n");
-    printf(" %s | %s | %s | %s | %s | %s\n",
-           "   runtime    ",
-           "    objective     ",
-           "  absolute residuals   ",
-           "  relative residuals   ",
-           "      step sizes       ",
-           "  hsd  ");
-    printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s\n",
-           "  iter",
-           "  time ",
-           " pr obj ",
-           "  du obj ",
-           " pr res",
-           " du res",
-           "  gap  ",
-           " pr res",
-           " du res",
-           "  gap  ",
-           " pr ss ",
-           " du ss ",
-           " sc ss ",
-           " scale ");
-    printf("-----------------------------------------------------------"
-           "-----------------------------------------------------------------\n");
 }
 
 static void destroy_solver_gpu_handles(pdhg_solver_state_t *state)
