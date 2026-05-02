@@ -907,8 +907,6 @@ static void hsd_run_iteration_step(
     bool is_major)
 {
     hsd_update_homogeneous_scale(state, k_offset, reflection_coefficient, is_major);
-    CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
     hsd_prepare_dual_solution_update(state, cone_params);
     hsd_prepare_dual_slack_update(state, cone_params);
     hsd_update_dual_solution(state, k_offset, reflection_coefficient, is_major);
@@ -943,6 +941,8 @@ void hsd_update_homogeneous_scale(
         k_offset,
         reflection_coefficient,
         is_major);
+
+    CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
 }
 
 void hsd_prepare_dual_solution_update(
@@ -1022,6 +1022,8 @@ void hsd_prepare_dual_slack_update(pdhg_solver_state_t *state,
                                    const cone_parameters_t *cone_params)
 {
     double dual_step = state->step_size_dual;
+
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
 
     compute_hsd_unprojected_dual_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_At>>>(
         state->primal_vec_buffer_d,
