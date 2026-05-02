@@ -31,7 +31,7 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
-__global__ void build_row_ind(
+__global__ void build_row_ind_kernel(
     const int *__restrict__ row_ptr,
     int num_rows,
     int *__restrict__ row_ind);
@@ -157,7 +157,7 @@ __global__ void restart_hsd_scalars_kernel(
 __global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau);
 static void check_params_validity(const pdhg_parameters_t *params);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
-static void run_hsd_iteration_step(
+static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
     const cone_parameters_t *cone_params,
     int k_offset,
@@ -246,18 +246,18 @@ static void project_cone_box(
     double *projected_vector,
     const double *cone_newton_scalars_d,
     cudaStream_t stream);
-void prepare_hsd_dual_solution_update(
+void hsd_prepare_dual_solution_update(
     pdhg_solver_state_t *state,
     const cone_parameters_t *cone_params);
-void prepare_hsd_dual_slack_update(
+void hsd_prepare_dual_slack_update(
     pdhg_solver_state_t *state,
     const cone_parameters_t *cone_params);
-void update_hsd_dual_solution(
+void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
     const int k_offset,
     const double reflection_coefficient,
     bool is_major);
-void update_hsd_dual_slack(
+void hsd_update_dual_slack(
     pdhg_solver_state_t *state,
     const int k_offset,
     const double reflection_coefficient,
@@ -314,7 +314,7 @@ cuhsdlp_result_t *optimize(
 
     while (state->total_count < params->termination_criteria.iteration_limit)
     {
-        run_hsd_iteration_step(state, &params->cone_params, 1,
+        hsd_run_iteration_step(state, &params->cone_params, 1,
                                params->reflection_coefficient, true);
 
         if (do_restart)
@@ -326,11 +326,11 @@ cuhsdlp_result_t *optimize(
 
         for (int i = 2; i <= params->termination_evaluation_frequency - 1; i++)
         {
-            run_hsd_iteration_step(state, &params->cone_params, i,
+            hsd_run_iteration_step(state, &params->cone_params, i,
                                    params->reflection_coefficient, false);
         }
 
-        run_hsd_iteration_step(state, &params->cone_params,
+        hsd_run_iteration_step(state, &params->cone_params,
                                params->termination_evaluation_frequency,
                                params->reflection_coefficient, true);
 
@@ -639,7 +639,7 @@ static void upload_problem_data(
                                 (size_t)nnz * sizeof(double));
 
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix->row_ind, (size_t)nnz * sizeof(int)));
-    build_row_ind<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    build_row_ind_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
         state->constraint_matrix->row_ptr, n_cons, state->constraint_matrix->row_ind);
     CUDA_CHECK(cudaGetLastError());
 
@@ -664,7 +664,7 @@ static void upload_problem_data(
                                 (size_t)nnz * sizeof(double));
 
     CUDA_CHECK(cudaMalloc(&state->constraint_matrix_t->row_ind, (size_t)nnz * sizeof(int)));
-    build_row_ind<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+    build_row_ind_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
         state->constraint_matrix_t->row_ptr, n_vars, state->constraint_matrix_t->row_ind);
     CUDA_CHECK(cudaGetLastError());
 
@@ -899,7 +899,7 @@ static void initialize_step_size_and_primal_weight(pdhg_solver_state_t *state, c
     state->best_primal_weight = state->primal_weight;
 }
 
-static void run_hsd_iteration_step(
+static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
     const cone_parameters_t *cone_params,
     int k_offset,
@@ -909,10 +909,10 @@ static void run_hsd_iteration_step(
     hsd_update_homogeneous_scale(state, k_offset, reflection_coefficient, is_major);
     CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
-    prepare_hsd_dual_solution_update(state, cone_params);
-    prepare_hsd_dual_slack_update(state, cone_params);
-    update_hsd_dual_solution(state, k_offset, reflection_coefficient, is_major);
-    update_hsd_dual_slack(state, k_offset, reflection_coefficient, is_major);
+    hsd_prepare_dual_solution_update(state, cone_params);
+    hsd_prepare_dual_slack_update(state, cone_params);
+    hsd_update_dual_solution(state, k_offset, reflection_coefficient, is_major);
+    hsd_update_dual_slack(state, k_offset, reflection_coefficient, is_major);
     hsd_update_primal_solution(state, k_offset, reflection_coefficient, is_major);
 }
 
@@ -945,7 +945,7 @@ void hsd_update_homogeneous_scale(
         is_major);
 }
 
-void prepare_hsd_dual_solution_update(
+void hsd_prepare_dual_solution_update(
     pdhg_solver_state_t *state,
     const cone_parameters_t *cone_params)
 {
@@ -972,19 +972,20 @@ void prepare_hsd_dual_solution_update(
         dual_step,
         state->num_constraints);
 
-    solve_cone_newton(cone_params,
-                              state->dual_vec_buffer_d,
-                              state->constraint_lower_bound,
-                              state->constraint_upper_bound,
-                              state->num_constraints,
-                              state->num_blocks_dual,
-                              &state->constraint_cone_state,
-                              state->cub_reduce_workspace,
-                              state->cub_reduce_workspace_bytes,
-                              state->stream_A);
+    solve_cone_newton(
+        cone_params,
+        state->dual_vec_buffer_d,
+        state->constraint_lower_bound,
+        state->constraint_upper_bound,
+        state->num_constraints,
+        state->num_blocks_dual,
+        &state->constraint_cone_state,
+        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_bytes,
+        state->stream_A);
 }
 
-void update_hsd_dual_solution(pdhg_solver_state_t *state,
+void hsd_update_dual_solution(pdhg_solver_state_t *state,
                                           const int k_offset,
                                           const double reflection_coefficient,
                                           bool is_major)
@@ -1017,7 +1018,7 @@ void update_hsd_dual_solution(pdhg_solver_state_t *state,
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
 }
 
-void prepare_hsd_dual_slack_update(pdhg_solver_state_t *state,
+void hsd_prepare_dual_slack_update(pdhg_solver_state_t *state,
                                    const cone_parameters_t *cone_params)
 {
     double dual_step = state->step_size_dual;
@@ -1045,7 +1046,7 @@ void prepare_hsd_dual_slack_update(pdhg_solver_state_t *state,
         state->stream_At);
 }
 
-void update_hsd_dual_slack(pdhg_solver_state_t *state,
+void hsd_update_dual_slack(pdhg_solver_state_t *state,
                                        const int k_offset,
                                        const double reflection_coefficient,
                                        bool is_major)
@@ -1709,7 +1710,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 #undef FREE_HOST_BUFFER
 }
 
-__global__ void build_row_ind(const int *__restrict__ row_ptr,
+__global__ void build_row_ind_kernel(const int *__restrict__ row_ptr,
                               int num_rows,
                               int *__restrict__ row_ind)
 {
