@@ -89,14 +89,7 @@ extern "C"
 
     void set_default_parameters(pdhg_parameters_t *params);
 
-    void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params);
-
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
-    void compute_objective_and_bound_norms(
-        pdhg_solver_state_t *state,
-        norm_type_t optimality_norm,
-        double *out_objective_norm,
-        double *out_bound_norm);
 
     double estimate_maximum_singular_value(
         pdhg_solver_state_t *state,
