@@ -20,6 +20,7 @@ limitations under the License.
 #include "preconditioner.h"
 #include "presolver.h"
 #include "solver.h"
+#include "termination_checker.h"
 #include "utils.h"
 #include <cub/cub.cuh>
 #include <cublas_v2.h>

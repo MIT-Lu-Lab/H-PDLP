@@ -105,28 +105,14 @@ extern "C"
     void display_iteration_stats(const pdhg_solver_state_t *solver_state, bool verbose, bool is_restart);
     int get_print_frequency(int iter);
 
-    bool should_do_adaptive_restart(
-        pdhg_solver_state_t *solver_state,
-        const restart_parameters_t *restart_params,
-        int termination_evaluation_frequency);
+    __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n);
 
-    void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm);
-
-    bool optimality_criteria_met(
-        const pdhg_solver_state_t *state,
-        const termination_criteria_t *criteria);
-
-    bool primal_infeasibility_criteria_met(
-        const pdhg_solver_state_t *state,
-        const termination_criteria_t *criteria);
-
-    bool dual_infeasibility_criteria_met(
-        const pdhg_solver_state_t *state,
-        const termination_criteria_t *criteria);
-
-    void check_termination_criteria(
-        pdhg_solver_state_t *solver_state,
-        const termination_criteria_t *criteria);
+    void reduce_device_vector(
+        pdhg_solver_state_t *state,
+        const double *input,
+        int length,
+        double *output,
+        bool use_linf);
 
     void pdhg_final_log(
         const cuhsdlp_result_t *result,
