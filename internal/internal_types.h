@@ -63,15 +63,6 @@ enum FarkasReduction {
     FARKAS_COUNT                 = 7,
 };
 
-enum ConeNewtonScalars {
-    CONE_NEWTON_SCALE             = 0,
-    CONE_NEWTON_SCALE_LOW         = 1,
-    CONE_NEWTON_SCALE_HIGH        = 2,
-    CONE_NEWTON_UNPROJECTED_SCALE = 3,
-    CONE_NEWTON_CONVERGED         = 4,
-    CONE_NEWTON_SCALARS_COUNT     = 5,
-};
-
 typedef struct
 {
     int num_rows;
@@ -85,11 +76,17 @@ typedef struct
 } cu_sparse_matrix_csr_t;
 
 typedef struct {
-    double *scalars_d;
-    double *denom_per_d;
-    double *numer_per_d;
-    double *denom_d;
-    double *numer_d;
+    double denom;
+    double numer;
+} newton_denom_numer_t;
+
+typedef struct {
+    double *scale_d;
+    double *scale_low_d;
+    double *scale_high_d;
+    double *unprojected_scale_d;
+    double *converged_d;
+    newton_denom_numer_t *newton_denom_numer_d;
     double *converged_mp;
 } cone_projection_state_t;
 

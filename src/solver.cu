@@ -31,6 +31,32 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
+struct AddDenomNumerPair {
+    __host__ __device__ newton_denom_numer_t operator()(
+        const newton_denom_numer_t &a, const newton_denom_numer_t &b) const {
+        return {a.denom + b.denom, a.numer + b.numer};
+    }
+};
+
+struct ConeContributionOp {
+    const double *__restrict__ w_bar;
+    const double *__restrict__ lb;
+    const double *__restrict__ ub;
+    const double *__restrict__ scale_d;
+    __device__ newton_denom_numer_t operator()(int i) const {
+        double scale = *scale_d;
+        double vi = -w_bar[i];
+        double li = lb[i];
+        double ui = ub[i];
+        double bound = 0.0;
+        if (isfinite(li) && vi < li * scale)
+            bound = li;
+        else if (isfinite(ui) && vi > ui * scale)
+            bound = ui;
+        return {bound * bound, bound * vi};
+    }
+};
+
 __global__ void build_row_ind_kernel(
     const int *__restrict__ row_ptr,
     int num_rows,
@@ -45,26 +71,23 @@ __global__ void compute_hsd_unprojected_dual_kernel(
     double step_size,
     int n);
 __global__ void reset_cone_newton_scalars_kernel(
-    double *__restrict__ cone_newton_scalars_d);
-__global__ void compute_cone_newton_contributions_kernel(
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ cone_newton_scalars_d,
-    double *__restrict__ newton_denom_per,
-    double *__restrict__ newton_numer_per,
-    int n);
+    double *__restrict__ scale_low_d,
+    double *__restrict__ scale_high_d,
+    double *__restrict__ converged_d);
 __global__ void update_cone_newton_scalars_kernel(
-    double *__restrict__ cone_newton_scalars_d,
-    const double *__restrict__ newton_denom,
-    const double *__restrict__ newton_numer,
+    double *__restrict__ scale_d,
+    double *__restrict__ scale_low_d,
+    double *__restrict__ scale_high_d,
+    const double *__restrict__ unprojected_scale_d,
+    double *__restrict__ converged_d,
+    const newton_denom_numer_t *__restrict__ newton_denom_numer_d,
     double tol);
 __global__ void project_cone_box_kernel(
     double *__restrict__ projected,
     const double *__restrict__ w_bar,
     const double *__restrict__ lb,
     const double *__restrict__ ub,
-    const double *__restrict__ cone_newton_scalars_d,
+    const double *__restrict__ scale_d,
     int n);
 __global__ void update_hsd_dual_kernel(
     double *__restrict__ cur,
@@ -79,7 +102,8 @@ __global__ void update_hsd_dual_kernel(
     double *offset_current,
     double *offset_pdhg,
     double *offset_reflected,
-    const double *cone_newton_scalars_d,
+    const double *scale_d,
+    const double *unprojected_scale_d,
     bool is_major);
 __global__ void update_hsd_homogeneous_scale_kernel(
     double *scale_initial,
@@ -151,8 +175,8 @@ __global__ void compute_fixed_point_error_kernel(
 __global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
 __global__ void restart_hsd_scalars_kernel(
     double *hsd_scalars_d,
-    double *constraint_scalars_d,
-    double *bound_scalars_d,
+    double *constraint_scale_d,
+    double *bound_scale_d,
     double cone_warm_start_scale);
 __global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau);
 static void check_params_validity(const pdhg_parameters_t *params);
@@ -231,8 +255,7 @@ static void solve_cone_newton(
     const double *unprojected_vector,
     const double *lower_bound,
     const double *upper_bound,
-    int n,
-    int num_blocks,
+    int num,
     cone_projection_state_t *cone_state,
     void *cub_workspace,
     size_t cub_workspace_bytes,
@@ -241,10 +264,10 @@ static void project_cone_box(
     double *unprojected_vector,
     const double *lower_bound,
     const double *upper_bound,
-    int n,
+    int num,
     int num_blocks,
     double *projected_vector,
-    const double *cone_newton_scalars_d,
+    const double *scale_d,
     cudaStream_t stream);
 void hsd_prepare_dual_solution_update(
     pdhg_solver_state_t *state,
@@ -450,10 +473,15 @@ static pdhg_solver_state_t *initialize_solver_state(lp_problem_t *working_proble
 
     {
         int max_n = (n_vars > n_cons) ? n_vars : n_cons;
-        size_t tb_sum = 0, tb_max = 0;
-        CUDA_CHECK(cub::DeviceReduce::Sum((void *)NULL, tb_sum, (double *)NULL, (double *)NULL, max_n));
-        CUDA_CHECK(cub::DeviceReduce::Max((void *)NULL, tb_max, (double *)NULL, (double *)NULL, max_n));
-        state->cub_reduce_workspace_bytes = (tb_sum > tb_max) ? tb_sum : tb_max;
+        cub::CountingInputIterator<int> counting_it(0);
+        cub::TransformInputIterator<newton_denom_numer_t, ConeContributionOp,
+                                     cub::CountingInputIterator<int>>
+            transform_it(counting_it,
+                         ConeContributionOp{NULL, NULL, NULL, NULL});
+        CUDA_CHECK(cub::DeviceReduce::Reduce((void *)NULL,
+            state->cub_reduce_workspace_bytes,
+            transform_it, (newton_denom_numer_t *)NULL, max_n,
+            AddDenomNumerPair{}, newton_denom_numer_t{0.0, 0.0}));
         CUDA_CHECK(cudaMalloc(&state->cub_reduce_workspace, state->cub_reduce_workspace_bytes));
     }
 
@@ -795,26 +823,18 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->constraint_bound_rescaling_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->objective_vector_rescaling_d, sizeof(double)));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scalars_d,
-                                  CONE_NEWTON_SCALARS_COUNT * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.denom_per_d,
-                                  state->num_constraints * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.numer_per_d,
-                                  state->num_constraints * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.denom_d,
-                                  sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.numer_d,
-                                  sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scalars_d,
-                                  CONE_NEWTON_SCALARS_COUNT * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.denom_per_d,
-                                  state->num_variables * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.numer_per_d,
-                                  state->num_variables * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.denom_d,
-                                  sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.numer_d,
-                                  sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_low_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_high_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.unprojected_scale_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.converged_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.newton_denom_numer_d, sizeof(newton_denom_numer_t));
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_low_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_high_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.unprojected_scale_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.converged_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.newton_denom_numer_d, sizeof(newton_denom_numer_t));
 }
 
 static void apply_warm_starts(
@@ -970,7 +990,7 @@ void hsd_prepare_dual_solution_update(
         state->dual_vec_buffer_d,
         state->current_dual_solution_d,
         state->primal_product_d,
-        state->constraint_cone_state.scalars_d + CONE_NEWTON_UNPROJECTED_SCALE,
+        state->constraint_cone_state.unprojected_scale_d,
         state->hsd_dual_constraint_current_d,
         state->hsd_scale_reflected_d,
         dual_step,
@@ -982,7 +1002,6 @@ void hsd_prepare_dual_solution_update(
         state->constraint_lower_bound,
         state->constraint_upper_bound,
         state->num_constraints,
-        state->num_blocks_dual,
         &state->constraint_cone_state,
         state->cub_reduce_workspace,
         state->cub_reduce_workspace_bytes,
@@ -1000,7 +1019,7 @@ void hsd_update_dual_solution(pdhg_solver_state_t *state,
                           state->num_constraints,
                           state->num_blocks_dual,
                           state->pdhg_dual_solution_d,
-                          state->constraint_cone_state.scalars_d,
+                          state->constraint_cone_state.scale_d,
                           state->stream_A);
 
     update_hsd_dual_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -1016,7 +1035,8 @@ void hsd_update_dual_solution(pdhg_solver_state_t *state,
         state->hsd_dual_constraint_current_d,
         state->hsd_dual_constraint_pdhg_d,
         state->hsd_dual_constraint_reflected_d,
-        state->constraint_cone_state.scalars_d,
+        state->constraint_cone_state.scale_d,
+        state->constraint_cone_state.unprojected_scale_d,
         is_major);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
@@ -1033,7 +1053,7 @@ void hsd_prepare_dual_slack_update(pdhg_solver_state_t *state,
         state->primal_vec_buffer_d,
         state->current_dual_slack_d,
         state->current_primal_solution_d,
-        state->bound_cone_state.scalars_d + CONE_NEWTON_UNPROJECTED_SCALE,
+        state->bound_cone_state.unprojected_scale_d,
         state->hsd_dual_bound_current_d,
         state->hsd_scale_reflected_d,
         dual_step,
@@ -1045,7 +1065,6 @@ void hsd_prepare_dual_slack_update(pdhg_solver_state_t *state,
         state->variable_lower_bound,
         state->variable_upper_bound,
         state->num_variables,
-        state->num_blocks_primal,
         &state->bound_cone_state,
         state->cub_reduce_workspace,
         state->cub_reduce_workspace_bytes,
@@ -1064,7 +1083,7 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
         state->num_variables,
         state->num_blocks_primal,
         state->pdhg_dual_slack_d,
-        state->bound_cone_state.scalars_d,
+        state->bound_cone_state.scale_d,
         state->stream_At);
 
     update_hsd_dual_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_At>>>(
@@ -1080,7 +1099,8 @@ void hsd_update_dual_slack(pdhg_solver_state_t *state,
         state->hsd_dual_bound_current_d,
         state->hsd_dual_bound_pdhg_d,
         state->hsd_dual_bound_reflected_d,
-        state->bound_cone_state.scalars_d,
+        state->bound_cone_state.scale_d,
+        state->bound_cone_state.unprojected_scale_d,
         is_major);
 }
 
@@ -1089,43 +1109,53 @@ static void solve_cone_newton(
     const double *unprojected_vector,
     const double *lower_bound,
     const double *upper_bound,
-    int n,
-    int num_blocks,
+    int num,
     cone_projection_state_t *cone_state,
     void *cub_workspace,
     size_t cub_workspace_bytes,
     cudaStream_t stream)
 {
-    reset_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(cone_state->scalars_d);
+    reset_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(
+        cone_state->scale_low_d,
+        cone_state->scale_high_d,
+        cone_state->converged_d);
     *cone_state->converged_mp = 0.0;
+
+    cub::CountingInputIterator<int> counting_it(0);
+    cub::TransformInputIterator<newton_denom_numer_t, ConeContributionOp, cub::CountingInputIterator<int>>
+        transform_it(counting_it,
+                     ConeContributionOp{unprojected_vector, lower_bound,
+                                        upper_bound, cone_state->scale_d});
 
     for (int iter = 0; iter < cone_params->max_iter; ++iter)
     {
-        compute_cone_newton_contributions_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
-            unprojected_vector,
-            lower_bound,
-            upper_bound,
-            cone_state->scalars_d,
-            cone_state->denom_per_d,
-            cone_state->numer_per_d,
-            n);
-
-        size_t ws = cub_workspace_bytes;
-        CUDA_CHECK(cub::DeviceReduce::Sum(cub_workspace, ws,
-            cone_state->denom_per_d, cone_state->denom_d, n, stream));
-        CUDA_CHECK(cub::DeviceReduce::Sum(cub_workspace, ws,
-            cone_state->numer_per_d, cone_state->numer_d, n, stream));
+        CUDA_CHECK(cub::DeviceReduce::Reduce(
+            cub_workspace,
+            cub_workspace_bytes,
+            transform_it,
+            cone_state->newton_denom_numer_d,
+            num,
+            AddDenomNumerPair{},
+            newton_denom_numer_t{0.0, 0.0},
+            stream));
 
         update_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(
-            cone_state->scalars_d,
-            cone_state->denom_d,
-            cone_state->numer_d,
+            cone_state->scale_d,
+            cone_state->scale_low_d,
+            cone_state->scale_high_d,
+            cone_state->unprojected_scale_d,
+            cone_state->converged_d,
+            cone_state->newton_denom_numer_d,
             cone_params->tol);
 
-        CUDA_CHECK(cudaMemcpyAsync(cone_state->converged_mp,
-            cone_state->scalars_d + CONE_NEWTON_CONVERGED, sizeof(double),
-            cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaMemcpyAsync(
+            cone_state->converged_mp,
+            cone_state->converged_d,
+            sizeof(double),
+            cudaMemcpyDeviceToHost,
+            stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
+        
         if (*cone_state->converged_mp != 0.0)
             break;
     }
@@ -1135,17 +1165,17 @@ static void project_cone_box(
     double *unprojected_vector,
     const double *lower_bound,
     const double *upper_bound,
-    int n,
+    int num,
     int num_blocks,
     double *projected_vector,
-    const double *cone_newton_scalars_d,
+    const double *scale_d,
     cudaStream_t stream)
 {
     project_cone_box_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
         projected_vector, unprojected_vector,
         lower_bound, upper_bound,
-        cone_newton_scalars_d, 
-        n);
+        scale_d,
+        num);
 }
 
 void hsd_update_primal_solution(pdhg_solver_state_t *state,
@@ -1407,8 +1437,8 @@ static void perform_restart(pdhg_solver_state_t *state, const step_size_paramete
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_scalars_d,
-        state->constraint_cone_state.scalars_d,
-        state->bound_cone_state.scalars_d,
+        state->constraint_cone_state.scale_d,
+        state->bound_cone_state.scale_d,
         cone_warm_start_scale);
 
     state->inner_count = 0;
@@ -1679,16 +1709,18 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->power_iteration_product_d);
     FREE_DEVICE_BUFFER(state->power_iteration_vector_norm_scalar_d);
     FREE_DEVICE_BUFFER(state->hsd_scalars_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.scalars_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.denom_per_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.numer_per_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.denom_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.numer_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.scalars_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.denom_per_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.numer_per_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.denom_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.numer_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_low_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_high_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.unprojected_scale_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.converged_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.newton_denom_numer_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.scale_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.scale_low_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.scale_high_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.unprojected_scale_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.converged_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.newton_denom_numer_d);
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace);
     FREE_DEVICE_BUFFER(state->constraint_bound_rescaling_d);
     FREE_DEVICE_BUFFER(state->objective_vector_rescaling_d);
@@ -1748,53 +1780,31 @@ __global__ void compute_hsd_unprojected_dual_kernel(
 }
 
 __global__ void reset_cone_newton_scalars_kernel(
-    double *__restrict__ cone_newton_scalars_d)
+    double *__restrict__ scale_low_d,
+    double *__restrict__ scale_high_d,
+    double *__restrict__ converged_d)
 {
-    cone_newton_scalars_d[CONE_NEWTON_SCALE_LOW]  = 0.0;
-    cone_newton_scalars_d[CONE_NEWTON_SCALE_HIGH] = INFINITY;
-    cone_newton_scalars_d[CONE_NEWTON_CONVERGED]  = 0.0;
-}
-
-__global__ void compute_cone_newton_contributions_kernel(
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ cone_newton_scalars_d,
-    double *__restrict__ newton_denom_per,
-    double *__restrict__ newton_numer_per,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    double scale = cone_newton_scalars_d[CONE_NEWTON_SCALE];
-    double vi = -w_bar[i];
-    double li = lb[i], ui = ub[i];
-
-    double bound = 0.0;
-    if (isfinite(li) && vi < li * scale)
-        bound = li;
-    else if (isfinite(ui) && vi > ui * scale)
-        bound = ui;
-
-    newton_denom_per[i] = bound * bound;
-    newton_numer_per[i] = bound * vi;
+    *scale_low_d  = 0.0;
+    *scale_high_d = INFINITY;
+    *converged_d  = 0.0;
 }
 
 __global__ void update_cone_newton_scalars_kernel(
-    double *__restrict__ cone_newton_scalars_d,
-    const double *__restrict__ newton_denom,
-    const double *__restrict__ newton_numer,
+    double *__restrict__ scale_d,
+    double *__restrict__ scale_low_d,
+    double *__restrict__ scale_high_d,
+    const double *__restrict__ unprojected_scale_d,
+    double *__restrict__ converged_d,
+    const newton_denom_numer_t *__restrict__ newton_denom_numer_d,
     double tol)
 {
-    double scale             = cone_newton_scalars_d[CONE_NEWTON_SCALE];
-    double scale_low         = cone_newton_scalars_d[CONE_NEWTON_SCALE_LOW];
-    double scale_high        = cone_newton_scalars_d[CONE_NEWTON_SCALE_HIGH];
-    double unprojected_scale = cone_newton_scalars_d[CONE_NEWTON_UNPROJECTED_SCALE];
+    double scale             = *scale_d;
+    double scale_low         = *scale_low_d;
+    double scale_high        = *scale_high_d;
+    double unprojected_scale = *unprojected_scale_d;
 
-    double newton_step = fmax(0.0, (*newton_numer - unprojected_scale) 
-                       / (1.0 + *newton_denom));
+    double newton_step = fmax(0.0, (newton_denom_numer_d->numer - unprojected_scale)
+                       / (1.0 + newton_denom_numer_d->denom));
 
     if (newton_step > scale)
         scale_low = scale;
@@ -1810,11 +1820,11 @@ __global__ void update_cone_newton_scalars_kernel(
         new_scale = scale_low;
 
     if (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)))
-        cone_newton_scalars_d[CONE_NEWTON_CONVERGED] = 1.0;
+        *converged_d = 1.0;
 
-    cone_newton_scalars_d[CONE_NEWTON_SCALE]  = new_scale;
-    cone_newton_scalars_d[CONE_NEWTON_SCALE_LOW] = scale_low;
-    cone_newton_scalars_d[CONE_NEWTON_SCALE_HIGH] = scale_high;
+    *scale_d      = new_scale;
+    *scale_low_d  = scale_low;
+    *scale_high_d = scale_high;
 }
 
 __global__ void project_cone_box_kernel(
@@ -1822,14 +1832,14 @@ __global__ void project_cone_box_kernel(
     const double *__restrict__ w_bar,
     const double *__restrict__ lb,
     const double *__restrict__ ub,
-    const double *__restrict__ cone_newton_scalars_d,
+    const double *__restrict__ scale_d,
     int n)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;
 
-    double tau_star = *cone_newton_scalars_d;
+    double tau_star = *scale_d;
     double vi = -w_bar[i];
     double li = lb[i], ui = ub[i];
     double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
@@ -1850,7 +1860,8 @@ __global__ void update_hsd_dual_kernel(
     double *offset_current,
     double *offset_pdhg,
     double *offset_reflected,
-    const double *cone_newton_scalars_d,
+    const double *scale_d,
+    const double *unprojected_scale_d,
     bool is_major)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1866,8 +1877,8 @@ __global__ void update_hsd_dual_kernel(
     {
         int k = base_count + k_offset;
         double weight = (double)(k) / (double)(k + 1);
-        double unprojected = cone_newton_scalars_d[CONE_NEWTON_UNPROJECTED_SCALE];
-        double projected   = unprojected + cone_newton_scalars_d[CONE_NEWTON_SCALE];
+        double unprojected = *unprojected_scale_d;
+        double projected   = unprojected + *scale_d;
         if (is_major)
         {
             *offset_pdhg = projected;
@@ -2052,8 +2063,8 @@ __global__ void init_hsd_scalars_kernel(double *hsd_scalars_d)
 
 __global__ void restart_hsd_scalars_kernel(
     double *hsd_scalars_d,
-    double *constraint_scalars_d,
-    double *bound_scalars_d,
+    double *constraint_scale_d,
+    double *bound_scale_d,
     double cone_warm_start_scale)
 {
     const int bases[3] = {HSD_SCALE, HSD_DUAL_CONSTRAINT, HSD_DUAL_BOUND};
@@ -2064,8 +2075,8 @@ __global__ void restart_hsd_scalars_kernel(
         hsd_scalars_d[HSD_IDX(bases[i], HSD_REFLECTED)] = pdhg;
         hsd_scalars_d[HSD_IDX(bases[i], HSD_INITIAL)] = pdhg;
     }
-    *constraint_scalars_d *= cone_warm_start_scale;
-    *bound_scalars_d *= cone_warm_start_scale;
+    *constraint_scale_d *= cone_warm_start_scale;
+    *bound_scale_d *= cone_warm_start_scale;
 }
 
 __global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau)
