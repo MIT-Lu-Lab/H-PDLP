@@ -17,6 +17,7 @@ limitations under the License.
 #include "utils.h"
 #include <cub/cub.cuh>
 #include <math.h>
+#include <thrust/iterator/transform_iterator.h>
 
 #ifndef CUHSDLP_VERSION
 #define CUHSDLP_VERSION "unknown"
@@ -116,8 +117,7 @@ void reduce_device_abs_max(
     int length,
     double *output)
 {
-    cub::TransformInputIterator<double, AbsTransform, const double *>
-        abs_input(input, AbsTransform{});
+    auto abs_input = thrust::make_transform_iterator(input, AbsTransform{});
     CUDA_CHECK(cub::DeviceReduce::Max(
         state->cub_reduce_workspace,
         state->cub_reduce_workspace_bytes,
