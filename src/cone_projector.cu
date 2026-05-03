@@ -16,208 +16,264 @@ limitations under the License.
 
 #include "cone_projector.h"
 #include "utils.h"
-#include <cub/cub.cuh>
+#include <cooperative_groups.h>
 #include <cuda_runtime.h>
 #include <math.h>
 
-__global__ void reset_cone_newton_scalars_kernel(
-    double *__restrict__ scale_low_d,
-    double *__restrict__ scale_high_d,
-    double *__restrict__ converged_d);
-__global__ void update_cone_newton_scalars_kernel(
-    double *__restrict__ scale_d,
-    double *__restrict__ scale_low_d,
-    double *__restrict__ scale_high_d,
-    const double *__restrict__ unprojected_scale_d,
-    double *__restrict__ converged_d,
-    const newton_denom_numer_t *__restrict__ newton_denom_numer_d,
+namespace cg = cooperative_groups;
+
+__device__ inline void block_reduce_denom_numer(
+    double *s_denom,
+     double *s_numer);
+__device__ inline void update_newton_state(
+    const cone_projection_state_t &cone,
+    double unprojected_scale,
+    double tol,
+    double *s_denom,
+    double *s_numer,
+    double *scale,
+    double *scale_low,
+    double *scale_high,
+    bool *converged);
+__global__ void solve_dual_cones_and_project_kernel(
+    cone_projection_state_t c,
+    const double *__restrict__ c_unprojected_vector,
+    double *__restrict__ c_projected_vector,
+    cone_projection_state_t b,
+    const double *__restrict__ b_unprojected_vector,
+    double *__restrict__ b_projected_vector,
+    int max_iter,
     double tol);
-__global__ void project_cone_box_kernel(
-    double *__restrict__ projected,
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ scale_d,
-    int n);
-
-struct AddDenomNumerPair {
-    __host__ __device__ newton_denom_numer_t operator()(
-        const newton_denom_numer_t &a, const newton_denom_numer_t &b) const {
-        return {a.denom + b.denom, a.numer + b.numer};
-    }
-};
-
-struct ConeContributionOp {
-    const double *__restrict__ w_bar;
-    const double *__restrict__ lb;
-    const double *__restrict__ ub;
-    const double *__restrict__ scale_d;
-    __device__ newton_denom_numer_t operator()(int i) const {
-        double scale = *scale_d;
-        double vi = -w_bar[i];
-        double li = lb[i];
-        double ui = ub[i];
-        double bound = 0.0;
-        if (isfinite(li) && vi < li * scale)
-            bound = li;
-        else if (isfinite(ui) && vi > ui * scale)
-            bound = ui;
-        return {bound * bound, bound * vi};
-    }
-};
-
-size_t cone_projector_workspace_bytes(int max_n)
-{
-    size_t bytes = 0;
-    cub::CountingInputIterator<int> counting_it(0);
-    cub::TransformInputIterator<newton_denom_numer_t, ConeContributionOp,
-                                 cub::CountingInputIterator<int>>
-        transform_it(counting_it,
-                     ConeContributionOp{NULL, NULL, NULL, NULL});
-    CUDA_CHECK(cub::DeviceReduce::Reduce((void *)NULL, bytes,
-        transform_it, (newton_denom_numer_t *)NULL, max_n,
-        AddDenomNumerPair{}, newton_denom_numer_t{0.0, 0.0}));
-    return bytes;
-}
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
-    const double *unprojected_vector,
-    const double *lower_bound,
-    const double *upper_bound,
-    int num,
-    cone_projection_state_t *cone_state,
-    void *cub_workspace,
-    size_t cub_workspace_bytes,
+    cone_projection_state_t *constraint_cone_state,
+    const double *constraint_unprojected_vector,
+    double *constraint_projected_vector,
+    cone_projection_state_t *bound_cone_state,
+    const double *bound_unprojected_vector,
+    double *bound_projected_vector,
     cudaStream_t stream)
 {
-    reset_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(
-        cone_state->scale_low_d,
-        cone_state->scale_high_d,
-        cone_state->converged_d);
-    *cone_state->converged_mp = 0.0;
+    const int total_blocks = constraint_cone_state->blocks + bound_cone_state->blocks;
+    const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
 
-    cub::CountingInputIterator<int> counting_it(0);
-    cub::TransformInputIterator<newton_denom_numer_t, ConeContributionOp, cub::CountingInputIterator<int>>
-        transform_it(counting_it,
-                     ConeContributionOp{unprojected_vector, lower_bound,
-                                        upper_bound, cone_state->scale_d});
+    cudaLaunchAttribute attr = {};
+    attr.id = cudaLaunchAttributeCooperative;
+    attr.val.cooperative = 1;
 
-    for (int iter = 0; iter < cone_params->max_iter; ++iter)
+    cudaLaunchConfig_t config = {};
+    config.gridDim = dim3(total_blocks);
+    config.blockDim = dim3(THREADS_PER_BLOCK);
+    config.dynamicSmemBytes = smem_bytes;
+    config.stream = stream;
+    config.attrs = &attr;
+    config.numAttrs = 1;
+
+    CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        solve_dual_cones_and_project_kernel,
+        *constraint_cone_state,
+        constraint_unprojected_vector,
+        constraint_projected_vector,
+        *bound_cone_state,
+        bound_unprojected_vector,
+        bound_projected_vector,
+        cone_params->max_iter,
+        cone_params->tol));
+}
+
+__global__ void solve_dual_cones_and_project_kernel(
+    cone_projection_state_t c,
+    const double *__restrict__ c_unprojected_vector,
+    double *__restrict__ c_projected_vector,
+    cone_projection_state_t b,
+    const double *__restrict__ b_unprojected_vector,
+    double *__restrict__ b_projected_vector,
+    int max_iter,
+    double tol)
+{
+    cg::grid_group grid = cg::this_grid();
+
+    extern __shared__ double smem[];
+    double *s_denom = smem;
+    double *s_numer = smem + blockDim.x;
+
+    const bool is_constraint_cone = (blockIdx.x < c.blocks);
+    const int block_idx_in_cone = is_constraint_cone ? blockIdx.x : (blockIdx.x - c.blocks);
+
+    double c_scale = *c.scale_d;
+    double c_scale_low = 0.0;
+    double c_scale_high = INFINITY;
+    bool c_converged = false;
+
+    double b_scale = *b.scale_d;
+    double b_scale_low = 0.0;
+    double b_scale_high = INFINITY;
+    bool b_converged = false;
+
+    const double c_unprojected_scale = *c.unprojected_scale_d;
+    const double b_unprojected_scale = *b.unprojected_scale_d;
+
+    for (int iter = 0; iter < max_iter; ++iter)
     {
-        CUDA_CHECK(cub::DeviceReduce::Reduce(
-            cub_workspace,
-            cub_workspace_bytes,
-            transform_it,
-            cone_state->newton_denom_numer_d,
-            num,
-            AddDenomNumerPair{},
-            newton_denom_numer_t{0.0, 0.0},
-            stream));
+        const cone_projection_state_t &my_cone = is_constraint_cone ? c : b;
+        const double *my_unprojected = is_constraint_cone ? c_unprojected_vector : b_unprojected_vector;
+        const double my_scale = is_constraint_cone ? c_scale : b_scale;
+        const bool my_cone_converged = is_constraint_cone ? c_converged : b_converged;
 
-        update_cone_newton_scalars_kernel<<<1, 1, 0, stream>>>(
-            cone_state->scale_d,
-            cone_state->scale_low_d,
-            cone_state->scale_high_d,
-            cone_state->unprojected_scale_d,
-            cone_state->converged_d,
-            cone_state->newton_denom_numer_d,
-            cone_params->tol);
+        if (!my_cone_converged)
+        {
+            double thread_denom = 0.0, thread_numer = 0.0;
+            for (int i = block_idx_in_cone * blockDim.x + threadIdx.x;
+                 i < my_cone.num;
+                 i += my_cone.blocks * blockDim.x)
+            {
+                const double vi = -my_unprojected[i];
+                const double li = my_cone.lower_bound[i];
+                const double ui = my_cone.upper_bound[i];
+                double bound = 0.0;
+                if (isfinite(li) && vi < li * my_scale)
+                {
+                    bound = li;
+                }
+                else if (isfinite(ui) && vi > ui * my_scale)
+                {
+                    bound = ui;
+                }
+                thread_denom += bound * bound;
+                thread_numer += bound * vi;
+            }
 
-        CUDA_CHECK(cudaMemcpyAsync(
-            cone_state->converged_mp,
-            cone_state->converged_d,
-            sizeof(double),
-            cudaMemcpyDeviceToHost,
-            stream));
-        CUDA_CHECK(cudaStreamSynchronize(stream));
+            s_denom[threadIdx.x] = thread_denom;
+            s_numer[threadIdx.x] = thread_numer;
+            block_reduce_denom_numer(s_denom, s_numer);
 
-        if (*cone_state->converged_mp != 0.0)
+            if (threadIdx.x == 0)
+            {
+                my_cone.newton_partials_d[block_idx_in_cone] =
+                    newton_denom_numer_t{s_denom[0], s_numer[0]};
+            }
+        }
+        grid.sync();
+
+        if (!c_converged)
+        {
+            update_newton_state(c, c_unprojected_scale, tol, s_denom, s_numer,
+                                &c_scale, &c_scale_low, &c_scale_high, &c_converged);
+        }
+        if (!b_converged)
+        {
+            update_newton_state(b, b_unprojected_scale, tol, s_denom, s_numer,
+                                &b_scale, &b_scale_low, &b_scale_high, &b_converged);
+        }
+
+        if (c_converged && b_converged)
+        {
             break;
+        }
+    }
+
+    if (block_idx_in_cone == 0 && threadIdx.x == 0)
+    {
+        if (is_constraint_cone)
+        {
+            *c.scale_d = c_scale;
+        }
+        else
+        {
+            *b.scale_d = b_scale;
+        }
+    }
+
+    const cone_projection_state_t &my_cone = is_constraint_cone ? c : b;
+    const double *my_unprojected = is_constraint_cone ? c_unprojected_vector : b_unprojected_vector;
+    double *my_projected = is_constraint_cone ? c_projected_vector : b_projected_vector;
+    const double tau_star = is_constraint_cone ? c_scale : b_scale;
+
+    for (int i = block_idx_in_cone * blockDim.x + threadIdx.x;
+         i < my_cone.num;
+         i += my_cone.blocks * blockDim.x)
+    {
+        const double vi = -my_unprojected[i];
+        const double li = my_cone.lower_bound[i];
+        const double ui = my_cone.upper_bound[i];
+        const double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
+        const double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
+        my_projected[i] = my_unprojected[i] + fmin(fmax(vi, box_lower), box_upper);
     }
 }
 
-void project_cone_box(
-    double *unprojected_vector,
-    const double *lower_bound,
-    const double *upper_bound,
-    int num,
-    int num_blocks,
-    double *projected_vector,
-    const double *scale_d,
-    cudaStream_t stream)
+__device__ inline void block_reduce_denom_numer(double *s_denom, double *s_numer)
 {
-    project_cone_box_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, stream>>>(
-        projected_vector, unprojected_vector,
-        lower_bound, upper_bound,
-        scale_d,
-        num);
+    __syncthreads();
+    for (int s = blockDim.x / 2; s > 0; s >>= 1)
+    {
+        if (threadIdx.x < s)
+        {
+            s_denom[threadIdx.x] += s_denom[threadIdx.x + s];
+            s_numer[threadIdx.x] += s_numer[threadIdx.x + s];
+        }
+        __syncthreads();
+    }
 }
 
-__global__ void reset_cone_newton_scalars_kernel(
-    double *__restrict__ scale_low_d,
-    double *__restrict__ scale_high_d,
-    double *__restrict__ converged_d)
+__device__ inline void update_newton_state(
+    const cone_projection_state_t &cone,
+    double unprojected_scale,
+    double tol,
+    double *s_denom,
+    double *s_numer,
+    double *scale,
+    double *scale_low,
+    double *scale_high,
+    bool *converged)
 {
-    *scale_low_d  = 0.0;
-    *scale_high_d = INFINITY;
-    *converged_d  = 0.0;
-}
+    __syncthreads();
 
-__global__ void update_cone_newton_scalars_kernel(
-    double *__restrict__ scale_d,
-    double *__restrict__ scale_low_d,
-    double *__restrict__ scale_high_d,
-    const double *__restrict__ unprojected_scale_d,
-    double *__restrict__ converged_d,
-    const newton_denom_numer_t *__restrict__ newton_denom_numer_d,
-    double tol)
-{
-    double scale             = *scale_d;
-    double scale_low         = *scale_low_d;
-    double scale_high        = *scale_high_d;
-    double unprojected_scale = *unprojected_scale_d;
+    double thread_denom = 0.0, thread_numer = 0.0;
+    for (int b = threadIdx.x; b < cone.blocks; b += blockDim.x)
+    {
+        thread_denom += cone.newton_partials_d[b].denom;
+        thread_numer += cone.newton_partials_d[b].numer;
+    }
+    s_denom[threadIdx.x] = thread_denom;
+    s_numer[threadIdx.x] = thread_numer;
+    block_reduce_denom_numer(s_denom, s_numer);
 
-    double newton_step = fmax(0.0, (newton_denom_numer_d->numer - unprojected_scale)
-                       / (1.0 + newton_denom_numer_d->denom));
+    const double total_denom = s_denom[0];
+    const double total_numer = s_numer[0];
 
-    if (newton_step > scale)
-        scale_low = scale;
+    const double newton_step = fmax(0.0,
+        (total_numer - unprojected_scale) / (1.0 + total_denom));
+
+    if (newton_step > *scale)
+    {
+        *scale_low = *scale;
+    }
     else
-        scale_high = scale;
+    {
+        *scale_high = *scale;
+    }
 
     double new_scale;
-    if (newton_step >= scale_low && newton_step <= scale_high)
+    if (newton_step >= *scale_low && newton_step <= *scale_high)
+    {
         new_scale = newton_step;
-    else if (isfinite(scale_high))
-        new_scale = 0.5 * (scale_low + scale_high);
+    }
+    else if (isfinite(*scale_high))
+    {
+        new_scale = 0.5 * (*scale_low + *scale_high);
+    }
     else
-        new_scale = scale_low;
+    {
+        new_scale = *scale_low;
+    }
 
-    if (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)))
-        *converged_d = 1.0;
+    if (fabs(new_scale - *scale) < tol * (1.0 + fabs(new_scale)))
+    {
+        *converged = true;
+    }
 
-    *scale_d      = new_scale;
-    *scale_low_d  = scale_low;
-    *scale_high_d = scale_high;
-}
-
-__global__ void project_cone_box_kernel(
-    double *__restrict__ projected,
-    const double *__restrict__ w_bar,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    const double *__restrict__ scale_d,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    double tau_star = *scale_d;
-    double vi = -w_bar[i];
-    double li = lb[i], ui = ub[i];
-    double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
-    double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
-    projected[i] = w_bar[i] + fmin(fmax(vi, box_lower), box_upper);
+    *scale = new_scale;
 }

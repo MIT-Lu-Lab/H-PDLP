@@ -19,27 +19,13 @@ limitations under the License.
 #include "cuhsdlp_types.h"
 #include "internal_types.h"
 #include <cuda_runtime.h>
-#include <stddef.h>
-
-size_t cone_projector_workspace_bytes(int max_n);
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
-    const double *unprojected_vector,
-    const double *lower_bound,
-    const double *upper_bound,
-    int num,
-    cone_projection_state_t *cone_state,
-    void *cub_workspace,
-    size_t cub_workspace_bytes,
-    cudaStream_t stream);
-
-void project_cone_box(
-    double *unprojected_vector,
-    const double *lower_bound,
-    const double *upper_bound,
-    int num,
-    int num_blocks,
-    double *projected_vector,
-    const double *scale_d,
+    cone_projection_state_t *constraint_cone_state,
+    const double *constraint_unprojected_vector,
+    double *constraint_projected_vector,
+    cone_projection_state_t *bound_cone_state,
+    const double *bound_unprojected_vector,
+    double *bound_projected_vector,
     cudaStream_t stream);

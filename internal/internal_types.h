@@ -81,13 +81,13 @@ typedef struct {
 } newton_denom_numer_t;
 
 typedef struct {
+    const double *lower_bound;
+    const double *upper_bound;
+    int num;
+    int blocks;
     double *scale_d;
-    double *scale_low_d;
-    double *scale_high_d;
     double *unprojected_scale_d;
-    double *converged_d;
-    newton_denom_numer_t *newton_denom_numer_d;
-    double *converged_mp;
+    newton_denom_numer_t *newton_partials_d;
 } cone_projection_state_t;
 
 typedef struct {
