@@ -210,6 +210,7 @@ cuhsdlp_result_t *optimize(
         if (do_restart)
         {
             compute_fixed_point_error(state);
+            CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
             state->initial_fixed_point_error = *state->fixed_point_error_mp;
             do_restart = false;
         }
@@ -638,7 +639,9 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->step_size_primal,
         state->step_size_dual,
         state->step_size_homogeneous);
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 }
 
 static void perform_restart(
