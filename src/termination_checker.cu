@@ -73,6 +73,12 @@ __global__ void compute_residual_metrics_kernel(
     double original_objective_norm,
     double original_constraint_norm,
     double objective_constant);
+static void compute_residual_products(pdhg_solver_state_t *state);
+static void compute_residual_vectors(pdhg_solver_state_t *state);
+static void compute_linf_residual_norms(pdhg_solver_state_t *state);
+static void compute_l2_residual_norms(pdhg_solver_state_t *state);
+static void compute_support_function_values(pdhg_solver_state_t *state);
+static void update_residual_metrics(pdhg_solver_state_t *state);
 static bool optimality_criteria_met(
     const pdhg_solver_state_t *state,
     const termination_criteria_t *criteria);
@@ -85,8 +91,21 @@ static bool dual_infeasibility_criteria_met(
 
 void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 {
-    const bool use_linf = (optimality_norm == NORM_TYPE_L_INF);
+    compute_residual_products(state);
+    compute_residual_vectors(state);
 
+    if (optimality_norm == NORM_TYPE_L_INF)
+        compute_linf_residual_norms(state);
+    else
+        compute_l2_residual_norms(state);
+
+    compute_support_function_values(state);
+    update_residual_metrics(state);
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+}
+
+static void compute_residual_products(pdhg_solver_state_t *state)
+{
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -113,7 +132,10 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
+}
 
+static void compute_residual_vectors(pdhg_solver_state_t *state)
+{
     compute_residual_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->primal_residual_d,
         state->primal_product_d,
@@ -135,88 +157,66 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->num_constraints,
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
+}
 
-    if (use_linf)
-    {
-        abs_vector_inplace_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->primal_residual_d, state->num_constraints);
-        abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->dual_residual_d, state->num_variables);
-        abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->homogeneous_dual_residual_d, state->num_variables);
-        abs_vector_inplace_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->constraint_recession_residual_d, state->num_constraints);
-        abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->variable_recession_residual_d, state->num_variables);
+static void compute_linf_residual_norms(pdhg_solver_state_t *state)
+{
+    reduce_device_abs_max(state, state->primal_residual_d, state->num_constraints,
+                          state->pdhg_primal_norm_d);
+    reduce_device_abs_max(state, state->dual_residual_d, state->num_variables,
+                          state->pdhg_dual_norm_d);
+    reduce_device_abs_max(state, state->homogeneous_dual_residual_d, state->num_variables,
+                          state->farkas_homogeneous_dual_norm_d);
+    reduce_device_abs_max(state, state->constraint_recession_residual_d, state->num_constraints,
+                          state->farkas_constraint_recession_d);
+    reduce_device_abs_max(state, state->variable_recession_residual_d, state->num_variables,
+                          state->farkas_variable_recession_d);
+    reduce_device_abs_max(state, state->pdhg_primal_solution_d, state->num_variables,
+                          &state->metrics_d->primal_solution_norm);
+    reduce_device_abs_max(state, state->pdhg_dual_solution_d, state->num_constraints,
+                          state->farkas_dual_solution_norm_d);
+    reduce_device_abs_max(state, state->pdhg_dual_slack_d, state->num_variables,
+                          state->farkas_dual_slack_norm_d);
+}
 
-        reduce_device_vector(state, state->primal_residual_d, state->num_constraints,
-                             state->pdhg_primal_norm_d, true);
-        reduce_device_vector(state, state->dual_residual_d, state->num_variables,
-                             state->pdhg_dual_norm_d, true);
-        reduce_device_vector(state, state->homogeneous_dual_residual_d, state->num_variables,
-                             state->farkas_homogeneous_dual_norm_d, true);
-        reduce_device_vector(state, state->constraint_recession_residual_d, state->num_constraints,
-                             state->farkas_constraint_recession_d, true);
-        reduce_device_vector(state, state->variable_recession_residual_d, state->num_variables,
-                             state->farkas_variable_recession_d, true);
+static void compute_l2_residual_norms(pdhg_solver_state_t *state)
+{
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_constraints,
+        state->primal_residual_d, 1,
+        state->pdhg_primal_norm_d));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_variables,
+        state->dual_residual_d, 1,
+        state->pdhg_dual_norm_d));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_variables,
+        state->homogeneous_dual_residual_d, 1,
+        state->farkas_homogeneous_dual_norm_d));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_constraints,
+        state->constraint_recession_residual_d, 1,
+        state->farkas_constraint_recession_d));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_variables,
+        state->variable_recession_residual_d, 1,
+        state->farkas_variable_recession_d));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_variables,
+        state->pdhg_primal_solution_d, 1,
+        &state->metrics_d->primal_solution_norm));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_constraints,
+        state->pdhg_dual_solution_d, 1,
+        state->farkas_dual_solution_norm_d));
+    CUBLAS_CHECK(cublasDnrm2_v2_64(
+        state->blas_handle_A, state->num_variables,
+        state->pdhg_dual_slack_d, 1,
+        state->farkas_dual_slack_norm_d));
+}
 
-        CUDA_CHECK(cudaMemcpyAsync(state->primal_vec_buffer_d, state->pdhg_primal_solution_d,
-                                   state->var_bytes, cudaMemcpyDeviceToDevice, state->stream_A));
-        abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->primal_vec_buffer_d, state->num_variables);
-        reduce_device_vector(state, state->primal_vec_buffer_d, state->num_variables,
-                             &state->metrics_d->primal_solution_norm, true);
-
-        CUDA_CHECK(cudaMemcpyAsync(state->dual_vec_buffer_d, state->pdhg_dual_solution_d,
-                                   state->con_bytes, cudaMemcpyDeviceToDevice, state->stream_A));
-        abs_vector_inplace_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->dual_vec_buffer_d, state->num_constraints);
-        reduce_device_vector(state, state->dual_vec_buffer_d, state->num_constraints,
-                             state->farkas_dual_solution_norm_d, true);
-
-        CUDA_CHECK(cudaMemcpyAsync(state->primal_vec_buffer_d, state->pdhg_dual_slack_d,
-                                   state->var_bytes, cudaMemcpyDeviceToDevice, state->stream_A));
-        abs_vector_inplace_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            state->primal_vec_buffer_d, state->num_variables);
-        reduce_device_vector(state, state->primal_vec_buffer_d, state->num_variables,
-                             state->farkas_dual_slack_norm_d, true);
-    }
-    else
-    {
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_constraints,
-            state->primal_residual_d, 1,
-            state->pdhg_primal_norm_d));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_variables,
-            state->dual_residual_d, 1,
-            state->pdhg_dual_norm_d));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_variables,
-            state->homogeneous_dual_residual_d, 1,
-            state->farkas_homogeneous_dual_norm_d));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_constraints,
-            state->constraint_recession_residual_d, 1,
-            state->farkas_constraint_recession_d));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_variables,
-            state->variable_recession_residual_d, 1,
-            state->farkas_variable_recession_d));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_variables,
-            state->pdhg_primal_solution_d, 1,
-            &state->metrics_d->primal_solution_norm));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_constraints,
-            state->pdhg_dual_solution_d, 1,
-            state->farkas_dual_solution_norm_d));
-        CUBLAS_CHECK(cublasDnrm2_v2_64(
-            state->blas_handle_A, state->num_variables,
-            state->pdhg_dual_slack_d, 1,
-            state->farkas_dual_slack_norm_d));
-    }
-
+static void compute_support_function_values(pdhg_solver_state_t *state)
+{
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,
         state->num_variables,
@@ -249,7 +249,10 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
         state->primal_vec_buffer_d,
         state->farkas_support_variable_d,
         state->num_variables, state->stream_A));
+}
 
+static void update_residual_metrics(pdhg_solver_state_t *state)
+{
     compute_residual_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
         state->metrics_d,
         state->pdhg_primal_norm_d,
@@ -278,7 +281,6 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
                                sizeof(pdhg_metrics_t),
                                cudaMemcpyDeviceToHost,
                                state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
 void check_termination_criteria(

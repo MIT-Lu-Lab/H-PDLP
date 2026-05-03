@@ -89,14 +89,18 @@ extern "C"
 
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
 
-    __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n);
-
     void reduce_device_vector(
         pdhg_solver_state_t *state,
         const double *input,
         int length,
         double *output,
         bool use_linf);
+
+    void reduce_device_abs_max(
+        pdhg_solver_state_t *state,
+        const double *input,
+        int length,
+        double *output);
 
 #ifdef __cplusplus
 }

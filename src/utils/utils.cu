@@ -25,6 +25,14 @@ limitations under the License.
 const double HOST_ONE = 1.0;
 const double HOST_ZERO = 0.0;
 
+struct AbsTransform
+{
+    __host__ __device__ double operator()(const double &x) const
+    {
+        return fabs(x);
+    }
+};
+
 void *safe_malloc(size_t size)
 {
     if (size == 0)
@@ -96,11 +104,22 @@ void reduce_device_vector(
     CUDA_CHECK(cudaGetLastError());
 }
 
-__global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n)
+void reduce_device_abs_max(
+    pdhg_solver_state_t *state,
+    const double *input,
+    int length,
+    double *output)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n)
-        arr[i] = fabs(arr[i]);
+    cub::TransformInputIterator<double, AbsTransform, const double *>
+        abs_input(input, AbsTransform{});
+    CUDA_CHECK(cub::DeviceReduce::Max(
+        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_bytes,
+        abs_input,
+        output,
+        length,
+        state->stream_A));
+    CUDA_CHECK(cudaGetLastError());
 }
 
 __global__ void fill_ones_kernel(double *__restrict__ arr, int n)
