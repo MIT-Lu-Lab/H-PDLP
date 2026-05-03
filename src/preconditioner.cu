@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "preconditioner.h"
+#include "power_iteration.h"
 #include "utils.h"
 #include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>

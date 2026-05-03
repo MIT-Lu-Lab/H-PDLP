@@ -91,10 +91,6 @@ extern "C"
 
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
 
-    double estimate_maximum_singular_value(
-        pdhg_solver_state_t *state,
-        const power_iteration_parameters_t *power_iter_params);
-
     __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n);
 
     void reduce_device_vector(
