@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "display.h"
+#include "cuhsdlp.h"
 #include "utils.h"
 #include <math.h>
 #include <stdio.h>
@@ -38,7 +39,7 @@ limitations under the License.
         if ((current) != (default_val)) { \
             printf("  %-18s : %s\n", name, (current) ? "on" : "off"); \
         } \
-    } while(0)
+    } while (0)
 
 const char *termination_reason_to_string(termination_reason_t reason)
 {
@@ -65,8 +66,9 @@ const char *termination_reason_to_string(termination_reason_t reason)
     }
 }
 
-void print_initial_info(const pdhg_parameters_t *params,
-                        lp_problem_t *problem)
+void print_initial_info(
+    const pdhg_parameters_t *params,
+    lp_problem_t *problem)
 {
     pdhg_parameters_t default_params;
     set_default_parameters(&default_params);
@@ -79,7 +81,10 @@ void print_initial_info(const pdhg_parameters_t *params,
            "-----------------------------------------------------------------\n");
     printf("%*scuHSDLP v%s\n", (124 - 14) / 2, "", CUHSDLP_VERSION);
     printf("%*sA GPU-Accelerated First-Order LP Solver\n", (124 - 39) / 2, "");
-    printf("%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n", (124 - 58) / 2, "");
+    printf(
+        "%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n",
+        (124 - 58) / 2,
+        "");
     printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
     printf("\n");
@@ -190,7 +195,10 @@ int get_print_frequency(int iter)
     return print_interval;
 }
 
-void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, bool is_restart)
+void display_iteration_stats(
+    const pdhg_solver_state_t *state,
+    bool verbose,
+    bool is_restart)
 {
     if (!verbose)
     {
@@ -198,22 +206,23 @@ void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, boo
     }
     if (is_restart || state->total_count % get_print_frequency(state->total_count) == 0)
     {
-        printf("%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e\n",
-               is_restart ? 'R' : ' ',
-               state->total_count,
-               state->cumulative_time_sec,
-               state->metrics_h->primal_objective,
-               state->metrics_h->dual_objective,
-               state->metrics_h->absolute_primal_residual,
-               state->metrics_h->absolute_dual_residual,
-               state->metrics_h->objective_gap,
-               state->metrics_h->relative_primal_residual,
-               state->metrics_h->relative_dual_residual,
-               state->metrics_h->relative_objective_gap,
-               state->step_size_primal,
-               state->step_size_dual,
-               state->step_size_homogeneous,
-               state->metrics_h->current_homogeneous_scale);
+        printf(
+            "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e\n",
+            is_restart ? 'R' : ' ',
+            state->total_count,
+            state->cumulative_time_sec,
+            state->metrics_h->primal_objective,
+            state->metrics_h->dual_objective,
+            state->metrics_h->absolute_primal_residual,
+            state->metrics_h->absolute_dual_residual,
+            state->metrics_h->objective_gap,
+            state->metrics_h->relative_primal_residual,
+            state->metrics_h->relative_dual_residual,
+            state->metrics_h->relative_objective_gap,
+            state->step_size_primal,
+            state->step_size_dual,
+            state->step_size_homogeneous,
+            state->metrics_h->current_homogeneous_scale);
     }
 }
 
@@ -226,7 +235,9 @@ void pdhg_final_log(
         printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
         printf("Solution Summary\n");
-        printf("  Status                 : %s\n", termination_reason_to_string(result->termination_reason));
+        printf(
+            "  Status                 : %s\n",
+            termination_reason_to_string(result->termination_reason));
         if (params->presolve)
         {
             printf("  Presolve time          : %.3g sec\n", result->presolve_time);

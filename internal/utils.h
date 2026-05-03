@@ -87,8 +87,6 @@ extern "C"
     void *safe_calloc(size_t num, size_t size);
     void *safe_realloc(void *ptr, size_t new_size);
 
-    void set_default_parameters(pdhg_parameters_t *params);
-
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
 
     __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n);

@@ -70,44 +70,6 @@ void *safe_realloc(void *ptr, size_t new_size)
     return tmp;
 }
 
-void set_default_parameters(pdhg_parameters_t *params)
-{
-    params->presolve = true;
-    params->verbose = true;
-    params->optimality_norm = NORM_TYPE_L2;
-    params->reflection_coefficient = 1.0;
-    params->termination_evaluation_frequency = 200;
-
-    params->scaling_params.l_inf_ruiz_iterations = 10;
-    params->scaling_params.has_pock_chambolle_alpha = true;
-    params->scaling_params.pock_chambolle_alpha = 1.0;
-    params->scaling_params.bound_objective_rescaling = true;
-    params->scaling_params.matrix_zero_tol = 1e-9;
-
-    params->power_iter_params.max_iter = 5000;
-    params->power_iter_params.tol = 1e-4;
-
-    params->step_size_params.step_size_factor = 0.998;
-    params->step_size_params.objective_coupling_budget = 0.05;
-    params->step_size_params.k_p = 0.99;
-    params->step_size_params.k_i = 0.01;
-    params->step_size_params.k_d = 0.0;
-    params->step_size_params.i_smooth = 0.3;
-
-    params->cone_params.max_iter = 30;
-    params->cone_params.tol = 1e-6;
-
-    params->termination_criteria.eps_optimal_relative = 1e-4;
-    params->termination_criteria.eps_feasible_relative = 1e-4;
-    params->termination_criteria.time_sec_limit = 3600.0;
-    params->termination_criteria.iteration_limit = INT32_MAX;
-
-    params->restart_params.artificial_restart_threshold = 0.36;
-    params->restart_params.sufficient_reduction_for_restart = 0.2;
-    params->restart_params.necessary_reduction_for_restart = 0.5;
-}
-
-
 void reduce_device_vector(
     pdhg_solver_state_t *state,
     const double *input,
@@ -116,13 +78,21 @@ void reduce_device_vector(
     bool use_linf)
 {
     if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(state->cub_reduce_workspace,
-                                          state->cub_reduce_workspace_bytes,
-                                          input, output, length, state->stream_A));
+        CUDA_CHECK(cub::DeviceReduce::Max(
+            state->cub_reduce_workspace,
+            state->cub_reduce_workspace_bytes,
+            input,
+            output,
+            length,
+            state->stream_A));
     else
-        CUDA_CHECK(cub::DeviceReduce::Sum(state->cub_reduce_workspace,
-                                          state->cub_reduce_workspace_bytes,
-                                          input, output, length, state->stream_A));
+        CUDA_CHECK(cub::DeviceReduce::Sum(
+            state->cub_reduce_workspace,
+            state->cub_reduce_workspace_bytes,
+            input,
+            output,
+            length,
+            state->stream_A));
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -132,7 +102,6 @@ __global__ void abs_vector_inplace_kernel(double *__restrict__ arr, int n)
     if (i < n)
         arr[i] = fabs(arr[i]);
 }
-
 
 __global__ void fill_ones_kernel(double *__restrict__ arr, int n)
 {
