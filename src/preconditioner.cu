@@ -657,10 +657,20 @@ static void compute_objective_and_bound_norms(
         norm_entries_cons, state->num_constraints, use_linf);
     CUDA_CHECK(cudaGetLastError());
 
-    reduce_device_vector(state, norm_entries_vars, state->num_variables,
-                         state->precond_objective_norm_mp, use_linf);
-    reduce_device_vector(state, norm_entries_cons, state->num_constraints,
-                         state->precond_bound_norm_mp, use_linf);
+    if (use_linf)
+    {
+        reduce_device_max(state, norm_entries_vars, state->num_variables,
+                          state->precond_objective_norm_mp);
+        reduce_device_max(state, norm_entries_cons, state->num_constraints,
+                          state->precond_bound_norm_mp);
+    }
+    else
+    {
+        reduce_device_sum(state, norm_entries_vars, state->num_variables,
+                          state->precond_objective_norm_mp);
+        reduce_device_sum(state, norm_entries_cons, state->num_constraints,
+                          state->precond_bound_norm_mp);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 

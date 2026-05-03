@@ -77,7 +77,7 @@ static void compute_residual_products(pdhg_solver_state_t *state);
 static void compute_residual_vectors(pdhg_solver_state_t *state);
 static void compute_linf_residual_norms(pdhg_solver_state_t *state);
 static void compute_l2_residual_norms(pdhg_solver_state_t *state);
-static void compute_support_function_values(pdhg_solver_state_t *state);
+static void compute_objective_and_support_terms(pdhg_solver_state_t *state);
 static void update_residual_metrics(pdhg_solver_state_t *state);
 static bool optimality_criteria_met(
     const pdhg_solver_state_t *state,
@@ -99,7 +99,7 @@ void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm)
     else
         compute_l2_residual_norms(state);
 
-    compute_support_function_values(state);
+    compute_objective_and_support_terms(state);
     update_residual_metrics(state);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
@@ -215,7 +215,7 @@ static void compute_l2_residual_norms(pdhg_solver_state_t *state)
         state->farkas_dual_slack_norm_d));
 }
 
-static void compute_support_function_values(pdhg_solver_state_t *state)
+static void compute_objective_and_support_terms(pdhg_solver_state_t *state)
 {
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,

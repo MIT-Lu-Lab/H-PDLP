@@ -78,29 +78,35 @@ void *safe_realloc(void *ptr, size_t new_size)
     return tmp;
 }
 
-void reduce_device_vector(
+void reduce_device_sum(
     pdhg_solver_state_t *state,
     const double *input,
     int length,
-    double *output,
-    bool use_linf)
+    double *output)
 {
-    if (use_linf)
-        CUDA_CHECK(cub::DeviceReduce::Max(
-            state->cub_reduce_workspace,
-            state->cub_reduce_workspace_bytes,
-            input,
-            output,
-            length,
-            state->stream_A));
-    else
-        CUDA_CHECK(cub::DeviceReduce::Sum(
-            state->cub_reduce_workspace,
-            state->cub_reduce_workspace_bytes,
-            input,
-            output,
-            length,
-            state->stream_A));
+    CUDA_CHECK(cub::DeviceReduce::Sum(
+        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_bytes,
+        input,
+        output,
+        length,
+        state->stream_A));
+    CUDA_CHECK(cudaGetLastError());
+}
+
+void reduce_device_max(
+    pdhg_solver_state_t *state,
+    const double *input,
+    int length,
+    double *output)
+{
+    CUDA_CHECK(cub::DeviceReduce::Max(
+        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_bytes,
+        input,
+        output,
+        length,
+        state->stream_A));
     CUDA_CHECK(cudaGetLastError());
 }
 

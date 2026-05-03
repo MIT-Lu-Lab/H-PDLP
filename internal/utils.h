@@ -89,12 +89,17 @@ extern "C"
 
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
 
-    void reduce_device_vector(
+    void reduce_device_sum(
         pdhg_solver_state_t *state,
         const double *input,
         int length,
-        double *output,
-        bool use_linf);
+        double *output);
+
+    void reduce_device_max(
+        pdhg_solver_state_t *state,
+        const double *input,
+        int length,
+        double *output);
 
     void reduce_device_abs_max(
         pdhg_solver_state_t *state,

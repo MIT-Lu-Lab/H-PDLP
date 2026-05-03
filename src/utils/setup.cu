@@ -46,7 +46,7 @@ static void create_dense_vector_descriptor(
     cusparseDnVecDescr_t *descriptor,
     int length,
     double *values);
-static void prepare_spmv_buffer(
+static void initialize_spmv_buffer(
     cusparseHandle_t handle,
     cusparseSpMatDescr_t matrix,
     cusparseDnVecDescr_t input,
@@ -74,7 +74,7 @@ static void apply_warm_starts(
     const lp_problem_t *working_problem);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
 static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
-static void initialize_solver_progress(pdhg_solver_state_t *state);
+static void initialize_convergence_tracking(pdhg_solver_state_t *state);
 static void free_sparse_resources(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
 static void free_solver_device_buffers(pdhg_solver_state_t *state);
@@ -203,7 +203,7 @@ pdhg_solver_state_t *initialize_solver_state(
 
     release_setup_only_matrix_data(state);
     initialize_iterates_from_starts(state);
-    initialize_solver_progress(state);
+    initialize_convergence_tracking(state);
 
     print_iteration_header(params->verbose);
 
@@ -285,7 +285,7 @@ static void create_dense_vector_descriptor(
     CUSPARSE_CHECK(cusparseCreateDnVec(descriptor, length, values, CUDA_R_64F));
 }
 
-static void prepare_spmv_buffer(
+static void initialize_spmv_buffer(
     cusparseHandle_t handle,
     cusparseSpMatDescr_t matrix,
     cusparseDnVecDescr_t input,
@@ -357,13 +357,13 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         state->num_variables,
         state->power_iteration_product_d);
 
-    prepare_spmv_buffer(
+    initialize_spmv_buffer(
         state->sparse_handle_A,
         state->matA,
         state->spmv_current_primal_solution,
         state->spmv_primal_product,
         &state->primal_spmv_buffer);
-    prepare_spmv_buffer(
+    initialize_spmv_buffer(
         state->sparse_handle_At,
         state->matAt,
         state->spmv_reflected_dual_solution,
@@ -649,7 +649,7 @@ static void initialize_iterates_from_starts(pdhg_solver_state_t *state)
                           cudaMemcpyDeviceToDevice));
 }
 
-static void initialize_solver_progress(pdhg_solver_state_t *state)
+static void initialize_convergence_tracking(pdhg_solver_state_t *state)
 {
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
