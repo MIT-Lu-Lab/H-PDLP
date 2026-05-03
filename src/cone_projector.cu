@@ -22,30 +22,72 @@ limitations under the License.
 
 namespace cg = cooperative_groups;
 
-__global__ void solve_dual_cones_and_project_kernel(
-    cone_projection_state_t c,
-    const double *__restrict__ c_unprojected_vector,
-    double *__restrict__ c_projected_vector,
-    cone_projection_state_t b,
-    const double *__restrict__ b_unprojected_vector,
-    double *__restrict__ b_projected_vector,
+__global__ void solve_cone_and_project_kernel(
+    cone_projection_state_t cone,
+    const double *__restrict__ unprojected_vector,
+    double *__restrict__ projected_vector,
     int max_iter,
     double tol);
+__global__ void solve_single_block_cone_and_project_kernel(
+    cone_projection_state_t cone,
+    const double *__restrict__ unprojected_vector,
+    double *__restrict__ projected_vector,
+    int max_iter,
+    double tol);
+static void launch_cooperative_cone_projection(
+    cone_projection_state_t cone,
+    const double *unprojected_vector,
+    double *projected_vector,
+    int max_iter,
+    double tol,
+    cudaStream_t stream);
+static void launch_single_block_cone_projection(
+    cone_projection_state_t cone,
+    const double *unprojected_vector,
+    double *projected_vector,
+    int max_iter,
+    double tol,
+    cudaStream_t stream);
 __device__ inline void block_reduce_denom_numer(
     double *s_denom,
     double *s_numer);
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
-    cone_projection_state_t *constraint_cone_state,
-    const double *constraint_unprojected_vector,
-    double *constraint_projected_vector,
-    cone_projection_state_t *bound_cone_state,
-    const double *bound_unprojected_vector,
-    double *bound_projected_vector,
+    cone_projection_state_t *cone_state,
+    const double *unprojected_vector,
+    double *projected_vector,
     cudaStream_t stream)
 {
-    const int total_blocks = constraint_cone_state->blocks + bound_cone_state->blocks;
+    if (cone_state->blocks == 1)
+    {
+        launch_single_block_cone_projection(
+            *cone_state,
+            unprojected_vector,
+            projected_vector,
+            cone_params->max_iter,
+            cone_params->tol,
+            stream);
+        return;
+    }
+
+    launch_cooperative_cone_projection(
+        *cone_state,
+        unprojected_vector,
+        projected_vector,
+        cone_params->max_iter,
+        cone_params->tol,
+        stream);
+}
+
+static void launch_cooperative_cone_projection(
+    cone_projection_state_t cone,
+    const double *unprojected_vector,
+    double *projected_vector,
+    int max_iter,
+    double tol,
+    cudaStream_t stream)
+{
     const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
 
     cudaLaunchAttribute attr = {};
@@ -53,7 +95,7 @@ void solve_cone_newton(
     attr.val.cooperative = 1;
 
     cudaLaunchConfig_t config = {};
-    config.gridDim = dim3(total_blocks);
+    config.gridDim = dim3(cone.blocks);
     config.blockDim = dim3(THREADS_PER_BLOCK);
     config.dynamicSmemBytes = smem_bytes;
     config.stream = stream;
@@ -62,24 +104,40 @@ void solve_cone_newton(
 
     CUDA_CHECK(cudaLaunchKernelEx(
         &config,
-        solve_dual_cones_and_project_kernel,
-        *constraint_cone_state,
-        constraint_unprojected_vector,
-        constraint_projected_vector,
-        *bound_cone_state,
-        bound_unprojected_vector,
-        bound_projected_vector,
-        cone_params->max_iter,
-        cone_params->tol));
+        solve_cone_and_project_kernel,
+        cone,
+        unprojected_vector,
+        projected_vector,
+        max_iter,
+        tol));
 }
 
-__global__ void solve_dual_cones_and_project_kernel(
-    cone_projection_state_t c,
-    const double *__restrict__ c_unprojected_vector,
-    double *__restrict__ c_projected_vector,
-    cone_projection_state_t b,
-    const double *__restrict__ b_unprojected_vector,
-    double *__restrict__ b_projected_vector,
+static void launch_single_block_cone_projection(
+    cone_projection_state_t cone,
+    const double *unprojected_vector,
+    double *projected_vector,
+    int max_iter,
+    double tol,
+    cudaStream_t stream)
+{
+    const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
+    solve_single_block_cone_and_project_kernel<<<
+        1,
+        THREADS_PER_BLOCK,
+        smem_bytes,
+        stream>>>(
+        cone,
+        unprojected_vector,
+        projected_vector,
+        max_iter,
+        tol);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+__global__ void solve_cone_and_project_kernel(
+    cone_projection_state_t cone,
+    const double *__restrict__ unprojected_vector,
+    double *__restrict__ projected_vector,
     int max_iter,
     double tol)
 {
@@ -89,51 +147,31 @@ __global__ void solve_dual_cones_and_project_kernel(
     double *s_denom = smem;
     double *s_numer = smem + blockDim.x;
 
-    const bool is_constraint_cone = (blockIdx.x < c.blocks);
-    const int block_idx_in_cone =
-        is_constraint_cone ? blockIdx.x : (blockIdx.x - c.blocks);
-    const bool is_owner = (block_idx_in_cone == 0);
-
-    double c_scale = *c.scale_d;
-    bool c_converged = false;
-    double b_scale = *b.scale_d;
-    bool b_converged = false;
-
-    double c_scale_low = 0.0;
-    double c_scale_high = INFINITY;
-    double b_scale_low = 0.0;
-    double b_scale_high = INFINITY;
-
-    const double c_unprojected_scale = *c.unprojected_scale_d;
-    const double b_unprojected_scale = *b.unprojected_scale_d;
+    const bool is_owner = (blockIdx.x == 0);
+    double scale = *cone.scale_d;
+    bool converged = false;
+    double scale_low = 0.0;
+    double scale_high = INFINITY;
+    const double unprojected_scale = *cone.unprojected_scale_d;
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        const cone_projection_state_t &my_cone =
-            is_constraint_cone ? c : b;
-        const double *my_unprojected =
-            is_constraint_cone ? c_unprojected_vector : b_unprojected_vector;
-        const double my_scale =
-            is_constraint_cone ? c_scale : b_scale;
-        const bool my_cone_converged =
-            is_constraint_cone ? c_converged : b_converged;
-
-        if (!my_cone_converged)
+        if (!converged)
         {
             double thread_denom = 0.0, thread_numer = 0.0;
-            for (int i = block_idx_in_cone * blockDim.x + threadIdx.x;
-                 i < my_cone.num;
-                 i += my_cone.blocks * blockDim.x)
+            for (int i = blockIdx.x * blockDim.x + threadIdx.x;
+                 i < cone.num;
+                 i += cone.blocks * blockDim.x)
             {
-                const double vi = -my_unprojected[i];
-                const double li = my_cone.lower_bound[i];
-                const double ui = my_cone.upper_bound[i];
+                const double vi = -unprojected_vector[i];
+                const double li = cone.lower_bound[i];
+                const double ui = cone.upper_bound[i];
                 double bound = 0.0;
-                if (isfinite(li) && vi < li * my_scale)
+                if (isfinite(li) && vi < li * scale)
                 {
                     bound = li;
                 }
-                else if (isfinite(ui) && vi > ui * my_scale)
+                else if (isfinite(ui) && vi > ui * scale)
                 {
                     bound = ui;
                 }
@@ -147,20 +185,20 @@ __global__ void solve_dual_cones_and_project_kernel(
 
             if (threadIdx.x == 0)
             {
-                my_cone.newton_partials_d[block_idx_in_cone] =
+                cone.newton_partials_d[blockIdx.x] =
                     newton_denom_numer_t{s_denom[0], s_numer[0]};
             }
         }
 
         grid.sync();
 
-        if (is_owner && is_constraint_cone && !c_converged)
+        if (is_owner && !converged)
         {
             double thread_denom = 0.0, thread_numer = 0.0;
-            for (int bk = threadIdx.x; bk < c.blocks; bk += blockDim.x)
+            for (int bk = threadIdx.x; bk < cone.blocks; bk += blockDim.x)
             {
-                thread_denom += c.newton_partials_d[bk].denom;
-                thread_numer += c.newton_partials_d[bk].numer;
+                thread_denom += cone.newton_partials_d[bk].denom;
+                thread_numer += cone.newton_partials_d[bk].numer;
             }
             s_denom[threadIdx.x] = thread_denom;
             s_numer[threadIdx.x] = thread_numer;
@@ -170,106 +208,147 @@ __global__ void solve_dual_cones_and_project_kernel(
             const double total_numer = s_numer[0];
 
             const double newton_step =
-                fmax(0.0, (total_numer - c_unprojected_scale) / (1.0 + total_denom));
+                fmax(0.0, (total_numer - unprojected_scale) / (1.0 + total_denom));
 
-            if (newton_step > c_scale)
-                c_scale_low = c_scale;
+            if (newton_step > scale)
+                scale_low = scale;
             else
-                c_scale_high = c_scale;
+                scale_high = scale;
 
             double new_scale;
-            if (newton_step >= c_scale_low && newton_step <= c_scale_high)
+            if (newton_step >= scale_low && newton_step <= scale_high)
                 new_scale = newton_step;
-            else if (isfinite(c_scale_high))
-                new_scale = 0.5 * (c_scale_low + c_scale_high);
+            else if (isfinite(scale_high))
+                new_scale = 0.5 * (scale_low + scale_high);
             else
-                new_scale = c_scale_low;
+                new_scale = scale_low;
 
             const bool new_converged =
-                (fabs(new_scale - c_scale) < tol * (1.0 + fabs(new_scale)));
+                (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
 
-            c_scale = new_scale;
-            c_converged = new_converged;
-
-            if (threadIdx.x == 0)
-            {
-                *c.scale_d = c_scale;
-                *c.converged_d = c_converged ? 1 : 0;
-            }
-        }
-
-        if (is_owner && !is_constraint_cone && !b_converged)
-        {
-            double thread_denom = 0.0, thread_numer = 0.0;
-            for (int bk = threadIdx.x; bk < b.blocks; bk += blockDim.x)
-            {
-                thread_denom += b.newton_partials_d[bk].denom;
-                thread_numer += b.newton_partials_d[bk].numer;
-            }
-            s_denom[threadIdx.x] = thread_denom;
-            s_numer[threadIdx.x] = thread_numer;
-            block_reduce_denom_numer(s_denom, s_numer);
-
-            const double total_denom = s_denom[0];
-            const double total_numer = s_numer[0];
-
-            const double newton_step =
-                fmax(0.0, (total_numer - b_unprojected_scale) / (1.0 + total_denom));
-
-            if (newton_step > b_scale)
-                b_scale_low = b_scale;
-            else
-                b_scale_high = b_scale;
-
-            double new_scale;
-            if (newton_step >= b_scale_low && newton_step <= b_scale_high)
-                new_scale = newton_step;
-            else if (isfinite(b_scale_high))
-                new_scale = 0.5 * (b_scale_low + b_scale_high);
-            else
-                new_scale = b_scale_low;
-
-            const bool new_converged =
-                (fabs(new_scale - b_scale) < tol * (1.0 + fabs(new_scale)));
-
-            b_scale = new_scale;
-            b_converged = new_converged;
-
-            if (threadIdx.x == 0)
-            {
-                *b.scale_d = b_scale;
-                *b.converged_d = b_converged ? 1 : 0;
-            }
+            scale = new_scale;
+            converged = new_converged;
+            *cone.scale_d = scale;
+            *cone.converged_d = converged ? 1 : 0;
         }
 
         grid.sync();
 
-        c_scale = *c.scale_d;
-        c_converged = (*c.converged_d != 0);
-        b_scale = *b.scale_d;
-        b_converged = (*b.converged_d != 0);
+        scale = *cone.scale_d;
+        converged = (*cone.converged_d != 0);
 
-        if (c_converged && b_converged)
+        if (converged)
         {
             break;
         }
     }
 
-    const cone_projection_state_t &my_cone = is_constraint_cone ? c : b;
-    const double *my_unprojected = is_constraint_cone ? c_unprojected_vector : b_unprojected_vector;
-    double *my_projected = is_constraint_cone ? c_projected_vector : b_projected_vector;
-    const double tau_star = is_constraint_cone ? c_scale : b_scale;
+    const double tau_star = scale;
 
-    for (int i = block_idx_in_cone * blockDim.x + threadIdx.x;
-         i < my_cone.num;
-         i += my_cone.blocks * blockDim.x)
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < cone.num;
+         i += cone.blocks * blockDim.x)
     {
-        const double vi = -my_unprojected[i];
-        const double li = my_cone.lower_bound[i];
-        const double ui = my_cone.upper_bound[i];
+        const double vi = -unprojected_vector[i];
+        const double li = cone.lower_bound[i];
+        const double ui = cone.upper_bound[i];
         const double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
         const double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
-        my_projected[i] = my_unprojected[i] + fmin(fmax(vi, box_lower), box_upper);
+        projected_vector[i] = unprojected_vector[i] + fmin(fmax(vi, box_lower), box_upper);
+    }
+}
+
+__global__ void solve_single_block_cone_and_project_kernel(
+    cone_projection_state_t cone,
+    const double *__restrict__ unprojected_vector,
+    double *__restrict__ projected_vector,
+    int max_iter,
+    double tol)
+{
+    extern __shared__ double smem[];
+    double *s_denom = smem;
+    double *s_numer = smem + blockDim.x;
+
+    double scale = *cone.scale_d;
+    bool converged = false;
+    double scale_low = 0.0;
+    double scale_high = INFINITY;
+    const double unprojected_scale = *cone.unprojected_scale_d;
+
+    for (int iter = 0; iter < max_iter; ++iter)
+    {
+        if (!converged)
+        {
+            double thread_denom = 0.0, thread_numer = 0.0;
+            for (int i = threadIdx.x; i < cone.num; i += blockDim.x)
+            {
+                const double vi = -unprojected_vector[i];
+                const double li = cone.lower_bound[i];
+                const double ui = cone.upper_bound[i];
+                double bound = 0.0;
+                if (isfinite(li) && vi < li * scale)
+                {
+                    bound = li;
+                }
+                else if (isfinite(ui) && vi > ui * scale)
+                {
+                    bound = ui;
+                }
+                thread_denom += bound * bound;
+                thread_numer += bound * vi;
+            }
+
+            s_denom[threadIdx.x] = thread_denom;
+            s_numer[threadIdx.x] = thread_numer;
+            block_reduce_denom_numer(s_denom, s_numer);
+
+            if (threadIdx.x == 0)
+            {
+                const double total_denom = s_denom[0];
+                const double total_numer = s_numer[0];
+                const double newton_step =
+                    fmax(0.0, (total_numer - unprojected_scale) / (1.0 + total_denom));
+
+                if (newton_step > scale)
+                    scale_low = scale;
+                else
+                    scale_high = scale;
+
+                double new_scale;
+                if (newton_step >= scale_low && newton_step <= scale_high)
+                    new_scale = newton_step;
+                else if (isfinite(scale_high))
+                    new_scale = 0.5 * (scale_low + scale_high);
+                else
+                    new_scale = scale_low;
+
+                converged =
+                    (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
+                scale = new_scale;
+                *cone.scale_d = scale;
+                *cone.converged_d = converged ? 1 : 0;
+            }
+
+            __syncthreads();
+            scale = *cone.scale_d;
+            converged = (*cone.converged_d != 0);
+        }
+
+        if (converged)
+        {
+            break;
+        }
+    }
+
+    const double tau_star = scale;
+    for (int i = threadIdx.x; i < cone.num; i += blockDim.x)
+    {
+        const double vi = -unprojected_vector[i];
+        const double li = cone.lower_bound[i];
+        const double ui = cone.upper_bound[i];
+        const double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
+        const double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
+        projected_vector[i] = unprojected_vector[i] + fmin(fmax(vi, box_lower), box_upper);
     }
 }
 

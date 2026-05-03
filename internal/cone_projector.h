@@ -22,10 +22,7 @@ limitations under the License.
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
-    cone_projection_state_t *constraint_cone_state,
-    const double *constraint_unprojected_vector,
-    double *constraint_projected_vector,
-    cone_projection_state_t *bound_cone_state,
-    const double *bound_unprojected_vector,
-    double *bound_projected_vector,
+    cone_projection_state_t *cone_state,
+    const double *unprojected_vector,
+    double *projected_vector,
     cudaStream_t stream);

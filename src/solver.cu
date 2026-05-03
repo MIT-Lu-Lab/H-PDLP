@@ -406,21 +406,19 @@ void hsd_update_dual_solution(
         dual_step,
         state->num_variables);
 
-    CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
-
     solve_cone_newton(
         cone_params,
         &state->constraint_cone_state,
         state->dual_vec_buffer_d,
         state->pdhg_dual_solution_d,
+        state->stream_A);
+
+    solve_cone_newton(
+        cone_params,
         &state->bound_cone_state,
         state->primal_vec_buffer_d,
         state->pdhg_dual_slack_d,
-        state->stream_A);
-
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
+        state->stream_At);
 
     update_hsd_dual_kernel<<<
         state->num_blocks_primal,
