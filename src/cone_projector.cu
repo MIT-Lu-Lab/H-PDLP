@@ -52,6 +52,20 @@ __device__ inline void block_reduce_denom_numer(
     double *s_denom,
     double *s_numer);
 
+int max_cooperative_cone_grid()
+{
+    int sm_count = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, 0));
+    int max_active_per_sm = 0;
+    const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
+    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &max_active_per_sm,
+        solve_cone_and_project_kernel,
+        THREADS_PER_BLOCK,
+        smem_bytes));
+    return max_active_per_sm * sm_count;
+}
+
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
     cone_projection_state_t *cone_state,

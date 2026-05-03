@@ -26,3 +26,5 @@ void solve_cone_newton(
     const double *unprojected_vector,
     double *projected_vector,
     cudaStream_t stream);
+
+int max_cooperative_cone_grid();

@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "setup.h"
+#include "cone_projector.h"
 #include "cuhsdlp.h"
 #include "display.h"
 #include "preconditioner.h"
@@ -578,25 +579,28 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->step_size_homogeneous_d, sizeof(double));
     state->graphExec = NULL;
     state->graph_created = false;
+    const int coop_cap = max_cooperative_cone_grid();
+
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.unprojected_scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.converged_d, sizeof(int));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.newton_partials_d,
-                                  state->num_blocks_dual * sizeof(newton_denom_numer_t));
     state->constraint_cone_state.lower_bound = state->constraint_lower_bound;
     state->constraint_cone_state.upper_bound = state->constraint_upper_bound;
     state->constraint_cone_state.num         = state->num_constraints;
-    state->constraint_cone_state.blocks      = state->num_blocks_dual;
+    state->constraint_cone_state.blocks      =
+        state->num_blocks_dual < coop_cap ? state->num_blocks_dual : coop_cap;
+    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.newton_partials_d,
+                                  state->constraint_cone_state.blocks * sizeof(newton_denom_numer_t));
 
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.unprojected_scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.converged_d, sizeof(int));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.newton_partials_d,
-                                  state->num_blocks_primal * sizeof(newton_denom_numer_t));
     state->bound_cone_state.lower_bound = state->variable_lower_bound;
     state->bound_cone_state.upper_bound = state->variable_upper_bound;
     state->bound_cone_state.num         = state->num_variables;
-    state->bound_cone_state.blocks      = state->num_blocks_primal;
+    state->bound_cone_state.blocks      = state->num_blocks_primal < coop_cap ? state->num_blocks_primal : coop_cap;
+    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.newton_partials_d, 
+                                            state->bound_cone_state.blocks * sizeof(newton_denom_numer_t));
 }
 
 static void apply_warm_starts(
