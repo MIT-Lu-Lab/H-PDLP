@@ -147,7 +147,6 @@ __global__ void solve_cone_and_project_kernel(
     double *s_denom = smem;
     double *s_numer = smem + blockDim.x;
 
-    const bool is_owner = (blockIdx.x == 0);
     double scale = *cone.scale_d;
     bool converged = false;
     double scale_low = 0.0;
@@ -192,7 +191,7 @@ __global__ void solve_cone_and_project_kernel(
 
         grid.sync();
 
-        if (is_owner && !converged)
+        if (blockIdx.x == 0 && !converged)
         {
             double thread_denom = 0.0, thread_numer = 0.0;
             for (int bk = threadIdx.x; bk < cone.blocks; bk += blockDim.x)

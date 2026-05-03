@@ -327,8 +327,6 @@ void hsd_update_homogeneous_scale(
     const double reflection_coefficient,
     bool is_major)
 {
-    double homogeneous_step = state->step_size_homogeneous;
-
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,
         state->num_variables,
@@ -346,7 +344,7 @@ void hsd_update_homogeneous_scale(
         state->hsd_dual_constraint_current_d,
         state->hsd_dual_bound_current_d,
         state->pdhg_primal_cross_d,
-        homogeneous_step,
+        state->step_size_homogeneous,
         state->inner_count,
         k_offset,
         reflection_coefficient,
@@ -362,8 +360,6 @@ void hsd_update_dual_solution(
     const double reflection_coefficient,
     bool is_major)
 {
-    double dual_step = state->step_size_dual;
-
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -387,7 +383,7 @@ void hsd_update_dual_solution(
         state->constraint_cone_state.unprojected_scale_d,
         state->hsd_dual_constraint_current_d,
         state->hsd_scale_reflected_d,
-        dual_step,
+        state->step_size_dual,
         state->num_constraints);
 
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
@@ -403,7 +399,7 @@ void hsd_update_dual_solution(
         state->bound_cone_state.unprojected_scale_d,
         state->hsd_dual_bound_current_d,
         state->hsd_scale_reflected_d,
-        dual_step,
+        state->step_size_dual,
         state->num_variables);
 
     solve_cone_newton(
@@ -471,8 +467,6 @@ void hsd_update_primal_solution(
     const double reflection_coefficient,
     bool is_major)
 {
-    double primal_step = state->step_size_primal;
-
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
     CUSPARSE_CHECK(cusparseSpMV(
@@ -503,7 +497,7 @@ void hsd_update_primal_solution(
         state->reflected_dual_slack_d,
         state->objective_vector,
         state->hsd_scale_reflected_d,
-        primal_step,
+        state->step_size_primal,
         state->inner_count,
         k_offset,
         reflection_coefficient,
