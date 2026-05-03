@@ -22,19 +22,6 @@ limitations under the License.
 
 namespace cg = cooperative_groups;
 
-__device__ inline void block_reduce_denom_numer(
-    double *s_denom,
-     double *s_numer);
-__device__ inline void update_newton_state(
-    const cone_projection_state_t &cone,
-    double unprojected_scale,
-    double tol,
-    double *s_denom,
-    double *s_numer,
-    double *scale,
-    double *scale_low,
-    double *scale_high,
-    bool *converged);
 __global__ void solve_dual_cones_and_project_kernel(
     cone_projection_state_t c,
     const double *__restrict__ c_unprojected_vector,
@@ -44,6 +31,9 @@ __global__ void solve_dual_cones_and_project_kernel(
     double *__restrict__ b_projected_vector,
     int max_iter,
     double tol);
+__device__ inline void block_reduce_denom_numer(
+    double *s_denom,
+    double *s_numer);
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
@@ -100,27 +90,33 @@ __global__ void solve_dual_cones_and_project_kernel(
     double *s_numer = smem + blockDim.x;
 
     const bool is_constraint_cone = (blockIdx.x < c.blocks);
-    const int block_idx_in_cone = is_constraint_cone ? blockIdx.x : (blockIdx.x - c.blocks);
+    const int block_idx_in_cone =
+        is_constraint_cone ? blockIdx.x : (blockIdx.x - c.blocks);
+    const bool is_owner = (block_idx_in_cone == 0);
 
     double c_scale = *c.scale_d;
+    bool c_converged = false;
+    double b_scale = *b.scale_d;
+    bool b_converged = false;
+
     double c_scale_low = 0.0;
     double c_scale_high = INFINITY;
-    bool c_converged = false;
-
-    double b_scale = *b.scale_d;
     double b_scale_low = 0.0;
     double b_scale_high = INFINITY;
-    bool b_converged = false;
 
     const double c_unprojected_scale = *c.unprojected_scale_d;
     const double b_unprojected_scale = *b.unprojected_scale_d;
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        const cone_projection_state_t &my_cone = is_constraint_cone ? c : b;
-        const double *my_unprojected = is_constraint_cone ? c_unprojected_vector : b_unprojected_vector;
-        const double my_scale = is_constraint_cone ? c_scale : b_scale;
-        const bool my_cone_converged = is_constraint_cone ? c_converged : b_converged;
+        const cone_projection_state_t &my_cone =
+            is_constraint_cone ? c : b;
+        const double *my_unprojected =
+            is_constraint_cone ? c_unprojected_vector : b_unprojected_vector;
+        const double my_scale =
+            is_constraint_cone ? c_scale : b_scale;
+        const bool my_cone_converged =
+            is_constraint_cone ? c_converged : b_converged;
 
         if (!my_cone_converged)
         {
@@ -155,34 +151,107 @@ __global__ void solve_dual_cones_and_project_kernel(
                     newton_denom_numer_t{s_denom[0], s_numer[0]};
             }
         }
+
         grid.sync();
 
-        if (!c_converged)
+        if (is_owner && is_constraint_cone && !c_converged)
         {
-            update_newton_state(c, c_unprojected_scale, tol, s_denom, s_numer,
-                                &c_scale, &c_scale_low, &c_scale_high, &c_converged);
+            double thread_denom = 0.0, thread_numer = 0.0;
+            for (int bk = threadIdx.x; bk < c.blocks; bk += blockDim.x)
+            {
+                thread_denom += c.newton_partials_d[bk].denom;
+                thread_numer += c.newton_partials_d[bk].numer;
+            }
+            s_denom[threadIdx.x] = thread_denom;
+            s_numer[threadIdx.x] = thread_numer;
+            block_reduce_denom_numer(s_denom, s_numer);
+
+            const double total_denom = s_denom[0];
+            const double total_numer = s_numer[0];
+
+            const double newton_step =
+                fmax(0.0, (total_numer - c_unprojected_scale) / (1.0 + total_denom));
+
+            if (newton_step > c_scale)
+                c_scale_low = c_scale;
+            else
+                c_scale_high = c_scale;
+
+            double new_scale;
+            if (newton_step >= c_scale_low && newton_step <= c_scale_high)
+                new_scale = newton_step;
+            else if (isfinite(c_scale_high))
+                new_scale = 0.5 * (c_scale_low + c_scale_high);
+            else
+                new_scale = c_scale_low;
+
+            const bool new_converged =
+                (fabs(new_scale - c_scale) < tol * (1.0 + fabs(new_scale)));
+
+            c_scale = new_scale;
+            c_converged = new_converged;
+
+            if (threadIdx.x == 0)
+            {
+                *c.scale_d = c_scale;
+                *c.converged_d = c_converged ? 1 : 0;
+            }
         }
-        if (!b_converged)
+
+        if (is_owner && !is_constraint_cone && !b_converged)
         {
-            update_newton_state(b, b_unprojected_scale, tol, s_denom, s_numer,
-                                &b_scale, &b_scale_low, &b_scale_high, &b_converged);
+            double thread_denom = 0.0, thread_numer = 0.0;
+            for (int bk = threadIdx.x; bk < b.blocks; bk += blockDim.x)
+            {
+                thread_denom += b.newton_partials_d[bk].denom;
+                thread_numer += b.newton_partials_d[bk].numer;
+            }
+            s_denom[threadIdx.x] = thread_denom;
+            s_numer[threadIdx.x] = thread_numer;
+            block_reduce_denom_numer(s_denom, s_numer);
+
+            const double total_denom = s_denom[0];
+            const double total_numer = s_numer[0];
+
+            const double newton_step =
+                fmax(0.0, (total_numer - b_unprojected_scale) / (1.0 + total_denom));
+
+            if (newton_step > b_scale)
+                b_scale_low = b_scale;
+            else
+                b_scale_high = b_scale;
+
+            double new_scale;
+            if (newton_step >= b_scale_low && newton_step <= b_scale_high)
+                new_scale = newton_step;
+            else if (isfinite(b_scale_high))
+                new_scale = 0.5 * (b_scale_low + b_scale_high);
+            else
+                new_scale = b_scale_low;
+
+            const bool new_converged =
+                (fabs(new_scale - b_scale) < tol * (1.0 + fabs(new_scale)));
+
+            b_scale = new_scale;
+            b_converged = new_converged;
+
+            if (threadIdx.x == 0)
+            {
+                *b.scale_d = b_scale;
+                *b.converged_d = b_converged ? 1 : 0;
+            }
         }
+
+        grid.sync();
+
+        c_scale = *c.scale_d;
+        c_converged = (*c.converged_d != 0);
+        b_scale = *b.scale_d;
+        b_converged = (*b.converged_d != 0);
 
         if (c_converged && b_converged)
         {
             break;
-        }
-    }
-
-    if (block_idx_in_cone == 0 && threadIdx.x == 0)
-    {
-        if (is_constraint_cone)
-        {
-            *c.scale_d = c_scale;
-        }
-        else
-        {
-            *b.scale_d = b_scale;
         }
     }
 
@@ -216,64 +285,4 @@ __device__ inline void block_reduce_denom_numer(double *s_denom, double *s_numer
         }
         __syncthreads();
     }
-}
-
-__device__ inline void update_newton_state(
-    const cone_projection_state_t &cone,
-    double unprojected_scale,
-    double tol,
-    double *s_denom,
-    double *s_numer,
-    double *scale,
-    double *scale_low,
-    double *scale_high,
-    bool *converged)
-{
-    __syncthreads();
-
-    double thread_denom = 0.0, thread_numer = 0.0;
-    for (int b = threadIdx.x; b < cone.blocks; b += blockDim.x)
-    {
-        thread_denom += cone.newton_partials_d[b].denom;
-        thread_numer += cone.newton_partials_d[b].numer;
-    }
-    s_denom[threadIdx.x] = thread_denom;
-    s_numer[threadIdx.x] = thread_numer;
-    block_reduce_denom_numer(s_denom, s_numer);
-
-    const double total_denom = s_denom[0];
-    const double total_numer = s_numer[0];
-
-    const double newton_step = fmax(0.0,
-        (total_numer - unprojected_scale) / (1.0 + total_denom));
-
-    if (newton_step > *scale)
-    {
-        *scale_low = *scale;
-    }
-    else
-    {
-        *scale_high = *scale;
-    }
-
-    double new_scale;
-    if (newton_step >= *scale_low && newton_step <= *scale_high)
-    {
-        new_scale = newton_step;
-    }
-    else if (isfinite(*scale_high))
-    {
-        new_scale = 0.5 * (*scale_low + *scale_high);
-    }
-    else
-    {
-        new_scale = *scale_low;
-    }
-
-    if (fabs(new_scale - *scale) < tol * (1.0 + fabs(new_scale)))
-    {
-        *converged = true;
-    }
-
-    *scale = new_scale;
 }
