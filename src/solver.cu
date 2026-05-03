@@ -42,14 +42,14 @@ __global__ void compute_hsd_unprojected_dual_kernel(
     double *scalar_out,
     const double *scalar_current,
     const double *scalar_gradient,
-    double step_size,
+    const double *__restrict__ step_size_d,
     int n);
 __global__ void update_hsd_dual_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
     const double *__restrict__ proj,
     const double *__restrict__ init,
-    int base_count,
+    const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
     int n,
@@ -68,8 +68,8 @@ __global__ void update_hsd_homogeneous_scale_kernel(
     const double *dual_constraint_current,
     const double *dual_bound_current,
     const double *c_dot_x_d,
-    double primal_step,
-    int inner_count,
+    const double *__restrict__ primal_step_d,
+    const int *__restrict__ inner_count_d,
     int k_offset,
     double reflection_coefficient,
     bool is_major);
@@ -82,8 +82,8 @@ __global__ void update_hsd_primal_solution_kernel(
     const double *__restrict__ refl_dual_slack,
     const double *__restrict__ obj_vec,
     const double *scale_reflected,
-    double step_size,
-    int base_count,
+    const double *__restrict__ step_size_d,
+    const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
     int n,
@@ -136,29 +136,29 @@ __global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_t
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
-    const cone_parameters_t *cone_params,
+    const pdhg_parameters_t *params,
     int k_offset,
-    double reflection_coefficient,
     bool is_major);
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 void hsd_update_homogeneous_scale(
-    pdhg_solver_state_t *state, 
+    pdhg_solver_state_t *state,
     const int k_offset,
     const double reflection_coefficient,
     bool is_major);
 void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
-    const cone_parameters_t *cone_params,
+    const pdhg_parameters_t *params,
     const int k_offset,
-    const double reflection_coefficient,
     bool is_major);
 void hsd_update_primal_solution(
     pdhg_solver_state_t *state,
     const int k_offset,
     const double reflection_coefficient,
     bool is_major);
+static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
+static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void perform_restart(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
@@ -202,8 +202,10 @@ cuhsdlp_result_t *optimize(
 
     while (state->total_count < params->termination_criteria.iteration_limit)
     {
-        hsd_run_iteration_step(state, &params->cone_params, 1,
-                               params->reflection_coefficient, true);
+        sync_inner_count_to_gpu(state);
+        sync_step_sizes_to_gpu(state);
+
+        hsd_run_iteration_step(state, params, 1, true);
 
         if (do_restart)
         {
@@ -212,15 +214,25 @@ cuhsdlp_result_t *optimize(
             do_restart = false;
         }
 
-        for (int i = 2; i <= params->termination_evaluation_frequency - 1; i++)
+        if (!state->graph_created)
         {
-            hsd_run_iteration_step(state, &params->cone_params, i,
-                                   params->reflection_coefficient, false);
-        }
+            cudaGraph_t graph = NULL;
+            CUDA_CHECK(cudaStreamBeginCapture(state->stream_A,
+                                              cudaStreamCaptureModeGlobal));
 
-        hsd_run_iteration_step(state, &params->cone_params,
-                               params->termination_evaluation_frequency,
-                               params->reflection_coefficient, true);
+            for (int i = 2; i <= params->termination_evaluation_frequency - 1; i++)
+            {
+                hsd_run_iteration_step(state, params, i, false);
+            }
+            hsd_run_iteration_step(state, params, params->termination_evaluation_frequency, true);
+
+            CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
+            CUDA_CHECK(cudaGraphInstantiate(&state->graphExec, graph,
+                                            NULL, NULL, 0));
+            CUDA_CHECK(cudaGraphDestroy(graph));
+            state->graph_created = true;
+        }
+        CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
         compute_fixed_point_error(state);
         compute_residual(state, params->optimality_norm);
@@ -234,7 +246,7 @@ cuhsdlp_result_t *optimize(
             break;
         }
 
-        do_restart = should_do_adaptive_restart(state, &params->restart_params, params->termination_evaluation_frequency);
+        do_restart = should_do_adaptive_restart(state, params);
         if (do_restart)
         {
             state->restart_count++;
@@ -266,6 +278,34 @@ cuhsdlp_result_t *optimize(
     pdhg_solver_state_free(state);
     CUDA_CHECK(cudaGetLastError());
     return result;
+}
+
+static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
+{
+    CUDA_CHECK(cudaMemcpyAsync(state->inner_count_d,
+                               &state->inner_count,
+                               sizeof(int),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
+}
+
+static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
+{
+    CUDA_CHECK(cudaMemcpyAsync(state->step_size_primal_d,
+                               &state->step_size_primal,
+                               sizeof(double),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->step_size_dual_d,
+                               &state->step_size_dual,
+                               sizeof(double),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->step_size_homogeneous_d,
+                               &state->step_size_homogeneous,
+                               sizeof(double),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
 }
 
 static void compute_step_sizes(
@@ -311,13 +351,13 @@ static void initialize_step_size_and_primal_weight(
 
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
-    const cone_parameters_t *cone_params,
+    const pdhg_parameters_t *params,
     int k_offset,
-    double reflection_coefficient,
     bool is_major)
 {
+    double reflection_coefficient = params->reflection_coefficient;
     hsd_update_homogeneous_scale(state, k_offset, reflection_coefficient, is_major);
-    hsd_update_dual_solution(state, cone_params, k_offset, reflection_coefficient, is_major);
+    hsd_update_dual_solution(state, params, k_offset, is_major);
     hsd_update_primal_solution(state, k_offset, reflection_coefficient, is_major);
 }
 
@@ -344,8 +384,8 @@ void hsd_update_homogeneous_scale(
         state->hsd_dual_constraint_current_d,
         state->hsd_dual_bound_current_d,
         state->pdhg_primal_cross_d,
-        state->step_size_homogeneous,
-        state->inner_count,
+        state->step_size_homogeneous_d,
+        state->inner_count_d,
         k_offset,
         reflection_coefficient,
         is_major);
@@ -355,11 +395,13 @@ void hsd_update_homogeneous_scale(
 
 void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
-    const cone_parameters_t *cone_params,
+    const pdhg_parameters_t *params,
     const int k_offset,
-    const double reflection_coefficient,
     bool is_major)
 {
+    const cone_parameters_t *cone_params = &params->cone_params;
+    const double reflection_coefficient = params->reflection_coefficient;
+
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
@@ -383,7 +425,7 @@ void hsd_update_dual_solution(
         state->constraint_cone_state.unprojected_scale_d,
         state->hsd_dual_constraint_current_d,
         state->hsd_scale_reflected_d,
-        state->step_size_dual,
+        state->step_size_dual_d,
         state->num_constraints);
 
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
@@ -399,7 +441,7 @@ void hsd_update_dual_solution(
         state->bound_cone_state.unprojected_scale_d,
         state->hsd_dual_bound_current_d,
         state->hsd_scale_reflected_d,
-        state->step_size_dual,
+        state->step_size_dual_d,
         state->num_variables);
 
     solve_cone_newton(
@@ -425,7 +467,7 @@ void hsd_update_dual_solution(
         state->reflected_dual_slack_d,
         state->pdhg_dual_slack_d,
         state->initial_dual_slack_d,
-        state->inner_count,
+        state->inner_count_d,
         k_offset,
         reflection_coefficient,
         state->num_variables,
@@ -446,7 +488,7 @@ void hsd_update_dual_solution(
         state->reflected_dual_solution_d,
         state->pdhg_dual_solution_d,
         state->initial_dual_solution_d,
-        state->inner_count,
+        state->inner_count_d,
         k_offset,
         reflection_coefficient,
         state->num_constraints,
@@ -497,8 +539,8 @@ void hsd_update_primal_solution(
         state->reflected_dual_slack_d,
         state->objective_vector,
         state->hsd_scale_reflected_d,
-        state->step_size_primal,
-        state->inner_count,
+        state->step_size_primal_d,
+        state->inner_count_d,
         k_offset,
         reflection_coefficient,
         state->num_variables,
@@ -858,9 +900,10 @@ __global__ void compute_hsd_unprojected_dual_kernel(
     double *scalar_out,
     const double *scalar_current,
     const double *scalar_gradient,
-    double step_size,
+    const double *__restrict__ step_size_d,
     int n)
 {
+    double step_size = *step_size_d;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
         out[i] = current[i] - step_size * gradient[i];
@@ -873,7 +916,7 @@ __global__ void update_hsd_dual_kernel(
     double *__restrict__ refl,
     const double *__restrict__ proj,
     const double *__restrict__ init,
-    int base_count,
+    const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
     int n,
@@ -885,6 +928,7 @@ __global__ void update_hsd_dual_kernel(
     const double *unprojected_scale_d,
     bool is_major)
 {
+    int base_count = *base_count_d;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
     {
@@ -919,12 +963,14 @@ __global__ void update_hsd_homogeneous_scale_kernel(
     const double *dual_constraint_current,
     const double *dual_bound_current,
     const double *c_dot_x_d,
-    double primal_step,
-    int inner_count,
+    const double *__restrict__ primal_step_d,
+    const int *__restrict__ inner_count_d,
     int k_offset,
     double reflection_coefficient,
     bool is_major)
 {
+    double primal_step = *primal_step_d;
+    int    inner_count = *inner_count_d;
     double c_dot_x = c_dot_x_d[0];
     double gradient = c_dot_x + (*dual_constraint_current) + (*dual_bound_current);
     double projected = fmax(0.0, (*scale_current) + primal_step * gradient);
@@ -952,13 +998,15 @@ __global__ void update_hsd_primal_solution_kernel(
     const double *__restrict__ refl_dual_slack,
     const double *__restrict__ obj_vec,
     const double *scale_reflected,
-    double step_size,
-    int base_count,
+    const double *__restrict__ step_size_d,
+    const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
     int n,
     bool is_major)
 {
+    double step_size = *step_size_d;
+    int    base_count = *base_count_d;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n)
         return;

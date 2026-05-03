@@ -315,9 +315,11 @@ void check_termination_criteria(
 }
 
 bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
-                                const restart_parameters_t *restart_params,
-                                int termination_evaluation_frequency)
+                                const pdhg_parameters_t *params)
 {
+    const restart_parameters_t *restart_params = &params->restart_params;
+    int termination_evaluation_frequency = params->termination_evaluation_frequency;
+
     bool do_restart = false;
     if (solver_state->total_count == termination_evaluation_frequency)
     {

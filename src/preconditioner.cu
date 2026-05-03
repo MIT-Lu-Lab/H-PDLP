@@ -302,12 +302,14 @@ __global__ void compute_bound_objective_scales_kernel(
 }
 
 void rescale_problem(
-    const scaling_parameters_t *scaling_params,
-    const power_iteration_parameters_t *power_iter_params,
-    norm_type_t optimality_norm,
-    bool verbose,
+    const pdhg_parameters_t *params,
     pdhg_solver_state_t *state)
 {
+    const scaling_parameters_t *scaling_params = &params->scaling_params;
+    const power_iteration_parameters_t *power_iter_params = &params->power_iter_params;
+    norm_type_t optimality_norm = params->optimality_norm;
+    bool verbose = params->verbose;
+
     if (verbose)
     {
         printf("\nPreconditioning...\n");

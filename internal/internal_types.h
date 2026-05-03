@@ -63,8 +63,7 @@ enum FarkasReduction {
     FARKAS_COUNT                 = 7,
 };
 
-typedef struct
-{
+typedef struct {
     int num_rows;
     int num_cols;
     int num_nonzeros;
@@ -117,10 +116,17 @@ typedef struct {
     double relative_dual_infeasibility_objective;
 } pdhg_metrics_t;
 
-typedef struct
-{
+typedef struct {
     int num_variables;
     int num_constraints;
+    size_t var_bytes;
+    size_t con_bytes;
+    int num_blocks_primal;
+    int num_blocks_dual;
+    int num_blocks_primal_dual;
+    int num_blocks_primal_dual_slack;
+    int num_blocks_nnz;
+
     cu_sparse_matrix_csr_t *constraint_matrix;
     cu_sparse_matrix_csr_t *constraint_matrix_t;
     double *variable_lower_bound;
@@ -129,14 +135,6 @@ typedef struct
     double *constraint_upper_bound;
     double *objective_vector;
     double objective_constant;
-
-    int num_blocks_primal;
-    int num_blocks_dual;
-    int num_blocks_primal_dual;
-    int num_blocks_primal_dual_slack;
-    int num_blocks_nnz;
-    size_t var_bytes;
-    size_t con_bytes;
 
     cusparseHandle_t  sparse_handle_A;
     cusparseHandle_t  sparse_handle_At;
@@ -148,6 +146,8 @@ typedef struct
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
     cudaEvent_t       event_s;
+    cudaGraphExec_t   graphExec;
+    bool              graph_created;
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
@@ -172,15 +172,15 @@ typedef struct
     double  rescaled_objective_norm;
     double  rescaled_bound_norm;
     double  rescaled_constraint_norm;
+    double  constraint_bound_rescaling;
+    double  objective_vector_rescaling;
+    double  rescaling_time_sec;
     double *precond_bound_norm_mp;
     double *precond_objective_norm_mp;
     double *constraint_rescaling_d;
     double *variable_rescaling_d;
-    double  constraint_bound_rescaling;
-    double  objective_vector_rescaling;
     double *constraint_bound_rescaling_d;
     double *objective_vector_rescaling_d;
-    double  rescaling_time_sec;
 
     double *initial_primal_solution_d;
     double *current_primal_solution_d;
@@ -239,6 +239,18 @@ typedef struct
     double step_size_dual;
     double step_size_homogeneous;
     double step_size_base;
+    int    total_count;
+    int    inner_count;
+    int    restart_count;
+    clock_t start_time;
+    double  cumulative_time_sec;
+    termination_reason_t termination_reason;
+
+    int    *inner_count_d;
+    double *step_size_primal_d;
+    double *step_size_dual_d;
+    double *step_size_homogeneous_d;
+
     double primal_weight;
     double primal_weight_error_sum;
     double primal_weight_last_error;
@@ -268,11 +280,4 @@ typedef struct
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;
-
-    int total_count;
-    int inner_count;
-    int restart_count;
-    clock_t start_time;
-    double  cumulative_time_sec;
-    termination_reason_t termination_reason;
 } pdhg_solver_state_t;

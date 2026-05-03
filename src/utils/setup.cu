@@ -63,32 +63,17 @@ static void allocate_zeroed_device_buffer(
 static void allocate_cub_reduce_workspace(pdhg_solver_state_t *state);
 static void upload_problem_data(
     pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem,
-    size_t var_bytes,
-    size_t con_bytes,
-    int n_vars,
-    int n_cons,
-    int nnz);
-static void allocate_solver_work_vectors(
-    pdhg_solver_state_t *state,
-    size_t var_bytes,
-    size_t con_bytes);
+    const lp_problem_t *working_problem);
+static void allocate_solver_work_vectors(pdhg_solver_state_t *state);
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state);
-static void initialize_power_iteration_buffers(
-    pdhg_solver_state_t *state,
-    size_t var_bytes);
+static void initialize_power_iteration_buffers(pdhg_solver_state_t *state);
 static void allocate_host_staging_buffers(pdhg_solver_state_t *state);
 static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem,
-    size_t var_bytes,
-    size_t con_bytes);
+    const lp_problem_t *working_problem);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
-static void initialize_iterates_from_starts(
-    pdhg_solver_state_t *state,
-    size_t var_bytes,
-    size_t con_bytes);
+static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
 static void initialize_solver_progress(pdhg_solver_state_t *state);
 static void free_sparse_resources(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
@@ -154,11 +139,8 @@ pdhg_solver_state_t *initialize_solver_state(
 
     state->num_variables = n_vars;
     state->num_constraints = n_cons;
-    state->var_bytes = n_vars * sizeof(double);
-    state->con_bytes = n_cons * sizeof(double);
-
-    size_t var_bytes = state->var_bytes;
-    size_t con_bytes = state->con_bytes;
+    state->var_bytes = (size_t)n_vars * sizeof(double);
+    state->con_bytes = (size_t)n_cons * sizeof(double);
     state->objective_constant = working_problem->objective_constant;
 
     state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
@@ -202,26 +184,25 @@ pdhg_solver_state_t *initialize_solver_state(
     CURAND_CHECK(curandSetStream(state->curand_gen, state->stream_A));
 
     allocate_cub_reduce_workspace(state);
-    upload_problem_data(state, working_problem, var_bytes, con_bytes, n_vars, n_cons, nnz);
-    allocate_solver_work_vectors(state, var_bytes, con_bytes);
+    upload_problem_data(state, working_problem);
+    allocate_solver_work_vectors(state);
     allocate_host_staging_buffers(state);
     initialize_homogeneous_scalars(state);
-    initialize_power_iteration_buffers(state, var_bytes);
+    initialize_power_iteration_buffers(state);
     allocate_device_scalars(state);
-    apply_warm_starts(state, working_problem, var_bytes, con_bytes);
+    apply_warm_starts(state, working_problem);
 
     init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
 
     setup_sparse_resources(state);
 
-    CUDA_CHECK(cudaMalloc(&state->constraint_rescaling_d, con_bytes));
-    CUDA_CHECK(cudaMalloc(&state->variable_rescaling_d, var_bytes));
+    CUDA_CHECK(cudaMalloc(&state->constraint_rescaling_d, state->con_bytes));
+    CUDA_CHECK(cudaMalloc(&state->variable_rescaling_d, state->var_bytes));
 
-    rescale_problem(&params->scaling_params, &params->power_iter_params,
-                    params->optimality_norm, params->verbose, state);
+    rescale_problem(params, state);
 
     release_setup_only_matrix_data(state);
-    initialize_iterates_from_starts(state, var_bytes, con_bytes);
+    initialize_iterates_from_starts(state);
     initialize_solver_progress(state);
 
     print_iteration_header(params->verbose);
@@ -421,13 +402,14 @@ static void allocate_cub_reduce_workspace(pdhg_solver_state_t *state)
 
 static void upload_problem_data(
     pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem,
-    size_t var_bytes,
-    size_t con_bytes,
-    int n_vars,
-    int n_cons,
-    int nnz)
+    const lp_problem_t *working_problem)
 {
+    const size_t var_bytes = state->var_bytes;
+    const size_t con_bytes = state->con_bytes;
+    const int n_vars = state->num_variables;
+    const int n_cons = state->num_constraints;
+    const int nnz = state->constraint_matrix->num_nonzeros;
+
     allocate_and_copy_to_device((void **)&state->constraint_matrix->row_ptr,
                                 working_problem->constraint_matrix_row_pointers,
                                 (size_t)(n_cons + 1) * sizeof(int));
@@ -490,38 +472,38 @@ static void upload_problem_data(
                                 working_problem->constraint_upper_bound, con_bytes);
 }
 
-static void allocate_solver_work_vectors(
-    pdhg_solver_state_t *state,
-    size_t var_bytes,
-    size_t con_bytes)
+static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
 {
+    const size_t var_bytes = state->var_bytes;
+    const size_t con_bytes = state->con_bytes;
+
     allocate_zeroed_device_buffer((void **)&state->initial_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->current_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->pdhg_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->reflected_primal_solution_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->primal_product_d, con_bytes);
-    allocate_zeroed_device_buffer((void **)&state->dual_residual_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->homogeneous_dual_residual_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->variable_recession_residual_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->delta_primal_solution_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_product_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_vec_buffer_d, var_bytes);
 
     allocate_zeroed_device_buffer((void **)&state->initial_dual_solution_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->current_dual_solution_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->pdhg_dual_solution_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->reflected_dual_solution_d, con_bytes);
-    allocate_zeroed_device_buffer((void **)&state->dual_product_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes);
-    allocate_zeroed_device_buffer((void **)&state->constraint_recession_residual_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->delta_dual_solution_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->dual_product_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->dual_vec_buffer_d, con_bytes);
 
-    allocate_zeroed_device_buffer((void **)&state->current_dual_slack_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->initial_dual_slack_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->current_dual_slack_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->pdhg_dual_slack_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->reflected_dual_slack_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->delta_dual_slack_d, var_bytes);
 
-    allocate_zeroed_device_buffer((void **)&state->primal_vec_buffer_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->dual_vec_buffer_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->dual_residual_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->homogeneous_dual_residual_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->constraint_recession_residual_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->variable_recession_residual_d, var_bytes);
 }
 
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
@@ -533,14 +515,13 @@ static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
     state->metrics_h->pdhg_dual_bound_offset = 1.0;
 }
 
-static void initialize_power_iteration_buffers(
-    pdhg_solver_state_t *state,
-    size_t var_bytes)
+static void initialize_power_iteration_buffers(pdhg_solver_state_t *state)
 {
-    size_t power_iteration_vector_count = ((size_t)state->num_constraints + 1) & ~(size_t)1;
+    const size_t power_iteration_vector_count = ((size_t)state->num_constraints + 1) & ~(size_t)1;
+
     CUDA_CHECK(cudaMalloc(&state->power_iteration_vector_d, power_iteration_vector_count * sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->power_iteration_normalized_vector_d, power_iteration_vector_count * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&state->power_iteration_product_d, var_bytes));
+    CUDA_CHECK(cudaMalloc(&state->power_iteration_product_d, state->var_bytes));
     CUDA_CHECK(cudaMalloc(&state->power_iteration_vector_norm_scalar_d, sizeof(double)));
 }
 
@@ -591,6 +572,12 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->constraint_bound_rescaling_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->objective_vector_rescaling_d, sizeof(double)));
+    allocate_zeroed_device_buffer((void **)&state->inner_count_d, sizeof(int));
+    allocate_zeroed_device_buffer((void **)&state->step_size_primal_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->step_size_dual_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->step_size_homogeneous_d, sizeof(double));
+    state->graphExec = NULL;
+    state->graph_created = false;
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.unprojected_scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.converged_d, sizeof(int));
@@ -614,22 +601,20 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
 
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem,
-    size_t var_bytes,
-    size_t con_bytes)
+    const lp_problem_t *working_problem)
 {
     if (working_problem->primal_start)
     {
         CUDA_CHECK(cudaMemcpy(state->initial_primal_solution_d,
                               working_problem->primal_start,
-                              var_bytes,
+                              state->var_bytes,
                               cudaMemcpyHostToDevice));
     }
     if (working_problem->dual_start)
     {
         CUDA_CHECK(cudaMemcpy(state->initial_dual_solution_d,
                               working_problem->dual_start,
-                              con_bytes,
+                              state->con_bytes,
                               cudaMemcpyHostToDevice));
     }
 }
@@ -644,15 +629,24 @@ static void release_setup_only_matrix_data(pdhg_solver_state_t *state)
     state->constraint_matrix->transpose_map = NULL;
 }
 
-static void initialize_iterates_from_starts(
-    pdhg_solver_state_t *state,
-    size_t var_bytes,
-    size_t con_bytes)
+static void initialize_iterates_from_starts(pdhg_solver_state_t *state)
 {
-    CUDA_CHECK(cudaMemcpy(state->current_primal_solution_d, state->initial_primal_solution_d, var_bytes, cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_dual_solution_d, state->initial_dual_solution_d, con_bytes, cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, state->initial_primal_solution_d, var_bytes, cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution_d, state->initial_dual_solution_d, con_bytes, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->current_primal_solution_d,
+                          state->initial_primal_solution_d,
+                          state->var_bytes,
+                          cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->current_dual_solution_d,
+                          state->initial_dual_solution_d,
+                          state->con_bytes,
+                          cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d,
+                          state->initial_primal_solution_d,
+                          state->var_bytes,
+                          cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution_d,
+                          state->initial_dual_solution_d,
+                          state->con_bytes,
+                          cudaMemcpyDeviceToDevice));
 }
 
 static void initialize_solver_progress(pdhg_solver_state_t *state)
@@ -757,42 +751,51 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
             CUDA_CHECK(cudaFree(ptr)); \
     } while (0)
 
-    FREE_DEVICE_BUFFER(state->primal_vec_buffer_d);
-    FREE_DEVICE_BUFFER(state->dual_vec_buffer_d);
     FREE_DEVICE_BUFFER(state->variable_lower_bound);
     FREE_DEVICE_BUFFER(state->variable_upper_bound);
-    FREE_DEVICE_BUFFER(state->objective_vector);
     FREE_DEVICE_BUFFER(state->constraint_lower_bound);
     FREE_DEVICE_BUFFER(state->constraint_upper_bound);
+    FREE_DEVICE_BUFFER(state->objective_vector);
+    FREE_DEVICE_BUFFER(state->constraint_rescaling_d);
+    FREE_DEVICE_BUFFER(state->variable_rescaling_d);
+    FREE_DEVICE_BUFFER(state->constraint_bound_rescaling_d);
+    FREE_DEVICE_BUFFER(state->objective_vector_rescaling_d);
+
     FREE_DEVICE_BUFFER(state->initial_primal_solution_d);
     FREE_DEVICE_BUFFER(state->current_primal_solution_d);
     FREE_DEVICE_BUFFER(state->pdhg_primal_solution_d);
     FREE_DEVICE_BUFFER(state->reflected_primal_solution_d);
+    FREE_DEVICE_BUFFER(state->delta_primal_solution_d);
     FREE_DEVICE_BUFFER(state->primal_product_d);
+    FREE_DEVICE_BUFFER(state->primal_vec_buffer_d);
+
     FREE_DEVICE_BUFFER(state->initial_dual_solution_d);
     FREE_DEVICE_BUFFER(state->current_dual_solution_d);
     FREE_DEVICE_BUFFER(state->pdhg_dual_solution_d);
     FREE_DEVICE_BUFFER(state->reflected_dual_solution_d);
-    FREE_DEVICE_BUFFER(state->dual_product_d);
-    FREE_DEVICE_BUFFER(state->constraint_rescaling_d);
-    FREE_DEVICE_BUFFER(state->variable_rescaling_d);
-    FREE_DEVICE_BUFFER(state->primal_residual_d);
-    FREE_DEVICE_BUFFER(state->dual_residual_d);
-    FREE_DEVICE_BUFFER(state->homogeneous_dual_residual_d);
-    FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
-    FREE_DEVICE_BUFFER(state->constraint_recession_residual_d);
-    FREE_DEVICE_BUFFER(state->delta_primal_solution_d);
     FREE_DEVICE_BUFFER(state->delta_dual_solution_d);
-    FREE_DEVICE_BUFFER(state->current_dual_slack_d);
+    FREE_DEVICE_BUFFER(state->dual_product_d);
+    FREE_DEVICE_BUFFER(state->dual_vec_buffer_d);
+
     FREE_DEVICE_BUFFER(state->initial_dual_slack_d);
+    FREE_DEVICE_BUFFER(state->current_dual_slack_d);
     FREE_DEVICE_BUFFER(state->pdhg_dual_slack_d);
     FREE_DEVICE_BUFFER(state->reflected_dual_slack_d);
     FREE_DEVICE_BUFFER(state->delta_dual_slack_d);
+
+    FREE_DEVICE_BUFFER(state->hsd_scalars_d);
+    FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
     FREE_DEVICE_BUFFER(state->power_iteration_vector_d);
     FREE_DEVICE_BUFFER(state->power_iteration_normalized_vector_d);
     FREE_DEVICE_BUFFER(state->power_iteration_product_d);
     FREE_DEVICE_BUFFER(state->power_iteration_vector_norm_scalar_d);
-    FREE_DEVICE_BUFFER(state->hsd_scalars_d);
+
+    FREE_DEVICE_BUFFER(state->primal_residual_d);
+    FREE_DEVICE_BUFFER(state->dual_residual_d);
+    FREE_DEVICE_BUFFER(state->homogeneous_dual_residual_d);
+    FREE_DEVICE_BUFFER(state->constraint_recession_residual_d);
+    FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
+
     FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.unprojected_scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.converged_d);
@@ -801,13 +804,21 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->bound_cone_state.unprojected_scale_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.converged_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.newton_partials_d);
+
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace);
-    FREE_DEVICE_BUFFER(state->constraint_bound_rescaling_d);
-    FREE_DEVICE_BUFFER(state->objective_vector_rescaling_d);
-    FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
+    FREE_DEVICE_BUFFER(state->inner_count_d);
+    FREE_DEVICE_BUFFER(state->step_size_primal_d);
+    FREE_DEVICE_BUFFER(state->step_size_dual_d);
+    FREE_DEVICE_BUFFER(state->step_size_homogeneous_d);
     FREE_DEVICE_BUFFER(state->pdhg_reduce_d);
     FREE_DEVICE_BUFFER(state->farkas_reduce_d);
     FREE_DEVICE_BUFFER(state->metrics_d);
+
+    if (state->graphExec)
+    {
+        CUDA_CHECK(cudaGraphExecDestroy(state->graphExec));
+        state->graphExec = NULL;
+    }
 
 #undef FREE_DEVICE_BUFFER
 
@@ -828,9 +839,10 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 #undef FREE_HOST_BUFFER
 }
 
-__global__ void build_row_ind_kernel(const int *__restrict__ row_ptr,
-                              int num_rows,
-                              int *__restrict__ row_ind)
+__global__ void build_row_ind_kernel(
+    const int *__restrict__ row_ptr,
+    int num_rows,
+    int *__restrict__ row_ind)
 {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     if (row >= num_rows)

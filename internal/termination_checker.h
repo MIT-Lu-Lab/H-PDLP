@@ -33,8 +33,7 @@ extern "C"
 
     bool should_do_adaptive_restart(
         pdhg_solver_state_t *solver_state,
-        const restart_parameters_t *restart_params,
-        int termination_evaluation_frequency);
+        const pdhg_parameters_t *params);
 
 #ifdef __cplusplus
 }
