@@ -54,8 +54,11 @@ __device__ inline void block_reduce_denom_numer(
 
 int max_cooperative_cone_grid()
 {
+    int device = 0;
+    CUDA_CHECK(cudaGetDevice(&device));
+
     int sm_count = 0;
-    CUDA_CHECK(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, 0));
+    CUDA_CHECK(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, device));
     int max_active_per_sm = 0;
     const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
