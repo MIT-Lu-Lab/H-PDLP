@@ -44,7 +44,7 @@ __global__ void compute_hsd_unprojected_dual_kernel(
     const double *scalar_gradient,
     const double *__restrict__ step_size_d,
     int n);
-__global__ void update_hsd_dual_kernel(
+__global__ void update_hsd_dual_solution_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
     const double *__restrict__ proj,
@@ -459,7 +459,7 @@ void hsd_update_dual_solution(
         state->pdhg_dual_slack_d,
         state->stream_At);
 
-    update_hsd_dual_kernel<<<
+    update_hsd_dual_solution_kernel<<<
         state->num_blocks_primal,
         THREADS_PER_BLOCK,
         0,
@@ -480,7 +480,7 @@ void hsd_update_dual_solution(
         state->bound_cone_state.unprojected_scale_d,
         is_major);
 
-    update_hsd_dual_kernel<<<
+    update_hsd_dual_solution_kernel<<<
         state->num_blocks_dual,
         THREADS_PER_BLOCK,
         0,
@@ -914,7 +914,7 @@ __global__ void compute_hsd_unprojected_dual_kernel(
         *scalar_out = (*scalar_current) - step_size * (*scalar_gradient);
 }
 
-__global__ void update_hsd_dual_kernel(
+__global__ void update_hsd_dual_solution_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
     const double *__restrict__ proj,
