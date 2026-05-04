@@ -180,7 +180,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --objective_coupling_budget <float> Objective coupling budget fraction (default: 0.05).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
-    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 20).\n");
+    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 30).\n");
     fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: 1e-6).\n");
     fprintf(stderr, "\n  Termination:\n");
     fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: 3600.0).\n");
