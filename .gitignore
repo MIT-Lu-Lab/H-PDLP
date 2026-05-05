@@ -55,3 +55,4 @@ build/*
 test/*
 /result
 /docs
+/infeas
