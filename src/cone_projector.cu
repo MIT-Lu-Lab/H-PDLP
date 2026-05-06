@@ -178,12 +178,13 @@ __global__ void solve_cone_and_project_kernel(
 
         double thread_denom = 0.0, thread_numer = 0.0;
         for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-             i < cone.num_elements;
+             i < cone.num_contrib_bound;
              i += cone.num_blocks * blockDim.x)
         {
-            const double vi = -unprojected_vector[i];
-            const double li = cone.lower_bound_d[i];
-            const double ui = cone.upper_bound_d[i];
+            const int j = cone.contrib_bound_indices_d[i];
+            const double vi = -unprojected_vector[j];
+            const double li = cone.lower_bound_d[j];
+            const double ui = cone.upper_bound_d[j];
             double bound = 0.0;
             if (isfinite(li) && vi < li * scale)
             {
@@ -297,11 +298,12 @@ __global__ void solve_single_block_cone_and_project_kernel(
     for (int iter = 0; iter < max_iter; ++iter)
     {
         double thread_denom = 0.0, thread_numer = 0.0;
-        for (int i = threadIdx.x; i < cone.num_elements; i += blockDim.x)
+        for (int i = threadIdx.x; i < cone.num_contrib_bound; i += blockDim.x)
         {
-            const double vi = -unprojected_vector[i];
-            const double li = cone.lower_bound_d[i];
-            const double ui = cone.upper_bound_d[i];
+            const int j = cone.contrib_bound_indices_d[i];
+            const double vi = -unprojected_vector[j];
+            const double li = cone.lower_bound_d[j];
+            const double ui = cone.upper_bound_d[j];
             double bound = 0.0;
             if (isfinite(li) && vi < li * scale)
             {

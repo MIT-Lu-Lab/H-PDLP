@@ -73,6 +73,14 @@ static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
+static int build_cone_contrib_bound_indices(
+    const double *lower_bound_h,
+    const double *upper_bound_h,
+    int num_elements,
+    int *contrib_indices_h);
+static void initialize_cone_contrib_bound_indices(
+    pdhg_solver_state_t *state,
+    const lp_problem_t *working_problem);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
 static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
 static void initialize_convergence_tracking(pdhg_solver_state_t *state);
@@ -191,6 +199,7 @@ pdhg_solver_state_t *initialize_solver_state(
     initialize_homogeneous_scalars(state);
     initialize_power_iteration_buffers(state);
     allocate_device_scalars(state);
+    initialize_cone_contrib_bound_indices(state, working_problem);
     apply_warm_starts(state, working_problem);
 
     init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
@@ -621,6 +630,68 @@ static void apply_warm_starts(
     }
 }
 
+static int build_cone_contrib_bound_indices(
+    const double *lower_bound_h,
+    const double *upper_bound_h,
+    int num_elements,
+    int *contrib_indices_h)
+{
+    int count = 0;
+    for (int i = 0; i < num_elements; ++i)
+    {
+        const bool lb_contrib = isfinite(lower_bound_h[i]) && lower_bound_h[i] != 0.0;
+        const bool ub_contrib = isfinite(upper_bound_h[i]) && upper_bound_h[i] != 0.0;
+        if (lb_contrib || ub_contrib)
+        {
+            contrib_indices_h[count++] = i;
+        }
+    }
+    return count;
+}
+
+static void initialize_cone_contrib_bound_indices(
+    pdhg_solver_state_t *state,
+    const lp_problem_t *working_problem)
+{
+    int *constraint_indices_h = (int *)safe_malloc(state->num_constraints * sizeof(int));
+    state->constraint_cone_state.num_contrib_bound = build_cone_contrib_bound_indices(
+        working_problem->constraint_lower_bound,
+        working_problem->constraint_upper_bound,
+        state->num_constraints,
+        constraint_indices_h);
+    if (state->constraint_cone_state.num_contrib_bound > 0)
+    {
+        allocate_and_copy_to_device(
+            (void **)&state->constraint_cone_state.contrib_bound_indices_d,
+            constraint_indices_h,
+            (size_t)state->constraint_cone_state.num_contrib_bound * sizeof(int));
+    }
+    else
+    {
+        state->constraint_cone_state.contrib_bound_indices_d = NULL;
+    }
+    free(constraint_indices_h);
+
+    int *variable_indices_h = (int *)safe_malloc(state->num_variables * sizeof(int));
+    state->bound_cone_state.num_contrib_bound = build_cone_contrib_bound_indices(
+        working_problem->variable_lower_bound,
+        working_problem->variable_upper_bound,
+        state->num_variables,
+        variable_indices_h);
+    if (state->bound_cone_state.num_contrib_bound > 0)
+    {
+        allocate_and_copy_to_device(
+            (void **)&state->bound_cone_state.contrib_bound_indices_d,
+            variable_indices_h,
+            (size_t)state->bound_cone_state.num_contrib_bound * sizeof(int));
+    }
+    else
+    {
+        state->bound_cone_state.contrib_bound_indices_d = NULL;
+    }
+    free(variable_indices_h);
+}
+
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaFree(state->constraint_matrix->row_ind));
@@ -801,9 +872,11 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.unprojected_scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.newton_partials_d);
+    FREE_DEVICE_BUFFER(state->constraint_cone_state.contrib_bound_indices_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.unprojected_scale_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.newton_partials_d);
+    FREE_DEVICE_BUFFER(state->bound_cone_state.contrib_bound_indices_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
     FREE_DEVICE_BUFFER(state->inner_count_d);
