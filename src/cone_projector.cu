@@ -51,6 +51,9 @@ static void launch_single_block_cone_projection(
 __device__ inline void block_reduce_denom_numer(
     double *s_denom,
     double *s_numer);
+__device__ inline void warp_reduce_denom_numer(
+    double &denom,
+    double &numer);
 
 int max_cooperative_cone_grid()
 {
@@ -165,87 +168,99 @@ __global__ void solve_cone_and_project_kernel(
     double *s_numer = smem + blockDim.x;
 
     double scale = *cone.scale_d;
+    bool converged = false;
     double scale_low = 0.0;
     double scale_high = INFINITY;
-    bool converged = false;
     const double unprojected_scale = *cone.unprojected_scale_d;
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        double thread_denom = 0.0, thread_numer = 0.0;
-        for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-             i < cone.num;
-             i += cone.blocks * blockDim.x)
+        if (!converged)
         {
-            const double vi = -unprojected_vector[i];
-            const double li = cone.lower_bound[i];
-            const double ui = cone.upper_bound[i];
-            double bound = 0.0;
-            if (isfinite(li) && vi < li * scale)
+            double thread_denom = 0.0, thread_numer = 0.0;
+            for (int i = blockIdx.x * blockDim.x + threadIdx.x;
+                 i < cone.num;
+                 i += cone.blocks * blockDim.x)
             {
-                bound = li;
+                const double vi = -unprojected_vector[i];
+                const double li = cone.lower_bound[i];
+                const double ui = cone.upper_bound[i];
+                double bound = 0.0;
+                if (isfinite(li) && vi < li * scale)
+                {
+                    bound = li;
+                }
+                else if (isfinite(ui) && vi > ui * scale)
+                {
+                    bound = ui;
+                }
+                thread_denom += bound * bound;
+                thread_numer += bound * vi;
             }
-            else if (isfinite(ui) && vi > ui * scale)
+
+            s_denom[threadIdx.x] = thread_denom;
+            s_numer[threadIdx.x] = thread_numer;
+            block_reduce_denom_numer(s_denom, s_numer);
+
+            if (threadIdx.x == 0)
             {
-                bound = ui;
+                cone.newton_partials_d[blockIdx.x] =
+                    newton_denom_numer_t{s_denom[0], s_numer[0]};
             }
-            thread_denom += bound * bound;
-            thread_numer += bound * vi;
-        }
-
-        s_denom[threadIdx.x] = thread_denom;
-        s_numer[threadIdx.x] = thread_numer;
-        block_reduce_denom_numer(s_denom, s_numer);
-
-        if (threadIdx.x == 0)
-        {
-            cone.newton_partials_d[blockIdx.x] =
-                newton_denom_numer_t{s_denom[0], s_numer[0]};
         }
 
         grid.sync();
 
-        double sum_denom = 0.0, sum_numer = 0.0;
-        for (int bk = threadIdx.x; bk < cone.blocks; bk += blockDim.x)
+        if (blockIdx.x == 0 && threadIdx.x < warpSize && !converged)
         {
-            sum_denom += cone.newton_partials_d[bk].denom;
-            sum_numer += cone.newton_partials_d[bk].numer;
+            double td = 0.0, tn = 0.0;
+            for (int bk = threadIdx.x; bk < cone.blocks; bk += warpSize)
+            {
+                td += cone.newton_partials_d[bk].denom;
+                tn += cone.newton_partials_d[bk].numer;
+            }
+            warp_reduce_denom_numer(td, tn);
+
+            if (threadIdx.x == 0)
+            {
+                const double total_denom = td;
+                const double total_numer = tn;
+
+                const double newton_step =
+                    fmax(0.0, (total_numer - unprojected_scale) / (1.0 + total_denom));
+
+                if (newton_step > scale)
+                    scale_low = scale;
+                else
+                    scale_high = scale;
+
+                double new_scale;
+                if (newton_step >= scale_low && newton_step <= scale_high)
+                    new_scale = newton_step;
+                else if (isfinite(scale_high))
+                    new_scale = 0.5 * (scale_low + scale_high);
+                else
+                    new_scale = scale_low;
+
+                const bool new_converged =
+                    (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
+
+                scale = new_scale;
+                converged = new_converged;
+                *cone.scale_d = scale;
+                *cone.converged_d = converged ? 1 : 0;
+            }
         }
-        s_denom[threadIdx.x] = sum_denom;
-        s_numer[threadIdx.x] = sum_numer;
-        block_reduce_denom_numer(s_denom, s_numer);
 
-        const double total_denom = s_denom[0];
-        const double total_numer = s_numer[0];
-        const double newton_step =
-            fmax(0.0, (total_numer - unprojected_scale) / (1.0 + total_denom));
+        grid.sync();
 
-        if (newton_step > scale)
-            scale_low = scale;
-        else
-            scale_high = scale;
-
-        double new_scale;
-        if (newton_step >= scale_low && newton_step <= scale_high)
-            new_scale = newton_step;
-        else if (isfinite(scale_high))
-            new_scale = 0.5 * (scale_low + scale_high);
-        else
-            new_scale = scale_low;
-
-        converged = (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
-        scale = new_scale;
+        scale = *cone.scale_d;
+        converged = (*cone.converged_d != 0);
 
         if (converged)
         {
             break;
         }
-    }
-
-    if (blockIdx.x == 0 && threadIdx.x == 0)
-    {
-        *cone.scale_d = scale;
-        *cone.converged_d = converged ? 1 : 0;
     }
 
     const double tau_star = scale;
@@ -368,5 +383,14 @@ __device__ inline void block_reduce_denom_numer(double *s_denom, double *s_numer
             s_numer[threadIdx.x] += s_numer[threadIdx.x + s];
         }
         __syncthreads();
+    }
+}
+
+__device__ inline void warp_reduce_denom_numer(double &denom, double &numer)
+{
+    for (int offset = warpSize / 2; offset > 0; offset >>= 1)
+    {
+        denom += __shfl_down_sync(0xFFFFFFFFu, denom, offset);
+        numer += __shfl_down_sync(0xFFFFFFFFu, numer, offset);
     }
 }
