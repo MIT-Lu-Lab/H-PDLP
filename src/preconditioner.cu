@@ -131,17 +131,17 @@ static void scale_problem(
     int num_nonzeros = state->constraint_matrix->num_nonzeros;
 
     scale_variables_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
-        state->objective_vector,
-        state->variable_lower_bound,
-        state->variable_upper_bound,
+        state->objective_vector_d,
+        state->variable_lower_bound_d,
+        state->variable_upper_bound_d,
         state->initial_primal_solution_d,
         variable_rescaling,
         num_variables);
     CUDA_CHECK(cudaGetLastError());
 
     scale_constraints_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
-        state->constraint_lower_bound,
-        state->constraint_upper_bound,
+        state->constraint_lower_bound_d,
+        state->constraint_upper_bound_d,
         state->initial_dual_solution_d,
         constraint_rescaling,
         num_constraints);
@@ -237,12 +237,12 @@ static void bound_objective_rescaling(
     double *bound_contrib_d = state->dual_vec_buffer_d;
     compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         bound_contrib_d,
-        state->constraint_lower_bound,
-        state->constraint_upper_bound,
+        state->constraint_lower_bound_d,
+        state->constraint_upper_bound_d,
         num_constraints);
 
     CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
         bound_contrib_d,
         state->precond_bound_norm_mp,
@@ -252,7 +252,7 @@ static void bound_objective_rescaling(
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_variables,
-        state->objective_vector,
+        state->objective_vector_d,
         1,
         state->precond_objective_norm_mp));
 
@@ -266,17 +266,17 @@ static void bound_objective_rescaling(
         state->precond_objective_norm_mp);
 
     scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->constraint_lower_bound,
-        state->constraint_upper_bound,
+        state->constraint_lower_bound_d,
+        state->constraint_upper_bound_d,
         state->initial_dual_solution_d,
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
         num_constraints);
 
     scale_objective_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->objective_vector,
-        state->variable_lower_bound,
-        state->variable_upper_bound,
+        state->objective_vector_d,
+        state->variable_lower_bound_d,
+        state->variable_upper_bound_d,
         state->initial_primal_solution_d,
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
@@ -649,11 +649,11 @@ static void compute_objective_and_bound_norms(
     double *norm_entries_cons = state->dual_vec_buffer_d;
 
     compute_objective_norm_entries_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->objective_vector, norm_entries_vars, state->num_variables, use_linf);
+        state->objective_vector_d, norm_entries_vars, state->num_variables, use_linf);
     CUDA_CHECK(cudaGetLastError());
 
     compute_bound_norm_entries_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->constraint_lower_bound, state->constraint_upper_bound,
+        state->constraint_lower_bound_d, state->constraint_upper_bound_d,
         norm_entries_cons, state->num_constraints, use_linf);
     CUDA_CHECK(cudaGetLastError());
 

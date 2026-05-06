@@ -79,7 +79,7 @@ static void run_power_iteration_step(pdhg_solver_state_t *state, int m)
         state->spmv_power_iteration_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->dual_spmv_buffer));
+        state->dual_spmv_buffer_d));
 
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
@@ -91,7 +91,7 @@ static void run_power_iteration_step(pdhg_solver_state_t *state, int m)
         state->spmv_power_iteration_vector,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->primal_spmv_buffer));
+        state->primal_spmv_buffer_d));
 
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,

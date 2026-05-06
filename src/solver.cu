@@ -371,7 +371,7 @@ void hsd_update_homogeneous_scale(
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,
         state->num_variables,
-        state->objective_vector,
+        state->objective_vector_d,
         1,
         state->current_primal_solution_d,
         1,
@@ -413,7 +413,7 @@ void hsd_update_dual_solution(
         state->spmv_primal_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->primal_spmv_buffer));
+        state->primal_spmv_buffer_d));
 
     compute_hsd_unprojected_dual_kernel<<<
         state->num_blocks_dual,
@@ -522,7 +522,7 @@ void hsd_update_primal_solution(
         state->spmv_dual_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->dual_spmv_buffer));
+        state->dual_spmv_buffer_d));
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
@@ -538,7 +538,7 @@ void hsd_update_primal_solution(
         state->initial_primal_solution_d,
         state->dual_product_d,
         state->reflected_dual_slack_d,
-        state->objective_vector,
+        state->objective_vector_d,
         state->hsd_scale_reflected_d,
         state->step_size_primal_d,
         state->inner_count_d,
@@ -580,7 +580,7 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->spmv_dual_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->dual_spmv_buffer));
+        state->dual_spmv_buffer_d));
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,

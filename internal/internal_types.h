@@ -80,10 +80,10 @@ typedef struct {
 } newton_denom_numer_t;
 
 typedef struct {
-    const double *lower_bound;
-    const double *upper_bound;
-    int num;
-    int blocks;
+    const double *lower_bound_d;
+    const double *upper_bound_d;
+    int num_elements;
+    int num_blocks;
     double *scale_d;
     double *unprojected_scale_d;
     int *converged_d;
@@ -129,11 +129,11 @@ typedef struct {
 
     cu_sparse_matrix_csr_t *constraint_matrix;
     cu_sparse_matrix_csr_t *constraint_matrix_t;
-    double *variable_lower_bound;
-    double *variable_upper_bound;
-    double *constraint_lower_bound;
-    double *constraint_upper_bound;
-    double *objective_vector;
+    double *variable_lower_bound_d;
+    double *variable_upper_bound_d;
+    double *constraint_lower_bound_d;
+    double *constraint_upper_bound_d;
+    double *objective_vector_d;
     double objective_constant;
 
     cusparseHandle_t  sparse_handle_A;
@@ -161,9 +161,9 @@ typedef struct {
     cusparseDnVecDescr_t spmv_power_iteration_vector;
     cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
     cusparseDnVecDescr_t spmv_power_iteration_product;
-    void   *primal_spmv_buffer;
-    void   *dual_spmv_buffer;
-    void   *cub_reduce_workspace;
+    void   *primal_spmv_buffer_d;
+    void   *dual_spmv_buffer_d;
+    void   *cub_reduce_workspace_d;
     size_t  cub_reduce_workspace_bytes;
 
     double  original_objective_norm;

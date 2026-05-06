@@ -86,7 +86,7 @@ void reduce_device_sum(
     double *output)
 {
     CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
         input,
         output,
@@ -102,7 +102,7 @@ void reduce_device_max(
     double *output)
 {
     CUDA_CHECK(cub::DeviceReduce::Max(
-        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
         input,
         output,
@@ -119,7 +119,7 @@ void reduce_device_abs_max(
 {
     auto abs_input = thrust::make_transform_iterator(input, AbsTransform{});
     CUDA_CHECK(cub::DeviceReduce::Max(
-        state->cub_reduce_workspace,
+        state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
         abs_input,
         output,
