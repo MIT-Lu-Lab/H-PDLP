@@ -211,7 +211,7 @@ __global__ void solve_cone_and_project_kernel(
 
         grid.sync();
 
-        if (blockIdx.x == 0 && threadIdx.x < warpSize && !converged)
+        if (threadIdx.x < warpSize)
         {
             double td = 0.0, tn = 0.0;
             for (int bk = threadIdx.x; bk < cone.blocks; bk += warpSize)
@@ -247,20 +247,24 @@ __global__ void solve_cone_and_project_kernel(
 
                 scale = new_scale;
                 converged = new_converged;
-                *cone.scale_d = scale;
-                *cone.converged_d = converged ? 1 : 0;
+                s_denom[0] = scale;
+                s_numer[0] = converged ? 1.0 : 0.0;
             }
         }
 
-        grid.sync();
-
-        scale = *cone.scale_d;
-        converged = (*cone.converged_d != 0);
+        __syncthreads();
+        scale = s_denom[0];
+        converged = (s_numer[0] != 0.0);
 
         if (converged)
         {
             break;
         }
+    }
+
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        *cone.scale_d = scale;
     }
 
     const double tau_star = scale;
