@@ -174,6 +174,8 @@ __global__ void solve_cone_and_project_kernel(
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
+        newton_denom_numer_t *partials = cone.newton_partials_d + (iter & 1) * cone.num_blocks;
+
         double thread_denom = 0.0, thread_numer = 0.0;
         for (int i = blockIdx.x * blockDim.x + threadIdx.x;
              i < cone.num_elements;
@@ -201,7 +203,7 @@ __global__ void solve_cone_and_project_kernel(
 
         if (threadIdx.x == 0)
         {
-            cone.newton_partials_d[blockIdx.x] =
+            partials[blockIdx.x] =
                 newton_denom_numer_t{s_denom[0], s_numer[0]};
         }
 
@@ -212,8 +214,8 @@ __global__ void solve_cone_and_project_kernel(
             double td = 0.0, tn = 0.0;
             for (int bk = threadIdx.x; bk < cone.num_blocks; bk += warpSize)
             {
-                td += cone.newton_partials_d[bk].denom;
-                tn += cone.newton_partials_d[bk].numer;
+                td += partials[bk].denom;
+                tn += partials[bk].numer;
             }
             warp_reduce_denom_numer(td, tn);
 

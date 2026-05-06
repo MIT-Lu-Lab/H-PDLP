@@ -589,7 +589,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->constraint_cone_state.num_blocks      =
         state->num_blocks_dual < coop_cap ? state->num_blocks_dual : coop_cap;
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.newton_partials_d,
-                                  state->constraint_cone_state.num_blocks * sizeof(newton_denom_numer_t));
+                                  2 * state->constraint_cone_state.num_blocks * sizeof(newton_denom_numer_t));
 
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.unprojected_scale_d, sizeof(double));
@@ -598,7 +598,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->bound_cone_state.num_elements = state->num_variables;
     state->bound_cone_state.num_blocks      = state->num_blocks_primal < coop_cap ? state->num_blocks_primal : coop_cap;
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.newton_partials_d,
-                                  state->bound_cone_state.num_blocks * sizeof(newton_denom_numer_t));
+                                  2 * state->bound_cone_state.num_blocks * sizeof(newton_denom_numer_t));
 }
 
 static void apply_warm_starts(
