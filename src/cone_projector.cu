@@ -168,7 +168,6 @@ __global__ void solve_cone_and_project_kernel(
     double *s_numer = smem + blockDim.x;
 
     double scale = *cone.scale_d;
-    bool converged = false;
     double scale_low = 0.0;
     double scale_high = INFINITY;
     const double unprojected_scale = *cone.unprojected_scale_d;
@@ -243,17 +242,15 @@ __global__ void solve_cone_and_project_kernel(
                     (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
 
                 scale = new_scale;
-                converged = new_converged;
                 s_denom[0] = scale;
-                s_numer[0] = converged ? 1.0 : 0.0;
+                s_numer[0] = new_converged ? 1.0 : 0.0;
             }
         }
 
         __syncthreads();
         scale = s_denom[0];
-        converged = (s_numer[0] != 0.0);
 
-        if (converged)
+        if (s_numer[0] != 0.0)
         {
             break;
         }
@@ -291,7 +288,6 @@ __global__ void solve_single_block_cone_and_project_kernel(
     double *s_numer = smem + blockDim.x;
 
     double scale = *cone.scale_d;
-    bool converged = false;
     double scale_low = 0.0;
     double scale_high = INFINITY;
     const double unprojected_scale = *cone.unprojected_scale_d;
@@ -341,21 +337,25 @@ __global__ void solve_single_block_cone_and_project_kernel(
             else
                 new_scale = scale_low;
 
-            converged =
+            const bool new_converged =
                 (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
             scale = new_scale;
-            *cone.scale_d = scale;
-            *cone.converged_d = converged ? 1 : 0;
+            s_denom[0] = scale;
+            s_numer[0] = new_converged ? 1.0 : 0.0;
         }
 
         __syncthreads();
-        scale = *cone.scale_d;
-        converged = (*cone.converged_d != 0);
+        scale = s_denom[0];
 
-        if (converged)
+        if (s_numer[0] != 0.0)
         {
             break;
         }
+    }
+
+    if (threadIdx.x == 0)
+    {
+        *cone.scale_d = scale;
     }
 
     const double tau_star = scale;

@@ -86,7 +86,6 @@ typedef struct {
     int num_blocks;
     double *scale_d;
     double *unprojected_scale_d;
-    int *converged_d;
     newton_denom_numer_t *newton_partials_d;
 } cone_projection_state_t;
 

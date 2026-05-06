@@ -583,7 +583,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
 
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.unprojected_scale_d, sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.converged_d, sizeof(int));
     state->constraint_cone_state.lower_bound_d = state->constraint_lower_bound_d;
     state->constraint_cone_state.upper_bound_d = state->constraint_upper_bound_d;
     state->constraint_cone_state.num_elements = state->num_constraints;
@@ -594,7 +593,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
 
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.unprojected_scale_d, sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.converged_d, sizeof(int));
     state->bound_cone_state.lower_bound_d = state->variable_lower_bound_d;
     state->bound_cone_state.upper_bound_d = state->variable_upper_bound_d;
     state->bound_cone_state.num_elements = state->num_variables;
@@ -802,11 +800,9 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 
     FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.unprojected_scale_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.converged_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.newton_partials_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.unprojected_scale_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.converged_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.newton_partials_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
