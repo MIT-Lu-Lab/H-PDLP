@@ -22,29 +22,25 @@ limitations under the License.
 
 namespace cg = cooperative_groups;
 
-__global__ void solve_cone_and_project_kernel(
+__global__ void solve_cone_newton_kernel(
     cone_projection_state_t cone,
     const double *__restrict__ unprojected_vector,
-    double *__restrict__ projected_vector,
     int max_iter,
     double tol);
-__global__ void solve_single_block_cone_and_project_kernel(
+__global__ void solve_single_block_cone_newton_kernel(
     cone_projection_state_t cone,
     const double *__restrict__ unprojected_vector,
-    double *__restrict__ projected_vector,
     int max_iter,
     double tol);
-static void launch_cooperative_cone_projection(
+static void launch_cooperative_cone_newton(
     cone_projection_state_t cone,
     const double *unprojected_vector,
-    double *projected_vector,
     int max_iter,
     double tol,
     cudaStream_t stream);
-static void launch_single_block_cone_projection(
+static void launch_single_block_cone_newton(
     cone_projection_state_t cone,
     const double *unprojected_vector,
-    double *projected_vector,
     int max_iter,
     double tol,
     cudaStream_t stream);
@@ -66,7 +62,7 @@ int max_cooperative_cone_grid()
     const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
         &max_active_per_sm,
-        solve_cone_and_project_kernel,
+        solve_cone_newton_kernel,
         THREADS_PER_BLOCK,
         smem_bytes));
     return max_active_per_sm * sm_count;
@@ -76,34 +72,30 @@ void solve_cone_newton(
     const cone_parameters_t *cone_params,
     cone_projection_state_t *cone_state,
     const double *unprojected_vector,
-    double *projected_vector,
     cudaStream_t stream)
 {
     if (cone_state->num_blocks == 1)
     {
-        launch_single_block_cone_projection(
+        launch_single_block_cone_newton(
             *cone_state,
             unprojected_vector,
-            projected_vector,
             cone_params->max_iter,
             cone_params->tol,
             stream);
         return;
     }
 
-    launch_cooperative_cone_projection(
+    launch_cooperative_cone_newton(
         *cone_state,
         unprojected_vector,
-        projected_vector,
         cone_params->max_iter,
         cone_params->tol,
         stream);
 }
 
-static void launch_cooperative_cone_projection(
+static void launch_cooperative_cone_newton(
     cone_projection_state_t cone,
     const double *unprojected_vector,
-    double *projected_vector,
     int max_iter,
     double tol,
     cudaStream_t stream)
@@ -124,40 +116,36 @@ static void launch_cooperative_cone_projection(
 
     CUDA_CHECK(cudaLaunchKernelEx(
         &config,
-        solve_cone_and_project_kernel,
+        solve_cone_newton_kernel,
         cone,
         unprojected_vector,
-        projected_vector,
         max_iter,
         tol));
 }
 
-static void launch_single_block_cone_projection(
+static void launch_single_block_cone_newton(
     cone_projection_state_t cone,
     const double *unprojected_vector,
-    double *projected_vector,
     int max_iter,
     double tol,
     cudaStream_t stream)
 {
     const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
-    solve_single_block_cone_and_project_kernel<<<
+    solve_single_block_cone_newton_kernel<<<
         1,
         THREADS_PER_BLOCK,
         smem_bytes,
         stream>>>(
         cone,
         unprojected_vector,
-        projected_vector,
         max_iter,
         tol);
     CUDA_CHECK(cudaGetLastError());
 }
 
-__global__ void solve_cone_and_project_kernel(
+__global__ void solve_cone_newton_kernel(
     cone_projection_state_t cone,
     const double *__restrict__ unprojected_vector,
-    double *__restrict__ projected_vector,
     int max_iter,
     double tol)
 {
@@ -263,26 +251,11 @@ __global__ void solve_cone_and_project_kernel(
     {
         *cone.scale_d = scale;
     }
-
-    const double tau_star = scale;
-
-    for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-         i < cone.num_elements;
-         i += cone.num_blocks * blockDim.x)
-    {
-        const double vi = -unprojected_vector[i];
-        const double li = cone.lower_bound_d[i];
-        const double ui = cone.upper_bound_d[i];
-        const double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
-        const double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
-        projected_vector[i] = unprojected_vector[i] + fmin(fmax(vi, box_lower), box_upper);
-    }
 }
 
-__global__ void solve_single_block_cone_and_project_kernel(
+__global__ void solve_single_block_cone_newton_kernel(
     cone_projection_state_t cone,
     const double *__restrict__ unprojected_vector,
-    double *__restrict__ projected_vector,
     int max_iter,
     double tol)
 {
@@ -360,17 +333,6 @@ __global__ void solve_single_block_cone_and_project_kernel(
     if (threadIdx.x == 0)
     {
         *cone.scale_d = scale;
-    }
-
-    const double tau_star = scale;
-    for (int i = threadIdx.x; i < cone.num_elements; i += blockDim.x)
-    {
-        const double vi = -unprojected_vector[i];
-        const double li = cone.lower_bound_d[i];
-        const double ui = cone.upper_bound_d[i];
-        const double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
-        const double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
-        projected_vector[i] = unprojected_vector[i] + fmin(fmax(vi, box_lower), box_upper);
     }
 }
 

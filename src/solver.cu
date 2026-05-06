@@ -47,8 +47,10 @@ __global__ void compute_hsd_unprojected_dual_kernel(
 __global__ void update_hsd_dual_solution_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
-    const double *__restrict__ proj,
+    double *__restrict__ pdhg,
     const double *__restrict__ init,
+    const double *__restrict__ unprojected,
+    cone_projection_state_t cone,
     const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
@@ -57,8 +59,6 @@ __global__ void update_hsd_dual_solution_kernel(
     double *offset_current,
     double *offset_pdhg,
     double *offset_reflected,
-    const double *scale_d,
-    const double *unprojected_scale_d,
     bool is_major);
 __global__ void update_hsd_homogeneous_scale_kernel(
     double *scale_initial,
@@ -449,14 +449,12 @@ void hsd_update_dual_solution(
         cone_params,
         &state->constraint_cone_state,
         state->dual_vec_buffer_d,
-        state->pdhg_dual_solution_d,
         state->stream_A);
 
     solve_cone_newton(
         cone_params,
         &state->bound_cone_state,
         state->primal_vec_buffer_d,
-        state->pdhg_dual_slack_d,
         state->stream_At);
 
     update_hsd_dual_solution_kernel<<<
@@ -468,6 +466,8 @@ void hsd_update_dual_solution(
         state->reflected_dual_slack_d,
         state->pdhg_dual_slack_d,
         state->initial_dual_slack_d,
+        state->primal_vec_buffer_d,
+        state->bound_cone_state,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
@@ -476,8 +476,6 @@ void hsd_update_dual_solution(
         state->hsd_dual_bound_current_d,
         state->hsd_dual_bound_pdhg_d,
         state->hsd_dual_bound_reflected_d,
-        state->bound_cone_state.scale_d,
-        state->bound_cone_state.unprojected_scale_d,
         is_major);
 
     update_hsd_dual_solution_kernel<<<
@@ -489,6 +487,8 @@ void hsd_update_dual_solution(
         state->reflected_dual_solution_d,
         state->pdhg_dual_solution_d,
         state->initial_dual_solution_d,
+        state->dual_vec_buffer_d,
+        state->constraint_cone_state,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
@@ -497,8 +497,6 @@ void hsd_update_dual_solution(
         state->hsd_dual_constraint_current_d,
         state->hsd_dual_constraint_pdhg_d,
         state->hsd_dual_constraint_reflected_d,
-        state->constraint_cone_state.scale_d,
-        state->constraint_cone_state.unprojected_scale_d,
         is_major);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
@@ -917,8 +915,10 @@ __global__ void compute_hsd_unprojected_dual_kernel(
 __global__ void update_hsd_dual_solution_kernel(
     double *__restrict__ cur,
     double *__restrict__ refl,
-    const double *__restrict__ proj,
+    double *__restrict__ pdhg,
     const double *__restrict__ init,
+    const double *__restrict__ unprojected,
+    cone_projection_state_t cone,
     const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
@@ -927,17 +927,29 @@ __global__ void update_hsd_dual_solution_kernel(
     double *offset_current,
     double *offset_pdhg,
     double *offset_reflected,
-    const double *scale_d,
-    const double *unprojected_scale_d,
     bool is_major)
 {
     int base_count = *base_count_d;
+    double tau_star = *cone.scale_d;
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
     {
         int k = base_count + k_offset;
         double weight = (double)(k) / (double)(k + 1);
-        refl[i] = 2.0 * proj[i] - cur[i];
+
+        double u = unprojected[i];
+        double li = cone.lower_bound_d[i];
+        double ui = cone.upper_bound_d[i];
+        double box_lower = isfinite(li) ? li * tau_star : -INFINITY;
+        double box_upper = isfinite(ui) ? ui * tau_star : INFINITY;
+        double proj_i = u + fmin(fmax(-u, box_lower), box_upper);
+
+        if (is_major)
+        {
+            pdhg[i] = proj_i;
+        }
+
+        refl[i] = 2.0 * proj_i - cur[i];
         double mixed = refl_coeff * refl[i] + (1.0 - refl_coeff) * cur[i];
         cur[i] = weight * mixed + (1.0 - weight) * init[i];
     }
@@ -945,8 +957,8 @@ __global__ void update_hsd_dual_solution_kernel(
     {
         int k = base_count + k_offset;
         double weight = (double)(k) / (double)(k + 1);
-        double unprojected = *unprojected_scale_d;
-        double projected = unprojected + *scale_d;
+        double unprojected_scalar = *cone.unprojected_scale_d;
+        double projected = unprojected_scalar + tau_star;
         if (is_major)
         {
             *offset_pdhg = projected;
