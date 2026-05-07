@@ -83,7 +83,7 @@ typedef struct {
     const double *lower_bound_d;
     const double *upper_bound_d;
     int num_elements;
-    int num_blocks;
+    int num_blocks_newton;
     int  num_contrib_bound;
     int *contrib_bound_indices_d;
     double *scale_d;

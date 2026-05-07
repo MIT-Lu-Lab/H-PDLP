@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "cuhsdlp_types.h"
 #include "internal_types.h"
+#include "utils.h"
 #include <cuda_runtime.h>
+
+constexpr int COOP_NEWTON_THRESHOLD = 2 * THREADS_PER_BLOCK;
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,

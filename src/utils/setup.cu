@@ -588,26 +588,18 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->step_size_homogeneous_d, sizeof(double));
     state->graphExec = NULL;
     state->graph_created = false;
-    const int coop_cap = max_cooperative_cone_grid();
 
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.unprojected_scale_d, sizeof(double));
     state->constraint_cone_state.lower_bound_d = state->constraint_lower_bound_d;
     state->constraint_cone_state.upper_bound_d = state->constraint_upper_bound_d;
     state->constraint_cone_state.num_elements = state->num_constraints;
-    state->constraint_cone_state.num_blocks      =
-        state->num_blocks_dual < coop_cap ? state->num_blocks_dual : coop_cap;
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.newton_partials_d,
-                                  2 * state->constraint_cone_state.num_blocks * sizeof(newton_denom_numer_t));
 
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.scale_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->bound_cone_state.unprojected_scale_d, sizeof(double));
     state->bound_cone_state.lower_bound_d = state->variable_lower_bound_d;
     state->bound_cone_state.upper_bound_d = state->variable_upper_bound_d;
     state->bound_cone_state.num_elements = state->num_variables;
-    state->bound_cone_state.num_blocks      = state->num_blocks_primal < coop_cap ? state->num_blocks_primal : coop_cap;
-    allocate_zeroed_device_buffer((void **)&state->bound_cone_state.newton_partials_d,
-                                  2 * state->bound_cone_state.num_blocks * sizeof(newton_denom_numer_t));
 }
 
 static void apply_warm_starts(
@@ -647,6 +639,27 @@ static int build_cone_contrib_bound_indices(
         }
     }
     return count;
+}
+
+static void size_cone_newton_grid(cone_projection_state_t *cone_state, int coop_cap)
+{
+    const int n_contrib = cone_state->num_contrib_bound;
+    if (n_contrib <= COOP_NEWTON_THRESHOLD)
+    {
+        cone_state->num_blocks_newton = 1;
+        cone_state->newton_partials_d = NULL;
+        return;
+    }
+
+    int n_blocks_newton = (n_contrib + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    if (n_blocks_newton > coop_cap)
+    {
+        n_blocks_newton = coop_cap;
+    }
+    cone_state->num_blocks_newton = n_blocks_newton;
+    allocate_zeroed_device_buffer(
+        (void **)&cone_state->newton_partials_d,
+        2 * (size_t)n_blocks_newton * sizeof(newton_denom_numer_t));
 }
 
 static void initialize_cone_contrib_bound_indices(
@@ -690,6 +703,10 @@ static void initialize_cone_contrib_bound_indices(
         state->bound_cone_state.contrib_bound_indices_d = NULL;
     }
     free(variable_indices_h);
+
+    const int coop_cap = max_cooperative_cone_grid();
+    size_cone_newton_grid(&state->constraint_cone_state, coop_cap);
+    size_cone_newton_grid(&state->bound_cone_state, coop_cap);
 }
 
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state)
