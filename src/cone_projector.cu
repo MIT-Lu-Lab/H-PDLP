@@ -24,12 +24,10 @@ namespace cg = cooperative_groups;
 
 __global__ void solve_cone_newton_cooperative_kernel(
     cone_projection_state_t cone,
-    const double *__restrict__ unprojected_vector,
     int max_iter,
     double tol);
 __global__ void solve_cone_newton_single_block_kernel(
     cone_projection_state_t cone,
-    const double *__restrict__ unprojected_vector,
     int max_iter,
     double tol);
 __device__ inline void block_reduce_denom_numer(
@@ -65,6 +63,20 @@ void solve_cone_newton(
     const cone_projection_state_t cone = *cone_state;
     const size_t smem_bytes = 2 * THREADS_PER_BLOCK * sizeof(double);
 
+    if (cone.num_contrib_bound > 0)
+    {
+        gather_by_indices_kernel<<<
+            cone.num_blocks_gather,
+            THREADS_PER_BLOCK,
+            0,
+            stream>>>(
+            unprojected_vector,
+            cone.contrib_indices_d,
+            cone.num_contrib_bound,
+            cone.contrib_unprojected_d);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
     if (cone.num_blocks_newton == 1)
     {
         solve_cone_newton_single_block_kernel<<<
@@ -73,7 +85,6 @@ void solve_cone_newton(
             smem_bytes,
             stream>>>(
             cone,
-            unprojected_vector,
             cone_params->max_iter,
             cone_params->tol);
         CUDA_CHECK(cudaGetLastError());
@@ -96,14 +107,12 @@ void solve_cone_newton(
         &config,
         solve_cone_newton_cooperative_kernel,
         cone,
-        unprojected_vector,
         cone_params->max_iter,
         cone_params->tol));
 }
 
 __global__ void solve_cone_newton_cooperative_kernel(
     cone_projection_state_t cone,
-    const double *__restrict__ unprojected_vector,
     int max_iter,
     double tol)
 {
@@ -127,10 +136,9 @@ __global__ void solve_cone_newton_cooperative_kernel(
              i < cone.num_contrib_bound;
              i += cone.num_blocks_newton * blockDim.x)
         {
-            const int j = cone.contrib_bound_indices_d[i];
-            const double vi = -unprojected_vector[j];
-            const double li = cone.lower_bound_d[j];
-            const double ui = cone.upper_bound_d[j];
+            const double vi = -cone.contrib_unprojected_d[i];
+            const double li = cone.contrib_lower_bound_d[i];
+            const double ui = cone.contrib_upper_bound_d[i];
             double bound = 0.0;
             if (isfinite(li) && vi < li * scale)
             {
@@ -213,7 +221,6 @@ __global__ void solve_cone_newton_cooperative_kernel(
 
 __global__ void solve_cone_newton_single_block_kernel(
     cone_projection_state_t cone,
-    const double *__restrict__ unprojected_vector,
     int max_iter,
     double tol)
 {
@@ -231,10 +238,9 @@ __global__ void solve_cone_newton_single_block_kernel(
         double thread_denom = 0.0, thread_numer = 0.0;
         for (int i = threadIdx.x; i < cone.num_contrib_bound; i += blockDim.x)
         {
-            const int j = cone.contrib_bound_indices_d[i];
-            const double vi = -unprojected_vector[j];
-            const double li = cone.lower_bound_d[j];
-            const double ui = cone.upper_bound_d[j];
+            const double vi = -cone.contrib_unprojected_d[i];
+            const double li = cone.contrib_lower_bound_d[i];
+            const double ui = cone.contrib_upper_bound_d[i];
             double bound = 0.0;
             if (isfinite(li) && vi < li * scale)
             {

@@ -84,8 +84,12 @@ typedef struct {
     const double *upper_bound_d;
     int num_elements;
     int num_blocks_newton;
-    int  num_contrib_bound;
-    int *contrib_bound_indices_d;
+    int num_blocks_gather;
+    int num_contrib_bound;
+    int *contrib_indices_d;
+    double *contrib_lower_bound_d;
+    double *contrib_upper_bound_d;
+    double *contrib_unprojected_d;
     double *scale_d;
     double *unprojected_scale_d;
     newton_denom_numer_t *newton_partials_d;

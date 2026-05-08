@@ -89,6 +89,12 @@ extern "C"
 
     __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
 
+    __global__ void gather_by_indices_kernel(
+        const double *__restrict__ source,
+        const int *__restrict__ indices,
+        int count,
+        double *__restrict__ destination);
+
     void reduce_device_sum(
         pdhg_solver_state_t *state,
         const double *input,
