@@ -22,6 +22,8 @@ limitations under the License.
 #include <cuda_runtime.h>
 #include <math.h>
 #include <stdio.h>
+#include <thrust/execution_policy.h>
+#include <thrust/fill.h>
 #include <time.h>
 
 #define SCALING_EPSILON 1e-12
@@ -345,12 +347,8 @@ void rescale_problem(
 
     clock_t start_rescaling = clock();
 
-    fill_ones_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
-        state->constraint_rescaling_d, 
-        num_constraints);
-    fill_ones_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
-        state->variable_rescaling_d, 
-        num_variables);
+    thrust::fill_n(thrust::device, state->constraint_rescaling_d, num_constraints, 1.0);
+    thrust::fill_n(thrust::device, state->variable_rescaling_d,   num_variables,   1.0);
 
     double *constraint_rescaling = NULL;
     double *variable_rescaling = NULL;

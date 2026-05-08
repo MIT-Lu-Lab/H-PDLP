@@ -87,8 +87,6 @@ extern "C"
     void *safe_calloc(size_t num, size_t size);
     void *safe_realloc(void *ptr, size_t new_size);
 
-    __global__ void fill_ones_kernel(double *__restrict__ arr, int n);
-
     __global__ void gather_by_indices_kernel(
         const double *__restrict__ source,
         const int *__restrict__ indices,

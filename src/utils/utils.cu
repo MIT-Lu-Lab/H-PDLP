@@ -128,13 +128,6 @@ void reduce_device_abs_max(
     CUDA_CHECK(cudaGetLastError());
 }
 
-__global__ void fill_ones_kernel(double *__restrict__ arr, int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n)
-        arr[i] = 1.0;
-}
-
 __global__ void gather_by_indices_kernel(
     const double *__restrict__ source,
     const int *__restrict__ indices,
