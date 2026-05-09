@@ -655,7 +655,7 @@ static int build_cone_contrib_indices(
     return count;
 }
 
-static void size_cone_grids(cone_projection_state_t *cone_state, int coop_cap)
+static void size_cone_grids(cone_projection_state_t *cone_state, int newton_budget)
 {
     const int n_contrib = cone_state->num_contrib_bound;
     cone_state->num_blocks_gather =
@@ -669,9 +669,13 @@ static void size_cone_grids(cone_projection_state_t *cone_state, int coop_cap)
     }
 
     int n_blocks_newton = cone_state->num_blocks_gather;
-    if (n_blocks_newton > coop_cap)
+    if (n_blocks_newton > newton_budget)
     {
-        n_blocks_newton = coop_cap;
+        n_blocks_newton = newton_budget;
+    }
+    if (n_blocks_newton < 1)
+    {
+        n_blocks_newton = 1;
     }
     cone_state->num_blocks_newton = n_blocks_newton;
     allocate_zeroed_device_buffer(
@@ -717,8 +721,26 @@ static void initialize_cone_contrib_indices(
     free(variable_indices_h);
 
     const int coop_cap = max_cooperative_cone_grid();
-    size_cone_grids(&state->constraint_cone_state, coop_cap);
-    size_cone_grids(&state->bound_cone_state, coop_cap);
+    const int c_constraint = state->constraint_cone_state.num_contrib_bound;
+    const int c_bound = state->bound_cone_state.num_contrib_bound;
+    const bool both_cooperative =
+        c_constraint > COOP_NEWTON_THRESHOLD && c_bound > COOP_NEWTON_THRESHOLD;
+
+    int budget_constraint = coop_cap;
+    int budget_bound = coop_cap;
+    if (both_cooperative)
+    {
+        const long total = (long)c_constraint + (long)c_bound;
+        budget_constraint = (int)((long)coop_cap * c_constraint / total);
+        if (budget_constraint < 1)
+            budget_constraint = 1;
+        if (budget_constraint > coop_cap - 1)
+            budget_constraint = coop_cap - 1;
+        budget_bound = coop_cap - budget_constraint;
+    }
+
+    size_cone_grids(&state->constraint_cone_state, budget_constraint);
+    size_cone_grids(&state->bound_cone_state, budget_bound);
 }
 
 static void populate_cone_contrib_compact_one(
