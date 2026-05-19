@@ -61,9 +61,6 @@ static void allocate_and_copy_to_device(
 static void allocate_zeroed_device_buffer(
     void **dst,
     size_t bytes);
-static void allocate_device_buffer(
-    void **dst,
-    size_t bytes);
 static void allocate_cub_reduce_workspace(pdhg_solver_state_t *state);
 static void upload_problem_data(
     pdhg_solver_state_t *state,
@@ -76,16 +73,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
-static int build_cone_contrib_indices(
-    const double *lower_bound_h,
-    const double *upper_bound_h,
-    int num_elements,
-    int *contrib_indices_h);
-static void initialize_cone_contrib_indices(
-    pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem);
-static void populate_cone_contrib_compact(
-    pdhg_solver_state_t *state);
+static void initialize_cone_grids(pdhg_solver_state_t *state);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
 static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
 static void initialize_convergence_tracking(pdhg_solver_state_t *state);
@@ -117,7 +105,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->step_size_params.k_d = 0.0;
     params->step_size_params.i_smooth = 0.3;
 
-    params->cone_params.max_iter = 30;
+    params->cone_params.max_iter = 100;
     params->cone_params.tol = 1e-6;
 
     params->termination_criteria.eps_optimal_relative = 1e-4;
@@ -205,7 +193,7 @@ pdhg_solver_state_t *initialize_solver_state(
     initialize_homogeneous_scalars(state);
     initialize_power_iteration_buffers(state);
     allocate_device_scalars(state);
-    initialize_cone_contrib_indices(state, working_problem);
+    initialize_cone_grids(state);
     apply_warm_starts(state, working_problem);
 
     init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
@@ -216,8 +204,6 @@ pdhg_solver_state_t *initialize_solver_state(
     CUDA_CHECK(cudaMalloc(&state->variable_rescaling_d, state->var_bytes));
 
     rescale_problem(params, state);
-
-    populate_cone_contrib_compact(state);
 
     release_setup_only_matrix_data(state);
     initialize_iterates_from_starts(state);
@@ -404,13 +390,6 @@ static void allocate_zeroed_device_buffer(
 {
     CUDA_CHECK(cudaMalloc(dst, bytes));
     CUDA_CHECK(cudaMemset(*dst, 0, bytes));
-}
-
-static void allocate_device_buffer(
-    void **dst,
-    size_t bytes)
-{
-    CUDA_CHECK(cudaMalloc(dst, bytes));
 }
 
 static void allocate_cub_reduce_workspace(pdhg_solver_state_t *state)
@@ -637,39 +616,18 @@ static void apply_warm_starts(
     }
 }
 
-static int build_cone_contrib_indices(
-    const double *lower_bound_h,
-    const double *upper_bound_h,
-    int num_elements,
-    int *contrib_indices_h)
+static void size_cone_grid(cone_projection_state_t *cone_state, int newton_budget)
 {
-    int count = 0;
-    for (int i = 0; i < num_elements; ++i)
-    {
-        const bool lb_contrib = isfinite(lower_bound_h[i]) && lower_bound_h[i] != 0.0;
-        const bool ub_contrib = isfinite(upper_bound_h[i]) && upper_bound_h[i] != 0.0;
-        if (lb_contrib || ub_contrib)
-        {
-            contrib_indices_h[count++] = i;
-        }
-    }
-    return count;
-}
+    const int n = cone_state->num_elements;
 
-static void size_cone_grids(cone_projection_state_t *cone_state, int newton_budget)
-{
-    const int n_contrib = cone_state->num_contrib_bound;
-    cone_state->num_blocks_gather =
-        (n_contrib + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-
-    if (n_contrib <= COOP_NEWTON_THRESHOLD)
+    if (n <= COOP_NEWTON_THRESHOLD)
     {
         cone_state->num_blocks_newton = 1;
         cone_state->newton_partials_d = NULL;
         return;
     }
 
-    int n_blocks_newton = cone_state->num_blocks_gather;
+    int n_blocks_newton = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     if (n_blocks_newton > newton_budget)
     {
         n_blocks_newton = newton_budget;
@@ -679,60 +637,23 @@ static void size_cone_grids(cone_projection_state_t *cone_state, int newton_budg
         n_blocks_newton = 1;
     }
     cone_state->num_blocks_newton = n_blocks_newton;
-    allocate_zeroed_device_buffer(
-        (void **)&cone_state->newton_partials_d,
-        2 * (size_t)n_blocks_newton * sizeof(newton_denom_numer_t));
+    allocate_zeroed_device_buffer((void **)&cone_state->newton_partials_d, 2 * (size_t)n_blocks_newton * sizeof(newton_denom_numer_t));
 }
 
-static void upload_cone_contrib_indices(
-    cone_projection_state_t *cone_state,
-    const int *contrib_indices_h)
+static void initialize_cone_grids(pdhg_solver_state_t *state)
 {
-    if (cone_state->num_contrib_bound <= 0)
-    {
-        cone_state->contrib_indices_d = NULL;
-        return;
-    }
-    allocate_and_copy_to_device(
-        (void **)&cone_state->contrib_indices_d,
-        contrib_indices_h,
-        (size_t)cone_state->num_contrib_bound * sizeof(int));
-}
-
-static void initialize_cone_contrib_indices(
-    pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem)
-{
-    int *constraint_indices_h = (int *)safe_malloc(state->num_constraints * sizeof(int));
-    state->constraint_cone_state.num_contrib_bound = build_cone_contrib_indices(
-        working_problem->constraint_lower_bound,
-        working_problem->constraint_upper_bound,
-        state->num_constraints,
-        constraint_indices_h);
-    upload_cone_contrib_indices(&state->constraint_cone_state, constraint_indices_h);
-    free(constraint_indices_h);
-
-    int *variable_indices_h = (int *)safe_malloc(state->num_variables * sizeof(int));
-    state->bound_cone_state.num_contrib_bound = build_cone_contrib_indices(
-        working_problem->variable_lower_bound,
-        working_problem->variable_upper_bound,
-        state->num_variables,
-        variable_indices_h);
-    upload_cone_contrib_indices(&state->bound_cone_state, variable_indices_h);
-    free(variable_indices_h);
-
     const int coop_cap = max_cooperative_cone_grid();
-    const int c_constraint = state->constraint_cone_state.num_contrib_bound;
-    const int c_bound = state->bound_cone_state.num_contrib_bound;
+    const int n_cons = state->constraint_cone_state.num_elements;
+    const int n_vars = state->bound_cone_state.num_elements;
     const bool both_cooperative =
-        c_constraint > COOP_NEWTON_THRESHOLD && c_bound > COOP_NEWTON_THRESHOLD;
+        n_cons > COOP_NEWTON_THRESHOLD && n_vars > COOP_NEWTON_THRESHOLD;
 
     int budget_constraint = coop_cap;
     int budget_bound = coop_cap;
     if (both_cooperative)
     {
-        const long total = (long)c_constraint + (long)c_bound;
-        budget_constraint = (int)((long)coop_cap * c_constraint / total);
+        const long total = (long)n_cons + (long)n_vars;
+        budget_constraint = (int)((long)coop_cap * n_cons / total);
         if (budget_constraint < 1)
             budget_constraint = 1;
         if (budget_constraint > coop_cap - 1)
@@ -740,53 +661,8 @@ static void initialize_cone_contrib_indices(
         budget_bound = coop_cap - budget_constraint;
     }
 
-    size_cone_grids(&state->constraint_cone_state, budget_constraint);
-    size_cone_grids(&state->bound_cone_state, budget_bound);
-}
-
-static void populate_cone_contrib_compact_one(
-    cone_projection_state_t *cone_state,
-    cudaStream_t stream)
-{
-    const int count = cone_state->num_contrib_bound;
-    if (count <= 0)
-    {
-        cone_state->contrib_lower_bound_d = NULL;
-        cone_state->contrib_upper_bound_d = NULL;
-        cone_state->contrib_unprojected_d = NULL;
-        return;
-    }
-
-    const size_t double_bytes = (size_t)count * sizeof(double);
-    allocate_device_buffer(
-        (void **)&cone_state->contrib_lower_bound_d,
-        double_bytes);
-    allocate_device_buffer(
-        (void **)&cone_state->contrib_upper_bound_d,
-        double_bytes);
-    allocate_device_buffer(
-        (void **)&cone_state->contrib_unprojected_d,
-        double_bytes);
-
-    gather_by_indices_kernel<<<cone_state->num_blocks_gather, THREADS_PER_BLOCK, 0, stream>>>(
-        cone_state->lower_bound_d,
-        cone_state->contrib_indices_d,
-        count,
-        cone_state->contrib_lower_bound_d);
-    gather_by_indices_kernel<<<cone_state->num_blocks_gather, THREADS_PER_BLOCK, 0, stream>>>(
-        cone_state->upper_bound_d,
-        cone_state->contrib_indices_d,
-        count,
-        cone_state->contrib_upper_bound_d);
-    CUDA_CHECK(cudaGetLastError());
-}
-
-static void populate_cone_contrib_compact(pdhg_solver_state_t *state)
-{
-    populate_cone_contrib_compact_one(
-        &state->constraint_cone_state, state->stream_A);
-    populate_cone_contrib_compact_one(
-        &state->bound_cone_state, state->stream_A);
+    size_cone_grid(&state->constraint_cone_state, budget_constraint);
+    size_cone_grid(&state->bound_cone_state, budget_bound);
 }
 
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state)
@@ -969,17 +845,9 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->constraint_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.unprojected_scale_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.newton_partials_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.contrib_indices_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.contrib_lower_bound_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.contrib_upper_bound_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.contrib_unprojected_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.scale_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.unprojected_scale_d);
     FREE_DEVICE_BUFFER(state->bound_cone_state.newton_partials_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.contrib_indices_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.contrib_lower_bound_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.contrib_upper_bound_d);
-    FREE_DEVICE_BUFFER(state->bound_cone_state.contrib_unprojected_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
     FREE_DEVICE_BUFFER(state->inner_count_d);

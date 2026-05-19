@@ -127,14 +127,3 @@ void reduce_device_abs_max(
         state->stream_A));
     CUDA_CHECK(cudaGetLastError());
 }
-
-__global__ void gather_by_indices_kernel(
-    const double *__restrict__ source,
-    const int *__restrict__ indices,
-    int count,
-    double *__restrict__ destination)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < count)
-        destination[i] = source[indices[i]];
-}
