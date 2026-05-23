@@ -23,7 +23,15 @@ limitations under the License.
 
 namespace cg = cooperative_groups;
 
-typedef cub::BlockReduce<double, THREADS_PER_BLOCK> ConeBlockReduce;
+struct PlusDenomNumer {
+    __device__ __forceinline__ newton_denom_numer_t operator()(
+        const newton_denom_numer_t &a, const newton_denom_numer_t &b) const
+    {
+        return newton_denom_numer_t{a.denom + b.denom, a.numer + b.numer};
+    }
+};
+
+typedef cub::BlockReduce<newton_denom_numer_t, THREADS_PER_BLOCK> ConeBlockReduce;
 
 __global__ void solve_cone_newton_cooperative_kernel(
     const double *__restrict__ unprojected,
@@ -259,10 +267,10 @@ __device__ __forceinline__ void block_sum_denom_numer(
     double &block_denom,
     double &block_numer)
 {
-    block_denom = ConeBlockReduce(temp).Sum(thread_denom);
-    __syncthreads();
-    block_numer = ConeBlockReduce(temp).Sum(thread_numer);
-    __syncthreads();
+    const newton_denom_numer_t result = ConeBlockReduce(temp).Reduce(
+        newton_denom_numer_t{thread_denom, thread_numer}, PlusDenomNumer{});
+    block_denom = result.denom;
+    block_numer = result.numer;
 }
 
 __device__ __forceinline__ bool update_cone_newton_bracket(
