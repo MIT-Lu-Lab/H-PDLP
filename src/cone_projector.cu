@@ -181,8 +181,6 @@ __global__ void solve_cone_newton_cooperative_kernel(
         {
             break;
         }
-
-        grid.sync();
     }
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
