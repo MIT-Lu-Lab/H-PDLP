@@ -3,6 +3,12 @@
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.20)
 
+# Must precede project(... CUDA): CMP0104=NEW makes project() auto-initialize
+# CMAKE_CUDA_ARCHITECTURES, so a default set afterwards is ignored.
+if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90)
+endif()
+
 # Project config
 project(cuhsdlp LANGUAGES C CXX CUDA)
 
@@ -24,10 +30,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
-endif()
-
-if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 60 70 75 80 86 89 90)
 endif()
 
 # Global Compile flags (corresponding to CFLAGS/NVCCFLAGS)
