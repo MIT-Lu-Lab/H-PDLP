@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.20)
 # Must precede project(... CUDA): CMP0104=NEW makes project() auto-initialize
 # CMAKE_CUDA_ARCHITECTURES, so a default set afterwards is ignored.
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90)
+  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90 100 120)
 endif()
 
 # Project config
