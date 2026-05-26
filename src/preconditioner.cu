@@ -28,22 +28,6 @@ limitations under the License.
 
 #define SCALING_EPSILON 1e-12
 
-__global__ void compute_objective_norm_entries_kernel(
-    const double *__restrict__ obj_vec,
-    double *__restrict__ entries,
-    int n_vars,
-    int use_linf);
-__global__ void compute_bound_norm_entries_kernel(
-    const double *__restrict__ cons_lb,
-    const double *__restrict__ cons_ub,
-    double *__restrict__ entries,
-    int n_cons,
-    int use_linf);
-static void compute_objective_and_bound_norms(
-    pdhg_solver_state_t *state,
-    norm_type_t optimality_norm,
-    double *out_objective_norm,
-    double *out_bound_norm);
 __global__ void scale_variables_kernel(
     double *__restrict__ obj_vec,
     double *__restrict__ var_lb,
@@ -362,7 +346,7 @@ void rescale_problem(
 
     state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
 
-    compute_objective_and_bound_norms(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
+    compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
     state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
 
     CUDA_CHECK(cudaFree(constraint_rescaling));
@@ -572,149 +556,5 @@ __global__ void scale_objective_kernel(
     var_ub[j] *= cons_scale;
     obj_vec[j] *= obj_scale;
     init_primal_sol[j] *= cons_scale;
-}
-
-void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params)
-{
-    const int num_rows = problem->num_constraints;
-    const int nnz = problem->constraint_matrix_num_nonzeros;
-
-    if (num_rows == 0 || nnz == 0)
-        return;
-
-    const int *row_ptr = problem->constraint_matrix_row_pointers;
-    const int *col_ind = problem->constraint_matrix_col_indices;
-    const double *vals = problem->constraint_matrix_values;
-
-    int filtered_nnz = 0;
-    for (int i = 0; i < num_rows; ++i)
-        for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
-            if (fabs(vals[k]) > params->scaling_params.matrix_zero_tol)
-                ++filtered_nnz;
-
-    if (filtered_nnz == nnz)
-        return;
-
-    const size_t alloc_nnz = (filtered_nnz > 0) ? (size_t)filtered_nnz : 1;
-    int *new_row_ptr = (int *)safe_malloc((size_t)(num_rows + 1) * sizeof(int));
-    int *new_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    double *new_vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
-
-    int pos = 0;
-    new_row_ptr[0] = 0;
-    for (int i = 0; i < num_rows; ++i)
-    {
-        for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
-        {
-            if (fabs(vals[k]) <= params->scaling_params.matrix_zero_tol)
-                continue;
-            new_col_ind[pos] = col_ind[k];
-            new_vals[pos] = vals[k];
-            ++pos;
-        }
-        new_row_ptr[i + 1] = pos;
-    }
-
-    free(problem->constraint_matrix_row_pointers);
-    free(problem->constraint_matrix_col_indices);
-    free(problem->constraint_matrix_values);
-
-    problem->constraint_matrix_row_pointers = new_row_ptr;
-    problem->constraint_matrix_col_indices = new_col_ind;
-    problem->constraint_matrix_values = new_vals;
-    problem->constraint_matrix_num_nonzeros = filtered_nnz;
-
-    if (((nnz - filtered_nnz) > 0) && params->verbose)
-    {
-        printf("Dropped %d near-zero %s (|value| <= %.1e) from the constraint matrix\n",
-               nnz - filtered_nnz,
-               (nnz - filtered_nnz == 1 ? "entry" : "entries"),
-               params->scaling_params.matrix_zero_tol);
-    }
-}
-
-static void compute_objective_and_bound_norms(
-    pdhg_solver_state_t *state,
-    norm_type_t optimality_norm,
-    double *out_objective_norm,
-    double *out_bound_norm)
-{
-    const int use_linf = (optimality_norm == NORM_TYPE_L_INF);
-
-    double *norm_entries_vars = state->primal_vec_buffer_d;
-    double *norm_entries_cons = state->dual_vec_buffer_d;
-
-    compute_objective_norm_entries_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->objective_vector_d, norm_entries_vars, state->num_variables, use_linf);
-    CUDA_CHECK(cudaGetLastError());
-
-    compute_bound_norm_entries_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->constraint_lower_bound_d, state->constraint_upper_bound_d,
-        norm_entries_cons, state->num_constraints, use_linf);
-    CUDA_CHECK(cudaGetLastError());
-
-    if (use_linf)
-    {
-        reduce_device_max(state, norm_entries_vars, state->num_variables,
-                          state->precond_objective_norm_mp);
-        reduce_device_max(state, norm_entries_cons, state->num_constraints,
-                          state->precond_bound_norm_mp);
-    }
-    else
-    {
-        reduce_device_sum(state, norm_entries_vars, state->num_variables,
-                          state->precond_objective_norm_mp);
-        reduce_device_sum(state, norm_entries_cons, state->num_constraints,
-                          state->precond_bound_norm_mp);
-    }
-
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
-    if (!use_linf) {
-        *state->precond_objective_norm_mp = sqrt(*state->precond_objective_norm_mp);
-        *state->precond_bound_norm_mp = sqrt(*state->precond_bound_norm_mp);
-    }
-
-    *out_objective_norm = *state->precond_objective_norm_mp;
-    *out_bound_norm = *state->precond_bound_norm_mp;
-}
-
-__global__ void compute_objective_norm_entries_kernel(
-    const double *__restrict__ obj_vec,
-    double *__restrict__ entries,
-    int n_vars,
-    int use_linf)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_vars) return;
-
-    double v = obj_vec[i];
-    entries[i] = use_linf ? fabs(v) : (v * v);
-}
-
-__global__ void compute_bound_norm_entries_kernel(
-    const double *__restrict__ cons_lb,
-    const double *__restrict__ cons_ub,
-    double *__restrict__ entries,
-    int n_cons,
-    int use_linf)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_cons) return;
-
-    double Li = cons_lb[i];
-    double Ui = cons_ub[i];
-    double acc = 0.0;
-    if (use_linf)
-    {
-        if (isfinite(Li) && Li != Ui) acc = fmax(acc, fabs(Li));
-        if (isfinite(Ui)) acc = fmax(acc, fabs(Ui));
-    }
-    else
-    {
-        if (isfinite(Li) && Li != Ui) acc += Li * Li;
-        if (isfinite(Ui)) acc += Ui * Ui;
-    }
-    entries[i] = acc;
 }
 

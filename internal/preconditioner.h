@@ -23,8 +23,6 @@ extern "C"
 {
 #endif
 
-    void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params);
-
     void rescale_problem(
         const pdhg_parameters_t *params,
         pdhg_solver_state_t *state);

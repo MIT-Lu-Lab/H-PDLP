@@ -18,7 +18,6 @@ limitations under the License.
 #include "cuhsdlp.h"
 #include "display.h"
 #include "internal_types.h"
-#include "preconditioner.h"
 #include "presolver.h"
 #include "setup.h"
 #include "solver.h"

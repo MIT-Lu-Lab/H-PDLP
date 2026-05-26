@@ -105,12 +105,22 @@ extern "C"
         int length,
         double *output);
 
+    void filter_constraint_matrix_entries(
+        lp_problem_t *problem,
+        const pdhg_parameters_t *params);
+
     void compute_lp_problem_norms(
         const lp_problem_t *problem,
         norm_type_t optimality_norm,
         double *out_objective_norm,
         double *out_bound_norm,
         double *out_constraint_frobenius_norm);
+
+    void compute_lp_problem_norms_device(
+        pdhg_solver_state_t *state,
+        norm_type_t optimality_norm,
+        double *out_objective_norm,
+        double *out_bound_norm);
 
 #ifdef __cplusplus
 }
