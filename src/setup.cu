@@ -19,12 +19,15 @@ limitations under the License.
 #include "cuhsdlp.h"
 #include "display.h"
 #include "preconditioner.h"
+#include "termination_checker.h"
 #include "utils.h"
 #include <cub/cub.cuh>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static constexpr int COOP_NEWTON_THRESHOLD = 2 * THREADS_PER_BLOCK;
 
 __global__ void build_row_ind_kernel(
     const int *__restrict__ row_ptr,
@@ -510,18 +513,18 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
 static void allocate_device_scalars(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double)));
-    state->hsd_scale_initial_d             = state->hsd_scalars_d + HSD_IDX(HSD_SCALE,           HSD_INITIAL);
-    state->hsd_scale_current_d             = state->hsd_scalars_d + HSD_IDX(HSD_SCALE,           HSD_CURRENT);
-    state->hsd_scale_pdhg_d                = state->hsd_scalars_d + HSD_IDX(HSD_SCALE,           HSD_PDHG);
-    state->hsd_scale_reflected_d           = state->hsd_scalars_d + HSD_IDX(HSD_SCALE,           HSD_REFLECTED);
-    state->hsd_dual_constraint_initial_d   = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_INITIAL);
-    state->hsd_dual_constraint_current_d   = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_CURRENT);
-    state->hsd_dual_constraint_pdhg_d      = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_PDHG);
-    state->hsd_dual_constraint_reflected_d = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_REFLECTED);
-    state->hsd_dual_bound_initial_d        = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_BOUND,      HSD_INITIAL);
-    state->hsd_dual_bound_current_d        = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_BOUND,      HSD_CURRENT);
-    state->hsd_dual_bound_pdhg_d           = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_BOUND,      HSD_PDHG);
-    state->hsd_dual_bound_reflected_d      = state->hsd_scalars_d + HSD_IDX(HSD_DUAL_BOUND,      HSD_REFLECTED);
+    state->hsd_scale_initial_d             = state->hsd_scalars_d + HSD_SCALE_INITIAL;
+    state->hsd_scale_current_d             = state->hsd_scalars_d + HSD_SCALE_CURRENT;
+    state->hsd_scale_pdhg_d                = state->hsd_scalars_d + HSD_SCALE_PDHG;
+    state->hsd_scale_reflected_d           = state->hsd_scalars_d + HSD_SCALE_REFLECTED;
+    state->hsd_dual_constraint_initial_d   = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_INITIAL;
+    state->hsd_dual_constraint_current_d   = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_CURRENT;
+    state->hsd_dual_constraint_pdhg_d      = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_PDHG;
+    state->hsd_dual_constraint_reflected_d = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_REFLECTED;
+    state->hsd_dual_bound_initial_d        = state->hsd_scalars_d + HSD_DUAL_BOUND_INITIAL;
+    state->hsd_dual_bound_current_d        = state->hsd_scalars_d + HSD_DUAL_BOUND_CURRENT;
+    state->hsd_dual_bound_pdhg_d           = state->hsd_scalars_d + HSD_DUAL_BOUND_PDHG;
+    state->hsd_dual_bound_reflected_d      = state->hsd_scalars_d + HSD_DUAL_BOUND_REFLECTED;
 
     CUDA_CHECK(cudaMalloc(&state->pdhg_reduce_d, PDHG_COUNT * sizeof(double)));
     state->pdhg_primal_norm_d  = state->pdhg_reduce_d + PDHG_PRIMAL_NORM;

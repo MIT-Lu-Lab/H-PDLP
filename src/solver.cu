@@ -127,11 +127,17 @@ __global__ void compute_fixed_point_error_kernel(
     double step_size_dual,
     double step_size_homogeneous);
 __global__ void restart_hsd_scalars_kernel(
-    double *hsd_scalars_d,
-    double *constraint_scale_d,
-    double *bound_scale_d,
-    double cone_warm_start_scale);
-__global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau);
+    double *scale_initial,           double *scale_current,           double *scale_pdhg,           double *scale_reflected,
+    double *dual_constraint_initial, double *dual_constraint_current, double *dual_constraint_pdhg, double *dual_constraint_reflected,
+    double *dual_bound_initial,      double *dual_bound_current,      double *dual_bound_pdhg,      double *dual_bound_reflected,
+    double *constraint_cone_scale_d,
+    double *bound_cone_scale_d,
+    double  cone_warm_start_scale);
+__global__ void normalize_hsd_scalars_kernel(
+    double *scale_pdhg,
+    double *dual_constraint_pdhg,
+    double *dual_bound_pdhg,
+    double  inv_tau);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
@@ -776,7 +782,9 @@ static void perform_restart(
     state->metrics_h->current_homogeneous_scale = state->metrics_h->pdhg_homogeneous_scale;
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->hsd_scalars_d,
+        state->hsd_scale_initial_d,             state->hsd_scale_current_d,             state->hsd_scale_pdhg_d,             state->hsd_scale_reflected_d,
+        state->hsd_dual_constraint_initial_d,   state->hsd_dual_constraint_current_d,   state->hsd_dual_constraint_pdhg_d,   state->hsd_dual_constraint_reflected_d,
+        state->hsd_dual_bound_initial_d,        state->hsd_dual_bound_current_d,        state->hsd_dual_bound_pdhg_d,        state->hsd_dual_bound_reflected_d,
         state->constraint_cone_state.scale_d,
         state->bound_cone_state.scale_d,
         cone_warm_start_scale);
@@ -811,7 +819,11 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
         state->num_variables,
         state->hsd_inverse_scale_d,
         state->pdhg_dual_slack_d, 1));
-    normalize_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d, inv_tau);
+    normalize_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->hsd_scale_pdhg_d,
+        state->hsd_dual_constraint_pdhg_d,
+        state->hsd_dual_bound_pdhg_d,
+        inv_tau);
     state->metrics_h->pdhg_homogeneous_scale = 1.0;
     state->metrics_h->pdhg_dual_constraint_offset *= inv_tau;
     state->metrics_h->pdhg_dual_bound_offset *= inv_tau;
@@ -1142,26 +1154,39 @@ __global__ void compute_fixed_point_error_kernel(
 }
 
 __global__ void restart_hsd_scalars_kernel(
-    double *hsd_scalars_d,
-    double *constraint_scale_d,
-    double *bound_scale_d,
-    double cone_warm_start_scale)
+    double *scale_initial,           double *scale_current,           double *scale_pdhg,           double *scale_reflected,
+    double *dual_constraint_initial, double *dual_constraint_current, double *dual_constraint_pdhg, double *dual_constraint_reflected,
+    double *dual_bound_initial,      double *dual_bound_current,      double *dual_bound_pdhg,      double *dual_bound_reflected,
+    double *constraint_cone_scale_d,
+    double *bound_cone_scale_d,
+    double  cone_warm_start_scale)
 {
-    const int bases[3] = {HSD_SCALE, HSD_DUAL_CONSTRAINT, HSD_DUAL_BOUND};
-    for (int i = 0; i < 3; ++i)
-    {
-        double pdhg = hsd_scalars_d[HSD_IDX(bases[i], HSD_PDHG)];
-        hsd_scalars_d[HSD_IDX(bases[i], HSD_CURRENT)] = pdhg;
-        hsd_scalars_d[HSD_IDX(bases[i], HSD_REFLECTED)] = pdhg;
-        hsd_scalars_d[HSD_IDX(bases[i], HSD_INITIAL)] = pdhg;
-    }
-    *constraint_scale_d *= cone_warm_start_scale;
-    *bound_scale_d *= cone_warm_start_scale;
+    double s = *scale_pdhg;
+    *scale_initial   = s;
+    *scale_current   = s;
+    *scale_reflected = s;
+
+    double dc = *dual_constraint_pdhg;
+    *dual_constraint_initial   = dc;
+    *dual_constraint_current   = dc;
+    *dual_constraint_reflected = dc;
+
+    double db = *dual_bound_pdhg;
+    *dual_bound_initial   = db;
+    *dual_bound_current   = db;
+    *dual_bound_reflected = db;
+
+    *constraint_cone_scale_d *= cone_warm_start_scale;
+    *bound_cone_scale_d      *= cone_warm_start_scale;
 }
 
-__global__ void normalize_hsd_scalars_kernel(double *hsd_scalars_d, double inv_tau)
+__global__ void normalize_hsd_scalars_kernel(
+    double *scale_pdhg,
+    double *dual_constraint_pdhg,
+    double *dual_bound_pdhg,
+    double  inv_tau)
 {
-    hsd_scalars_d[HSD_IDX(HSD_SCALE, HSD_PDHG)] = 1.0;
-    hsd_scalars_d[HSD_IDX(HSD_DUAL_CONSTRAINT, HSD_PDHG)] *= inv_tau;
-    hsd_scalars_d[HSD_IDX(HSD_DUAL_BOUND, HSD_PDHG)] *= inv_tau;
+    *scale_pdhg            = 1.0;
+    *dual_constraint_pdhg *= inv_tau;
+    *dual_bound_pdhg      *= inv_tau;
 }

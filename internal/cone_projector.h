@@ -16,12 +16,29 @@ limitations under the License.
 
 #pragma once
 
+#include "cuda_macros.h"
 #include "cuhsdlp_types.h"
-#include "internal_types.h"
-#include "utils.h"
 #include <cuda_runtime.h>
 
-constexpr int COOP_NEWTON_THRESHOLD = 2 * THREADS_PER_BLOCK;
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+typedef struct {
+    double denom;
+    double numer;
+} newton_denom_numer_t;
+
+typedef struct {
+    const double *lower_bound_d;
+    const double *upper_bound_d;
+    int num_elements;
+    int num_blocks_newton;
+    double *scale_d;
+    double *unprojected_scale_d;
+    newton_denom_numer_t *newton_partials_d;
+} cone_projection_state_t;
 
 void solve_cone_newton(
     const cone_parameters_t *cone_params,
@@ -30,3 +47,7 @@ void solve_cone_newton(
     cudaStream_t stream);
 
 int max_cooperative_cone_grid();
+
+#ifdef __cplusplus
+}
+#endif

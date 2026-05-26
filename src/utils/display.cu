@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "display.h"
 #include "cuhsdlp.h"
+#include "termination_checker.h"
 #include "utils.h"
 #include <math.h>
 #include <stdio.h>

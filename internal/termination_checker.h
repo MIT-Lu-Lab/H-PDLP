@@ -25,6 +25,32 @@ extern "C"
 {
 #endif
 
+    typedef struct pdhg_metrics_t {
+        double absolute_primal_residual;
+        double relative_primal_residual;
+        double absolute_dual_residual;
+        double relative_dual_residual;
+
+        double primal_objective;
+        double dual_objective;
+        double objective_gap;
+        double relative_objective_gap;
+
+        double initial_homogeneous_scale;
+        double current_homogeneous_scale;
+        double pdhg_homogeneous_scale;
+        double pdhg_dual_constraint_offset;
+        double pdhg_dual_bound_offset;
+
+        double primal_solution_norm;
+        double dual_solution_norm;
+
+        double relative_primal_infeasibility_residual;
+        double relative_primal_infeasibility_objective;
+        double relative_dual_infeasibility_residual;
+        double relative_dual_infeasibility_objective;
+    } pdhg_metrics_t;
+
     void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm);
 
     void check_termination_criteria(

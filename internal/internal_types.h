@@ -16,6 +16,7 @@ limitations under the License.
 
 #pragma once
 
+#include "cone_projector.h"
 #include "cuhsdlp_types.h"
 #include <cublas_v2.h>
 #include <curand.h>
@@ -24,23 +25,7 @@ limitations under the License.
 #include <stdint.h>
 #include <time.h>
 
-enum HsdState {
-    HSD_INITIAL     = 0,
-    HSD_CURRENT     = 1,
-    HSD_PDHG        = 2,
-    HSD_REFLECTED   = 3,
-    HSD_STATE_COUNT = 4,
-};
-
-enum HsdGroup {
-    HSD_SCALE           = 0,
-    HSD_DUAL_CONSTRAINT = 1,
-    HSD_DUAL_BOUND      = 2,
-    HSD_GROUP_COUNT     = 3,
-};
-
-#define HSD_IDX(group, state) ((group) * HSD_STATE_COUNT + (state))
-#define HSD_SCALARS_COUNT     (HSD_GROUP_COUNT * HSD_STATE_COUNT)
+typedef struct pdhg_metrics_t pdhg_metrics_t;
 
 enum PdhgReduction {
     PDHG_PRIMAL_NORM   = 0,
@@ -63,6 +48,22 @@ enum FarkasReduction {
     FARKAS_COUNT                 = 7,
 };
 
+enum HsdScalarSlot {
+    HSD_SCALE_INITIAL             = 0,
+    HSD_SCALE_CURRENT             = 1,
+    HSD_SCALE_PDHG                = 2,
+    HSD_SCALE_REFLECTED           = 3,
+    HSD_DUAL_CONSTRAINT_INITIAL   = 4,
+    HSD_DUAL_CONSTRAINT_CURRENT   = 5,
+    HSD_DUAL_CONSTRAINT_PDHG      = 6,
+    HSD_DUAL_CONSTRAINT_REFLECTED = 7,
+    HSD_DUAL_BOUND_INITIAL        = 8,
+    HSD_DUAL_BOUND_CURRENT        = 9,
+    HSD_DUAL_BOUND_PDHG           = 10,
+    HSD_DUAL_BOUND_REFLECTED      = 11,
+    HSD_SCALARS_COUNT             = 12,
+};
+
 typedef struct {
     int num_rows;
     int num_cols;
@@ -73,47 +74,6 @@ typedef struct {
     double *val;
     int *transpose_map;
 } cu_sparse_matrix_csr_t;
-
-typedef struct {
-    double denom;
-    double numer;
-} newton_denom_numer_t;
-
-typedef struct {
-    const double *lower_bound_d;
-    const double *upper_bound_d;
-    int num_elements;
-    int num_blocks_newton;
-    double *scale_d;
-    double *unprojected_scale_d;
-    newton_denom_numer_t *newton_partials_d;
-} cone_projection_state_t;
-
-typedef struct {
-    double absolute_primal_residual;
-    double relative_primal_residual;
-    double absolute_dual_residual;
-    double relative_dual_residual;
-
-    double primal_objective;
-    double dual_objective;
-    double objective_gap;
-    double relative_objective_gap;
-
-    double initial_homogeneous_scale;
-    double current_homogeneous_scale;
-    double pdhg_homogeneous_scale;
-    double pdhg_dual_constraint_offset;
-    double pdhg_dual_bound_offset;
-
-    double primal_solution_norm;
-    double dual_solution_norm;
-
-    double relative_primal_infeasibility_residual;
-    double relative_primal_infeasibility_objective;
-    double relative_dual_infeasibility_residual;
-    double relative_dual_infeasibility_objective;
-} pdhg_metrics_t;
 
 typedef struct {
     int num_variables;
