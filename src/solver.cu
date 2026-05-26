@@ -192,7 +192,7 @@ cuhsdlp_result_t *optimize(
         working_problem = presolve_info->reduced_problem;
     }
 
-    pdhg_solver_state_t *state = initialize_solver_state(working_problem, params);
+    pdhg_solver_state_t *state = initialize_solver_state(working_problem, original_problem, params);
     display_iteration_stats(state, params->verbose, false);
 
     initialize_step_size_and_primal_weight(state, params);

@@ -132,6 +132,7 @@ void check_params_validity(const pdhg_parameters_t *params)
 
 pdhg_solver_state_t *initialize_solver_state(
     lp_problem_t *working_problem,
+    const lp_problem_t *original_problem,
     const pdhg_parameters_t *params)
 {
     pdhg_solver_state_t *state = (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
@@ -202,6 +203,12 @@ pdhg_solver_state_t *initialize_solver_state(
 
     CUDA_CHECK(cudaMalloc(&state->constraint_rescaling_d, state->con_bytes));
     CUDA_CHECK(cudaMalloc(&state->variable_rescaling_d, state->var_bytes));
+
+    compute_lp_problem_norms(
+        original_problem, params->optimality_norm,
+        &state->original_objective_norm,
+        &state->original_bound_norm,
+        &state->original_constraint_norm);
 
     rescale_problem(params, state);
 

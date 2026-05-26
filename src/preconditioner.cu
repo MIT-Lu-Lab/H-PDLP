@@ -303,27 +303,6 @@ __global__ void compute_bound_objective_scales_kernel(
     *obj_scale_d = 1.0 / (objective_norm[0] + 1.0);
 }
 
-static double compute_constraint_matrix_frobenius_norm(pdhg_solver_state_t *state)
-{
-    double *scratch_d = NULL;
-    CUDA_CHECK(cudaMalloc(&scratch_d, sizeof(double)));
-
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A,
-        state->constraint_matrix->num_nonzeros,
-        state->constraint_matrix->val,
-        1,
-        scratch_d));
-
-    double frobenius_norm = 0.0;
-    CUDA_CHECK(cudaMemcpyAsync(&frobenius_norm, scratch_d, sizeof(double),
-                               cudaMemcpyDeviceToHost, state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    CUDA_CHECK(cudaFree(scratch_d));
-
-    return frobenius_norm;
-}
-
 void rescale_problem(
     const pdhg_parameters_t *params,
     pdhg_solver_state_t *state)
@@ -340,10 +319,6 @@ void rescale_problem(
 
     int num_variables = state->num_variables;
     int num_constraints = state->num_constraints;
-
-    compute_objective_and_bound_norms(state, optimality_norm,
-        &state->original_objective_norm, &state->original_bound_norm);
-    state->original_constraint_norm = compute_constraint_matrix_frobenius_norm(state);
 
     clock_t start_rescaling = clock();
 

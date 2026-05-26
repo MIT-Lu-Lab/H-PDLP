@@ -105,6 +105,13 @@ extern "C"
         int length,
         double *output);
 
+    void compute_lp_problem_norms(
+        const lp_problem_t *problem,
+        norm_type_t optimality_norm,
+        double *out_objective_norm,
+        double *out_bound_norm,
+        double *out_constraint_frobenius_norm);
+
 #ifdef __cplusplus
 }
 #endif
