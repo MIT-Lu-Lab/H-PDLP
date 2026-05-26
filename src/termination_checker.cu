@@ -366,8 +366,8 @@ static bool primal_infeasibility_criteria_met(
 {
     if (state->metrics_h->dual_solution_norm * criteria->eps_infeasible_relative <= 1.0e-15)
         return false;
-    return state->metrics_h->relative_primal_infeasibility_residual  < criteria->eps_infeasible_relative &&
-           state->metrics_h->relative_primal_infeasibility_objective > 0;
+    return state->metrics_h->relative_primal_infeasibility_residual  <  criteria->eps_infeasible_relative &&
+           state->metrics_h->relative_primal_infeasibility_objective >  criteria->eps_infeasible_relative;
 }
 
 static bool dual_infeasibility_criteria_met(
@@ -376,8 +376,8 @@ static bool dual_infeasibility_criteria_met(
 {
     if (state->metrics_h->primal_solution_norm * criteria->eps_infeasible_relative <= 1.0e-15)
         return false;
-    return state->metrics_h->relative_dual_infeasibility_residual  < criteria->eps_infeasible_relative &&
-           state->metrics_h->relative_dual_infeasibility_objective < 0;
+    return state->metrics_h->relative_dual_infeasibility_residual  <  criteria->eps_infeasible_relative &&
+           state->metrics_h->relative_dual_infeasibility_objective < -criteria->eps_infeasible_relative;
 }
 
 __global__ void compute_residual_kernel(
