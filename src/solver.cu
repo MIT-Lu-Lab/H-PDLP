@@ -167,6 +167,9 @@ static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void perform_restart(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
+static void update_primal_weight_via_restart_pid(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params);
 static void normalize_hsd_variables(pdhg_solver_state_t *state);
 static void rescale_solution(pdhg_solver_state_t *state);
 static cuhsdlp_result_t *create_result_from_state(
@@ -687,49 +690,7 @@ static void perform_restart(
         1,
         state->pdhg_slack_norm_d));
 
-    double restart_scalars_h[3];
-    CUDA_CHECK(cudaMemcpyAsync(
-        restart_scalars_h,
-        state->pdhg_primal_norm_d,
-        3 * sizeof(double),
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
-    double primal_dist = restart_scalars_h[0];
-    double dual_dist =
-        sqrt(restart_scalars_h[1] * restart_scalars_h[1] + restart_scalars_h[2] * restart_scalars_h[2]);
-    double ratio_infeas =
-        state->metrics_h->relative_dual_residual / state->metrics_h->relative_primal_residual;
-
-    if (primal_dist > 1e-16 && dual_dist > 1e-16 &&
-        primal_dist < 1e12 && dual_dist < 1e12 &&
-        ratio_infeas > 1e-8 && ratio_infeas < 1e8)
-    {
-        double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
-        state->primal_weight_error_sum *= step_size_params->i_smooth;
-        state->primal_weight_error_sum += error;
-        double delta_error = error - state->primal_weight_last_error;
-        state->primal_weight *= exp(
-            step_size_params->k_p * error +
-            step_size_params->k_i * state->primal_weight_error_sum +
-            step_size_params->k_d * delta_error);
-        state->primal_weight_last_error = error;
-    }
-    else
-    {
-        state->primal_weight = state->best_primal_weight;
-        state->primal_weight_error_sum = 0.0;
-        state->primal_weight_last_error = 0.0;
-    }
-
-    double primal_dual_residual_gap =
-        fabs(log10(state->metrics_h->relative_dual_residual / state->metrics_h->relative_primal_residual));
-    if (primal_dual_residual_gap < state->best_primal_dual_residual_gap)
-    {
-        state->best_primal_dual_residual_gap = primal_dual_residual_gap;
-        state->best_primal_weight = state->primal_weight;
-    }
+    update_primal_weight_via_restart_pid(state, step_size_params);
 
     compute_step_sizes(state, step_size_params);
 
@@ -791,6 +752,77 @@ static void perform_restart(
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
+}
+
+static void update_primal_weight_via_restart_pid(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params)
+{
+    double restart_scalars_h[3];
+    double hsd_scalars_h[HSD_SCALARS_COUNT];
+
+    CUDA_CHECK(cudaMemcpyAsync(
+        restart_scalars_h,
+        state->pdhg_primal_norm_d,
+        3 * sizeof(double),
+        cudaMemcpyDeviceToHost,
+        state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(
+        hsd_scalars_h,
+        state->hsd_scalars_d,
+        HSD_SCALARS_COUNT * sizeof(double),
+        cudaMemcpyDeviceToHost,
+        state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    double dx2     = restart_scalars_h[0] * restart_scalars_h[0];
+    double dy2_ds2 = restart_scalars_h[1] * restart_scalars_h[1]
+                   + restart_scalars_h[2] * restart_scalars_h[2];
+
+    double d_tau   = hsd_scalars_h[HSD_SCALE_PDHG]
+                   - hsd_scalars_h[HSD_SCALE_INITIAL];
+
+    double base    = state->step_size_base;
+    double c_norm  = state->rescaled_objective_norm;
+    double denom   = step_size_params->step_size_factor
+                   * step_size_params->objective_coupling_budget;
+    double alpha_p = 2.0 * base * base / denom;
+    double alpha_d = c_norm * c_norm * base * base / denom;
+    double d_tau2  = d_tau * d_tau;
+
+    double primal_dist = sqrt(dx2     + alpha_p * d_tau2);
+    double dual_dist   = sqrt(dy2_ds2 + alpha_d * d_tau2);
+
+    double ratio_infeas =
+        state->metrics_h->relative_dual_residual / state->metrics_h->relative_primal_residual;
+
+    if (primal_dist > 1e-16 && dual_dist > 1e-16 &&
+        primal_dist < 1e12 && dual_dist < 1e12 &&
+        ratio_infeas > 1e-8 && ratio_infeas < 1e8)
+    {
+        double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
+        state->primal_weight_error_sum *= step_size_params->i_smooth;
+        state->primal_weight_error_sum += error;
+        double delta_error = error - state->primal_weight_last_error;
+        state->primal_weight *= exp(
+            step_size_params->k_p * error +
+            step_size_params->k_i * state->primal_weight_error_sum +
+            step_size_params->k_d * delta_error);
+        state->primal_weight_last_error = error;
+    }
+    else
+    {
+        state->primal_weight = state->best_primal_weight;
+        state->primal_weight_error_sum = 0.0;
+        state->primal_weight_last_error = 0.0;
+    }
+
+    double primal_dual_residual_gap = fabs(log10(ratio_infeas));
+    if (primal_dual_residual_gap < state->best_primal_dual_residual_gap)
+    {
+        state->best_primal_dual_residual_gap = primal_dual_residual_gap;
+        state->best_primal_weight = state->primal_weight;
+    }
 }
 
 static void normalize_hsd_variables(pdhg_solver_state_t *state)
