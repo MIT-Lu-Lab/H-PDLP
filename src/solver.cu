@@ -781,20 +781,23 @@ static void update_primal_weight_via_restart_pid(
 
     double d_tau   = hsd_scalars_h[HSD_SCALE_PDHG]
                    - hsd_scalars_h[HSD_SCALE_INITIAL];
+    double d_ac    = hsd_scalars_h[HSD_DUAL_CONSTRAINT_PDHG]
+                   - hsd_scalars_h[HSD_DUAL_CONSTRAINT_INITIAL];
+    double d_av    = hsd_scalars_h[HSD_DUAL_BOUND_PDHG]
+                   - hsd_scalars_h[HSD_DUAL_BOUND_INITIAL];
 
-    double base    = state->step_size_base;
     double c_norm  = state->rescaled_objective_norm;
-    double denom   = step_size_params->step_size_factor
-                   * step_size_params->objective_coupling_budget;
-    double alpha_p = 2.0 * base * base / denom;
-    double alpha_d = c_norm * c_norm * base * base / denom;
+    double xi      = step_size_params->objective_coupling_budget;
+    double base2   = state->step_size_base * state->step_size_base;
+    double alpha_p = 2.0 * base2;
+    double alpha_d = c_norm * c_norm * base2 / xi;
     double d_tau2  = d_tau * d_tau;
 
-    double primal_dist = sqrt(dx2     + alpha_p * d_tau2);
-    double dual_dist   = sqrt(dy2_ds2 + alpha_d * d_tau2);
+    double primal_dist = sqrt(dx2 + alpha_p * d_tau2);
+    double dual_dist   = sqrt(dy2_ds2 + d_ac * d_ac + d_av * d_av + alpha_d * d_tau2);
 
-    double ratio_infeas =
-        state->metrics_h->relative_dual_residual / state->metrics_h->relative_primal_residual;
+    double ratio_infeas = state->metrics_h->relative_dual_residual 
+                        / state->metrics_h->relative_primal_residual;
 
     if (primal_dist > 1e-16 && dual_dist > 1e-16 &&
         primal_dist < 1e12 && dual_dist < 1e12 &&
