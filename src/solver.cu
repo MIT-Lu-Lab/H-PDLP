@@ -754,6 +754,29 @@ static void perform_restart(
     state->last_trial_fixed_point_error = INFINITY;
 }
 
+static void apply_pid_step(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params,
+    double primal_dist,
+    double dual_dist,
+    bool clamp_step)
+{
+    double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
+    state->primal_weight_error_sum *= step_size_params->i_smooth;
+    state->primal_weight_error_sum += error;
+    double delta_error = error - state->primal_weight_last_error;
+    double step = step_size_params->k_p * error +
+                  step_size_params->k_i * state->primal_weight_error_sum +
+                  step_size_params->k_d * delta_error;
+    if (clamp_step)
+    {
+        const double max_log_step = log(10.0);
+        step = fmin(fmax(step, -max_log_step), max_log_step);
+    }
+    state->primal_weight *= exp(step);
+    state->primal_weight_last_error = error;
+}
+
 static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params)
@@ -799,19 +822,25 @@ static void update_primal_weight_via_restart_pid(
     double ratio_infeas = state->metrics_h->relative_dual_residual 
                         / state->metrics_h->relative_primal_residual;
 
-    if (primal_dist > 1e-16 && dual_dist > 1e-16 &&
-        primal_dist < 1e12 && dual_dist < 1e12 &&
-        ratio_infeas > 1e-8 && ratio_infeas < 1e8)
+    bool dist_ok  = primal_dist > 1e-16 && dual_dist > 1e-16 &&
+                    primal_dist < 1e12  && dual_dist < 1e12;
+    bool ratio_ok = ratio_infeas > 1e-8 && ratio_infeas < 1e8;
+
+    if (!dist_ok)
     {
-        double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
-        state->primal_weight_error_sum *= step_size_params->i_smooth;
-        state->primal_weight_error_sum += error;
-        double delta_error = error - state->primal_weight_last_error;
-        state->primal_weight *= exp(
-            step_size_params->k_p * error +
-            step_size_params->k_i * state->primal_weight_error_sum +
-            step_size_params->k_d * delta_error);
-        state->primal_weight_last_error = error;
+        if (state->pid_has_succeeded)
+            state->primal_weight = state->best_primal_weight;
+        state->primal_weight_error_sum = 0.0;
+        state->primal_weight_last_error = 0.0;
+    }
+    else if (ratio_ok)
+    {
+        apply_pid_step(state, step_size_params, primal_dist, dual_dist, false);
+        state->pid_has_succeeded = true;
+    }
+    else if (!state->pid_has_succeeded)
+    {
+        apply_pid_step(state, step_size_params, primal_dist, dual_dist, true);
     }
     else
     {

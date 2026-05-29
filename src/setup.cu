@@ -670,6 +670,7 @@ static void initialize_convergence_tracking(pdhg_solver_state_t *state)
 {
     state->best_primal_dual_residual_gap = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
+    state->pid_has_succeeded = false;
 }
 
 void pdhg_solver_state_free(pdhg_solver_state_t *state)

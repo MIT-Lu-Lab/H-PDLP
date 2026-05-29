@@ -215,6 +215,7 @@ typedef struct {
     double primal_weight_last_error;
     double best_primal_weight;
     double best_primal_dual_residual_gap;
+    bool   pid_has_succeeded;
 
     double *fixed_point_error_mp;
     double  initial_fixed_point_error;
