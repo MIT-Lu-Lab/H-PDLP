@@ -825,18 +825,14 @@ static void update_primal_weight_via_restart_pid(
     bool dist_ok  = primal_dist > 1e-16 && dual_dist > 1e-16 &&
                     primal_dist < 1e12  && dual_dist < 1e12;
     bool ratio_ok = ratio_infeas > 1e-8 && ratio_infeas < 1e8;
+    bool signal_bad = !dist_ok || !ratio_ok;
 
-    if (!dist_ok)
-    {
-        if (state->pid_has_succeeded)
-            state->primal_weight = state->best_primal_weight;
-        state->primal_weight_error_sum = 0.0;
-        state->primal_weight_last_error = 0.0;
-    }
-    else if (ratio_ok)
+    const int PID_OOB_STREAK_THRESHOLD = 3;
+    if (!signal_bad)
     {
         apply_pid_step(state, step_size_params, primal_dist, dual_dist, false);
         state->pid_has_succeeded = true;
+        state->pid_oob_streak = 0;
     }
     else if (!state->pid_has_succeeded)
     {
@@ -844,9 +840,17 @@ static void update_primal_weight_via_restart_pid(
     }
     else
     {
-        state->primal_weight = state->best_primal_weight;
-        state->primal_weight_error_sum = 0.0;
-        state->primal_weight_last_error = 0.0;
+        state->pid_oob_streak++;
+        if (state->pid_oob_streak >= PID_OOB_STREAK_THRESHOLD)
+        {
+            apply_pid_step(state, step_size_params, primal_dist, dual_dist, true);
+        }
+        else
+        {
+            state->primal_weight = state->best_primal_weight;
+            state->primal_weight_error_sum = 0.0;
+            state->primal_weight_last_error = 0.0;
+        }
     }
 
     double primal_dual_residual_gap = fabs(log10(ratio_infeas));

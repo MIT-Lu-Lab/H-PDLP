@@ -672,6 +672,7 @@ static void initialize_convergence_tracking(pdhg_solver_state_t *state)
     state->initial_fixed_point_error = INFINITY;
     state->last_trial_fixed_point_error = INFINITY;
     state->pid_has_succeeded = false;
+    state->pid_oob_streak = 0;
 }
 
 void pdhg_solver_state_free(pdhg_solver_state_t *state)
