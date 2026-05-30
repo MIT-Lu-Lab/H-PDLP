@@ -87,6 +87,17 @@ __global__ void update_hsd_primal_solution_kernel(
     double refl_coeff,
     int n,
     bool is_major);
+__global__ void rescale_solution_kernel(
+    double *__restrict__ primal_sol,
+    double *__restrict__ dual_sol,
+    double *__restrict__ dual_slack,
+    const double *__restrict__ var_rescaling,
+    const double *__restrict__ cons_rescaling,
+    const double obj_vec_rescaling,
+    const double cons_bound_rescaling,
+    double tau,
+    int n_vars,
+    int n_cons);
 __global__ void compute_delta_kernel(
     const double *__restrict__ initial_primal,
     const double *__restrict__ pdhg_primal,
@@ -97,17 +108,6 @@ __global__ void compute_delta_kernel(
     const double *__restrict__ initial_dual_slack,
     const double *__restrict__ pdhg_dual_slack,
     double *__restrict__ delta_dual_slack,
-    int n_vars,
-    int n_cons);
-__global__ void rescale_solution_kernel(
-    double *__restrict__ primal_sol,
-    double *__restrict__ dual_sol,
-    double *__restrict__ dual_slack,
-    const double *__restrict__ var_rescaling,
-    const double *__restrict__ cons_rescaling,
-    const double obj_vec_rescaling,
-    const double cons_bound_rescaling,
-    double tau,
     int n_vars,
     int n_cons);
 __global__ void compute_fixed_point_error_kernel(

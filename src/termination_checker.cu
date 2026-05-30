@@ -344,6 +344,10 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
         {
             do_restart = true;
         }
+        if (solver_state->metrics_h->pdhg_homogeneous_scale > 1.0e6)
+        {
+            do_restart = true;
+        }
     }
     solver_state->last_trial_fixed_point_error = *solver_state->fixed_point_error_mp;
     return do_restart;
