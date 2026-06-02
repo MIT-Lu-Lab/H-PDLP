@@ -289,21 +289,30 @@ void check_termination_criteria(
 {
     solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
 
-    if (optimality_criteria_met(solver_state, criteria))
+    double ratio = solver_state->metrics_h->normalized_homogeneous_ratio;
+
+    if (ratio < 0.01)
     {
-        solver_state->termination_reason = TERMINATION_REASON_OPTIMAL;
-        return;
+        if (optimality_criteria_met(solver_state, criteria))
+        {
+            solver_state->termination_reason = TERMINATION_REASON_OPTIMAL;
+            return;
+        }
     }
-    if (primal_infeasibility_criteria_met(solver_state, criteria))
+    else if (ratio > 0.99)
     {
-        solver_state->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
-        return;
+        if (primal_infeasibility_criteria_met(solver_state, criteria))
+        {
+            solver_state->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
+            return;
+        }
+        if (dual_infeasibility_criteria_met(solver_state, criteria))
+        {
+            solver_state->termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
+            return;
+        }
     }
-    if (dual_infeasibility_criteria_met(solver_state, criteria))
-    {
-        solver_state->termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
-        return;
-    }
+
     if (solver_state->total_count >= criteria->iteration_limit)
     {
         solver_state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
@@ -528,6 +537,22 @@ __global__ void compute_residual_metrics_kernel(
     double primal_solution_norm = metrics_d->primal_solution_norm;
 
     metrics_d->dual_solution_norm = dual_solution_norm;
+
+    double homogeneous_gap = objective_dot_primal + pdhg_dual_constraint_offset + pdhg_dual_bound_offset;
+    double iterate_norm = sqrt(primal_solution_norm * primal_solution_norm
+                             + dual_solution_norm * dual_solution_norm
+                             + primal_scale * primal_scale
+                             + pdhg_dual_constraint_offset * pdhg_dual_constraint_offset
+                             + pdhg_dual_bound_offset * pdhg_dual_bound_offset);
+    double inv_iterate_norm = (iterate_norm > 1e-30) ? 1.0 / iterate_norm : 0.0;
+    double homogeneous_scale_hat = primal_scale * inv_iterate_norm;
+    double homogeneous_gap_hat = fabs(homogeneous_gap) * inv_iterate_norm;
+    double ratio_denominator = homogeneous_gap_hat + homogeneous_scale_hat;
+    metrics_d->normalized_homogeneous_scale = homogeneous_scale_hat;
+    metrics_d->normalized_homogeneous_gap   = homogeneous_gap_hat;
+    metrics_d->normalized_homogeneous_ratio        = (ratio_denominator > 0.0)
+                                            ? homogeneous_gap_hat / ratio_denominator
+                                            : 0.0;
 
     double homogeneous_dual_norm = *farkas_homogeneous_dual_norm;
     double inv_dual_norm = (dual_solution_norm > 1.0e-30) ? 1.0 / dual_solution_norm : 0.0;

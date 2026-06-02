@@ -49,6 +49,10 @@ extern "C"
         double relative_primal_infeasibility_objective;
         double relative_dual_infeasibility_residual;
         double relative_dual_infeasibility_objective;
+
+        double normalized_homogeneous_scale;
+        double normalized_homogeneous_gap;
+        double normalized_homogeneous_ratio;
     } pdhg_metrics_t;
 
     void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm);

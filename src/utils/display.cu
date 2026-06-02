@@ -157,16 +157,16 @@ void print_iteration_header(bool verbose)
     if (!verbose)
         return;
 
-    printf("-----------------------------------------------------------"
-           "-----------------------------------------------------------------\n");
+    printf("------------------------------------------------------------"
+           "--------------------------------------------------------------------------------\n");
     printf(" %s | %s | %s | %s | %s | %s\n",
            "   runtime    ",
            "    objective     ",
            "  absolute residuals   ",
            "  relative residuals   ",
-           "      step sizes       ",
-           "  hsd  ");
-    printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s\n",
+           "          hsd          ",
+           "      step sizes       ");
+    printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s %s %s\n",
            "  iter",
            "  time ",
            " pr obj ",
@@ -177,12 +177,14 @@ void print_iteration_header(bool verbose)
            " pr res",
            " du res",
            "  gap  ",
+           " scale ",
+           "  gap  ",
+           " ratio ",
            " pr ss ",
            " du ss ",
-           " sc ss ",
-           " scale ");
-    printf("-----------------------------------------------------------"
-           "-----------------------------------------------------------------\n");
+           " sc ss ");
+    printf("------------------------------------------------------------"
+           "--------------------------------------------------------------------------------\n");
 }
 
 int get_print_frequency(int iter)
@@ -210,7 +212,7 @@ void display_iteration_stats(
     if (is_restart || state->total_count % get_print_frequency(state->total_count) == 0)
     {
         printf(
-            "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e\n",
+            "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %.1e %.1e %.1e\n",
             is_restart ? 'R' : ' ',
             state->total_count,
             state->cumulative_time_sec,
@@ -222,10 +224,12 @@ void display_iteration_stats(
             state->metrics_h->relative_primal_residual,
             state->metrics_h->relative_dual_residual,
             state->metrics_h->relative_objective_gap,
+            state->metrics_h->current_homogeneous_scale,
+            state->metrics_h->normalized_homogeneous_gap,
+            state->metrics_h->normalized_homogeneous_ratio,
             state->step_size_primal,
             state->step_size_dual,
-            state->step_size_homogeneous,
-            state->metrics_h->current_homogeneous_scale);
+            state->step_size_homogeneous);
     }
 }
 
@@ -235,8 +239,8 @@ void pdhg_final_log(
 {
     if (params->verbose)
     {
-        printf("-----------------------------------------------------------"
-           "-----------------------------------------------------------------\n");
+        printf("------------------------------------------------------------"
+           "--------------------------------------------------------------------------------\n");
         printf("Solution Summary\n");
         printf(
             "  Status                 : %s\n",
