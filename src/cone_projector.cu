@@ -298,8 +298,7 @@ __device__ __forceinline__ bool update_cone_newton_bracket(
     else
         new_scale = scale_low;
 
-    const bool converged =
-        (fabs(new_scale - scale) < tol * (1.0 + fabs(new_scale)));
+    const bool converged = (fabs(new_scale - scale) < tol * fabs(new_scale) +  1.0e-14);
     scale = new_scale;
     return converged;
 }
