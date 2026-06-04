@@ -177,7 +177,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->power_iter_params.tol = 1e-4;
 
     params->step_size_params.step_size_factor = 0.998;
-    params->step_size_params.objective_coupling_budget = 0.05;
+    params->step_size_params.objective_coupling_budget = 0.03;
     params->step_size_params.k_p = 0.95;
     params->step_size_params.k_i = 0.01;
     params->step_size_params.k_d = 0.0;
