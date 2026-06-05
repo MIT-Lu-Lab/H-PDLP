@@ -366,8 +366,6 @@ static bool optimality_criteria_met(
     const pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    if (state->metrics_h->pdhg_homogeneous_scale * criteria->eps_feasible_relative <= 1.0e-15)
-        return false;
     return state->metrics_h->relative_primal_residual < criteria->eps_feasible_relative &&
            state->metrics_h->relative_dual_residual   < criteria->eps_feasible_relative &&
            state->metrics_h->relative_objective_gap   < criteria->eps_optimal_relative;
