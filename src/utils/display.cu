@@ -105,8 +105,10 @@ void print_initial_info(
            params->termination_criteria.eps_optimal_relative);
     printf("  eps_feas           : %.1e\n",
            params->termination_criteria.eps_feasible_relative);
-    printf("  eps_infeas         : %.1e\n",
-           params->termination_criteria.eps_infeasible_relative);
+    printf("  eps_infeas_resid   : %.1e\n",
+           params->termination_criteria.eps_infeas_residual);
+    printf("  eps_infeas_obj     : %.1e\n",
+           params->termination_criteria.eps_infeas_objective);
     if (params->optimality_norm != default_params.optimality_norm)
     {
         printf("  optimality_norm    : %s\n",

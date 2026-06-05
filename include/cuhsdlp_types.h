@@ -106,7 +106,8 @@ extern "C"
     {
         double eps_optimal_relative;
         double eps_feasible_relative;
-        double eps_infeasible_relative;
+        double eps_infeas_residual;
+        double eps_infeas_objective;
         double time_sec_limit;
         int iteration_limit;
     } termination_criteria_t;

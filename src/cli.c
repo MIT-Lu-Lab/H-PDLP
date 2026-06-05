@@ -187,7 +187,6 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n", INT32_MAX);
     fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: 1e-4).\n");
     fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: 1e-4).\n");
-    fprintf(stderr, "      --eps_infeas <tolerance>          Relative infeasibility tolerance (default: 1e-10).\n");
     fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: 200).\n");
     fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
     fprintf(stderr, "\n  Output:\n");
@@ -216,7 +215,6 @@ int main(int argc, char *argv[])
         {"iter_limit", required_argument, 0, 1013},
         {"eps_opt", required_argument, 0, 1014},
         {"eps_feas", required_argument, 0, 1015},
-        {"eps_infeas", required_argument, 0, 1016},
         {"eval_freq", required_argument, 0, 1017},
         {"opt_norm", required_argument, 0, 1018},
         {"verbose", no_argument, 0, 'v'},
@@ -300,11 +298,6 @@ int main(int argc, char *argv[])
         case 1015:
             if (!parse_double_arg("--eps_feas", optarg,
                                   &params.termination_criteria.eps_feasible_relative))
-                return 1;
-            break;
-        case 1016:
-            if (!parse_double_arg("--eps_infeas", optarg,
-                                  &params.termination_criteria.eps_infeasible_relative))
                 return 1;
             break;
         case 1017:
