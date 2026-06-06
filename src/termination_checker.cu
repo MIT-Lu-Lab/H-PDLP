@@ -375,8 +375,6 @@ static bool primal_infeasibility_criteria_met(
     const pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    if (state->metrics_h->dual_solution_norm * criteria->eps_infeas_residual <= 1.0e-15)
-        return false;
     return state->metrics_h->relative_primal_infeasibility_residual  <  criteria->eps_infeas_residual &&
            state->metrics_h->relative_primal_infeasibility_objective >  criteria->eps_infeas_objective;
 }
@@ -385,8 +383,6 @@ static bool dual_infeasibility_criteria_met(
     const pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    if (state->metrics_h->primal_solution_norm * criteria->eps_infeas_residual <= 1.0e-15)
-        return false;
     return state->metrics_h->relative_dual_infeasibility_residual  <  criteria->eps_infeas_residual &&
            state->metrics_h->relative_dual_infeasibility_objective < -criteria->eps_infeas_objective;
 }
