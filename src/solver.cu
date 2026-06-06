@@ -815,8 +815,9 @@ static void update_primal_weight_via_restart_pid(
     double ratio_infeas = state->metrics_h->relative_dual_residual 
                         / state->metrics_h->relative_primal_residual;
 
-    bool dist_ok  = primal_dist > 1e-16 && dual_dist > 1e-16 &&
-                    primal_dist < 1e12  && dual_dist < 1e12;
+    double tau_scale = fmax(hsd_scalars_h[HSD_SCALE_PDHG], 1e-300);
+    bool dist_ok  = primal_dist > 1e-16 * tau_scale && dual_dist > 1e-16 * tau_scale &&
+                    primal_dist < 1e12  * tau_scale && dual_dist < 1e12  * tau_scale;
     bool ratio_ok = ratio_infeas > 1e-8 && ratio_infeas < 1e8;
     bool signal_bad = !dist_ok || !ratio_ok;
 
