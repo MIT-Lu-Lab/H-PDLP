@@ -43,6 +43,12 @@ extern "C"
         NORM_TYPE_L_INF = 1
     } norm_type_t;
 
+    typedef enum
+    {
+        OBJECTIVE_SENSE_MINIMIZE = 0,
+        OBJECTIVE_SENSE_MAXIMIZE = 1
+    } objective_sense_t;
+
     typedef struct
     {
         int num_variables;
@@ -51,6 +57,7 @@ extern "C"
         double *variable_upper_bound;
         double *objective_vector;
         double objective_constant;
+        objective_sense_t objective_sense;
 
         int *constraint_matrix_row_pointers;
         int *constraint_matrix_col_indices;

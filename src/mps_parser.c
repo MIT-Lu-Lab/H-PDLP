@@ -329,7 +329,7 @@ typedef struct
     char *objective_row_name;
     char *current_col_name;
     double objective_constant;
-    bool is_maximize;
+    objective_sense_t objective_sense;
     int error_flag;
 
 } MpsParserState;
@@ -468,18 +468,21 @@ lp_problem_t *read_mps_file(const char *filename)
                 next_section = SEC_ENDATA;
             }
 
-            if (current_section == SEC_ROWS && next_section != SEC_ROWS &&
-                !rows_finalized)
+            if (next_section != SEC_NONE)
             {
-                if (finalize_rows(&state) != 0)
-                    state.error_flag = 1;
-                rows_finalized = true;
-            }
+                if (current_section == SEC_ROWS && next_section != SEC_ROWS &&
+                    !rows_finalized)
+                {
+                    if (finalize_rows(&state) != 0)
+                        state.error_flag = 1;
+                    rows_finalized = true;
+                }
 
-            current_section = next_section;
-            if (current_section == SEC_ENDATA)
-                break;
-            continue;
+                current_section = next_section;
+                if (current_section == SEC_ENDATA)
+                    break;
+                continue;
+            }
         }
 
         switch (current_section)
@@ -488,7 +491,7 @@ lp_problem_t *read_mps_file(const char *filename)
             if (n_tokens > 0 && (strcmp(tokens[0], "MAX") == 0 ||
                                  strcmp(tokens[0], "MAXIMIZE") == 0))
             {
-                state.is_maximize = true;
+                state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
             }
             break;
         case SEC_ROWS:
@@ -529,8 +532,8 @@ lp_problem_t *read_mps_file(const char *filename)
 
     prob->num_variables = state.col_map.size;
     prob->num_constraints = state.row_map.size;
-    prob->objective_constant =
-        state.is_maximize ? -state.objective_constant : state.objective_constant;
+    prob->objective_constant = (state.objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -state.objective_constant : state.objective_constant;
+    prob->objective_sense = state.objective_sense;
 
     prob->objective_vector = state.objective_coeffs;
     prob->variable_lower_bound = state.var_lower_bounds;
@@ -547,7 +550,7 @@ lp_problem_t *read_mps_file(const char *filename)
     state.constraint_lower_bounds = NULL;
     state.constraint_upper_bounds = NULL;
 
-    if (state.is_maximize)
+    if (state.objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
     {
         for (int i = 0; i < prob->num_variables; ++i)
         {

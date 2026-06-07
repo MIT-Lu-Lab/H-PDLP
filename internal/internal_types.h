@@ -133,6 +133,7 @@ typedef struct {
     double  rescaled_constraint_norm;
     double  constraint_bound_rescaling;
     double  objective_vector_rescaling;
+    double  objective_sign;
     double  rescaling_time_sec;
     double *precond_bound_norm_mp;
     double *precond_objective_norm_mp;

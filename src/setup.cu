@@ -110,6 +110,7 @@ pdhg_solver_state_t *initialize_solver_state(
     state->var_bytes = (size_t)n_vars * sizeof(double);
     state->con_bytes = (size_t)n_cons * sizeof(double);
     state->objective_constant = working_problem->objective_constant;
+    state->objective_sign = (original_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
 
     state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
     state->constraint_matrix_t = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));

@@ -939,8 +939,8 @@ static cuhsdlp_result_t *create_result_from_state(
     results->relative_primal_residual = state->metrics_h->relative_primal_residual;
     results->absolute_dual_residual = state->metrics_h->absolute_dual_residual;
     results->relative_dual_residual = state->metrics_h->relative_dual_residual;
-    results->primal_objective_value = state->metrics_h->primal_objective;
-    results->dual_objective_value = state->metrics_h->dual_objective;
+    results->primal_objective_value = state->objective_sign * state->metrics_h->primal_objective;
+    results->dual_objective_value = state->objective_sign * state->metrics_h->dual_objective;
     results->objective_gap = state->metrics_h->objective_gap;
     results->relative_objective_gap = state->metrics_h->relative_objective_gap;
     results->termination_reason = state->termination_reason;

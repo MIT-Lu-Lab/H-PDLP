@@ -53,6 +53,7 @@ static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob)
     prob->dual_start = NULL;
 
     prob->objective_constant = reduced_prob->obj_offset;
+    prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
     prob->objective_vector = reduced_prob->c;
     prob->constraint_lower_bound = reduced_prob->lhs;
     prob->constraint_upper_bound = reduced_prob->rhs;
@@ -223,8 +224,9 @@ void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
             obj += original_prob->objective_vector[i] * result->primal_solution[i];
         }
         obj += original_prob->objective_constant;
-        result->primal_objective_value = obj;
-        result->dual_objective_value = obj;
+        double objective_sign = (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
+        result->primal_objective_value = objective_sign * obj;
+        result->dual_objective_value = objective_sign * obj;
     }
     return;
 }
