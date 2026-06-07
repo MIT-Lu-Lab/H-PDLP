@@ -414,7 +414,7 @@ __global__ void compute_residual_kernel(
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     double tau = *scale_pdhg;
-    double inv_tau = (fabs(tau) > 1e-30) ? 1.0 / tau : 0.0;
+    double inv_tau = (fabs(tau) > 1e-50) ? 1.0 / tau : 0.0;
 
     if (i < n_cons)
     {
@@ -495,7 +495,7 @@ __global__ void compute_residual_metrics_kernel(
     double objective_constant)
 {
     double primal_scale = *scale_pdhg;
-    double inv_primal_scale = (fabs(primal_scale) > 1e-30) ? 1.0 / primal_scale : 0.0;
+    double inv_primal_scale = (fabs(primal_scale) > 1e-50) ? 1.0 / primal_scale : 0.0;
     double pdhg_dual_constraint_offset = *dual_constraint_pdhg;
     double pdhg_dual_bound_offset = *dual_bound_pdhg;
     double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;

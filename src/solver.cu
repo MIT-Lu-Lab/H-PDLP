@@ -1134,7 +1134,7 @@ __global__ void rescale_solution_kernel(
     int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double inv_tau = (fabs(tau) > 1e-30) ? 1.0 / tau : 0.0;
+    double inv_tau = (fabs(tau) > 1e-50) ? 1.0 / tau : 0.0;
     if (i < n_vars)
     {
         primal_sol[i] = primal_sol[i] * inv_tau / var_rescaling[i] / cons_bound_rescaling;
