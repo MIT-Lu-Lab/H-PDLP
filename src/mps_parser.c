@@ -839,13 +839,21 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
     if (col_idx == -1)
         return 0;
 
-    if (strcmp(bound_type, "LO") == 0)
+    if (strcmp(bound_type, "LO") == 0 || strcmp(bound_type, "LI") == 0)
     {
         state->var_lower_bounds[col_idx] = value;
     }
-    else if (strcmp(bound_type, "UP") == 0)
+    else if (strcmp(bound_type, "UP") == 0 || strcmp(bound_type, "UI") == 0)
     {
         state->var_upper_bounds[col_idx] = value;
+        // MPS convention: a negative upper bound on a variable whose lower bound
+        // is still the default 0 implies a lower bound of -infinity (otherwise the
+        // interval [0, value] would be empty). LI/MI set before this leave a
+        // non-zero/-inf lower, so they are not overridden.
+        if (value < 0.0 && state->var_lower_bounds[col_idx] == 0.0)
+        {
+            state->var_lower_bounds[col_idx] = -INFINITY;
+        }
     }
     else if (strcmp(bound_type, "FX") == 0)
     {
