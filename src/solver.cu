@@ -137,7 +137,7 @@ __global__ void normalize_hsd_scalars_kernel(
     double *scale_pdhg,
     double *dual_constraint_pdhg,
     double *dual_bound_pdhg,
-    double  inv_tau);
+    double  inv_scale);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
@@ -694,13 +694,6 @@ static void perform_restart(
 
     compute_step_sizes(state, step_size_params);
 
-    double normalization_tau = state->metrics_h->pdhg_homogeneous_scale;
-    double cone_warm_start_scale = 1.0;
-    if (isfinite(normalization_tau) && normalization_tau != 1.0)
-    {
-        cone_warm_start_scale = 1.0 / fmax(normalization_tau, 1.0e-4);
-    }
-
     normalize_hsd_variables(state);
 
     CUDA_CHECK(cudaMemcpyAsync(
@@ -748,7 +741,7 @@ static void perform_restart(
         state->hsd_dual_bound_initial_d,        state->hsd_dual_bound_current_d,        state->hsd_dual_bound_pdhg_d,        state->hsd_dual_bound_reflected_d,
         state->constraint_cone_state.scale_d,
         state->bound_cone_state.scale_d,
-        cone_warm_start_scale);
+        state->cone_warm_start_scale);
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
@@ -822,8 +815,9 @@ static void update_primal_weight_via_restart_pid(
     double ratio_infeas = state->metrics_h->relative_dual_residual 
                         / state->metrics_h->relative_primal_residual;
 
-    bool dist_ok  = primal_dist > 1e-16 && dual_dist > 1e-16 &&
-                    primal_dist < 1e12  && dual_dist < 1e12;
+    double tau_scale = fmax(hsd_scalars_h[HSD_SCALE_PDHG], 1e-300);
+    bool dist_ok  = primal_dist > 1e-16 * tau_scale && dual_dist > 1e-16 * tau_scale &&
+                    primal_dist < 1e12  * tau_scale && dual_dist < 1e12  * tau_scale;
     bool ratio_ok = ratio_infeas > 1e-8 && ratio_infeas < 1e8;
     bool signal_bad = !dist_ok || !ratio_ok;
 
@@ -864,12 +858,28 @@ static void update_primal_weight_via_restart_pid(
 static void normalize_hsd_variables(pdhg_solver_state_t *state)
 {
     double tau = state->metrics_h->pdhg_homogeneous_scale;
-    if (!isfinite(tau) || tau == 1.0)
+    if (tau >= 0.1 && tau <= 10.0)
+    {
+        state->cone_warm_start_scale = 1.0;
         return;
-    double inv_tau = 1.0 / fmax(tau, 1.0e-4);
+    }
+
+    double inv_scale;
+    double iterate_block_norm = fmax(fmax(state->metrics_h->primal_solution_norm,
+                                          state->metrics_h->dual_solution_norm),
+                                fmax(fabs(tau),
+                                fmax(fabs(state->metrics_h->pdhg_dual_constraint_offset),
+                                     fabs(state->metrics_h->pdhg_dual_bound_offset))));
+    if (tau > 1.0e-3)
+        inv_scale = 1.0 / tau;
+    else if (iterate_block_norm > 1.0e12)
+        inv_scale = 1.0 / iterate_block_norm;
+    else
+        inv_scale = 10.0;
+
     CUDA_CHECK(cudaMemcpyAsync(
         state->hsd_inverse_scale_d,
-        &inv_tau, sizeof(double),
+        &inv_scale, sizeof(double),
         cudaMemcpyHostToDevice,
         state->stream_A));
     CUBLAS_CHECK(cublasDscal(
@@ -891,10 +901,11 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
         state->hsd_scale_pdhg_d,
         state->hsd_dual_constraint_pdhg_d,
         state->hsd_dual_bound_pdhg_d,
-        inv_tau);
-    state->metrics_h->pdhg_homogeneous_scale = 1.0;
-    state->metrics_h->pdhg_dual_constraint_offset *= inv_tau;
-    state->metrics_h->pdhg_dual_bound_offset *= inv_tau;
+        inv_scale);
+    state->metrics_h->pdhg_homogeneous_scale      *= inv_scale;
+    state->metrics_h->pdhg_dual_constraint_offset *= inv_scale;
+    state->metrics_h->pdhg_dual_bound_offset      *= inv_scale;
+    state->cone_warm_start_scale = inv_scale;
 }
 
 static cuhsdlp_result_t *create_result_from_state(
@@ -1252,9 +1263,9 @@ __global__ void normalize_hsd_scalars_kernel(
     double *scale_pdhg,
     double *dual_constraint_pdhg,
     double *dual_bound_pdhg,
-    double  inv_tau)
+    double  inv_scale)
 {
-    *scale_pdhg            = 1.0;
-    *dual_constraint_pdhg *= inv_tau;
-    *dual_bound_pdhg      *= inv_tau;
+    *scale_pdhg           *= inv_scale;
+    *dual_constraint_pdhg *= inv_scale;
+    *dual_bound_pdhg      *= inv_scale;
 }

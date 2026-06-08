@@ -178,6 +178,7 @@ typedef struct {
     double *hsd_dual_bound_current_d;
     double *hsd_dual_bound_pdhg_d;
     double *hsd_dual_bound_reflected_d;
+    double  cone_warm_start_scale;
 
     double *power_iteration_vector_d;
     double *power_iteration_normalized_vector_d;
