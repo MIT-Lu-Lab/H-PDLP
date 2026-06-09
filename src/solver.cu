@@ -330,7 +330,7 @@ static void compute_step_sizes(
     state->step_size_primal = base / omega;
     state->step_size_dual = base * omega;
     state->step_size_homogeneous =
-        factor * xi / (c_norm * c_norm * base / omega + 2.0 * base * omega);
+        factor * xi / (c_norm * c_norm * base / omega + 2.0 * xi * base * omega);
 }
 
 static void initialize_step_size_and_primal_weight(
