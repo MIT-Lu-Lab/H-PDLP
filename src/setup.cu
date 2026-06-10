@@ -131,6 +131,8 @@ pdhg_solver_state_t *initialize_solver_state(
     state->num_blocks_primal_dual_slack =
         (2 * state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_nnz = (state->constraint_matrix->num_nonzeros + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    if (state->num_blocks_nnz < 1)
+        state->num_blocks_nnz = 1;
 
     CUSPARSE_CHECK(cusparseCreate(&state->sparse_handle_A));
     CUSPARSE_CHECK(cusparseCreate(&state->sparse_handle_At));
