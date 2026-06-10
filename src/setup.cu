@@ -109,7 +109,14 @@ pdhg_solver_state_t *initialize_solver_state(
     state->num_constraints = n_cons;
     state->var_bytes = (size_t)n_vars * sizeof(double);
     state->con_bytes = (size_t)n_cons * sizeof(double);
-    state->objective_constant = working_problem->objective_constant;
+    if (working_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
+    {
+        state->objective_constant = -working_problem->objective_constant;
+    }
+    else
+    {
+        state->objective_constant = working_problem->objective_constant;
+    }
     state->objective_sign = (original_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
 
     state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
@@ -442,8 +449,22 @@ static void upload_problem_data(
                                 working_problem->variable_lower_bound, var_bytes);
     allocate_and_copy_to_device((void **)&state->variable_upper_bound_d,
                                 working_problem->variable_upper_bound, var_bytes);
-    allocate_and_copy_to_device((void **)&state->objective_vector_d,
-                                working_problem->objective_vector, var_bytes);
+    if (working_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
+    {
+        double *negated_objective = (double *)safe_malloc(var_bytes);
+        for (int j = 0; j < n_vars; ++j)
+        {
+            negated_objective[j] = -working_problem->objective_vector[j];
+        }
+        allocate_and_copy_to_device((void **)&state->objective_vector_d,
+                                    negated_objective, var_bytes);
+        free(negated_objective);
+    }
+    else
+    {
+        allocate_and_copy_to_device((void **)&state->objective_vector_d,
+                                    working_problem->objective_vector, var_bytes);
+    }
     allocate_and_copy_to_device((void **)&state->constraint_lower_bound_d,
                                 working_problem->constraint_lower_bound, con_bytes);
     allocate_and_copy_to_device((void **)&state->constraint_upper_bound_d,

@@ -48,7 +48,14 @@ static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob, con
     prob->primal_start = NULL;
     prob->dual_start = NULL;
 
-    prob->objective_constant = original_prob->objective_constant + reduced_prob->obj_offset;
+    if (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
+    {
+        prob->objective_constant = -original_prob->objective_constant + reduced_prob->obj_offset;
+    }
+    else
+    {
+        prob->objective_constant = original_prob->objective_constant + reduced_prob->obj_offset;
+    }
     prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
     prob->objective_vector = reduced_prob->c;
     prob->constraint_lower_bound = reduced_prob->lhs;
@@ -85,6 +92,19 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool v
     info->settings = default_settings();
     info->settings->verbose = false;
 
+    const double *presolve_objective = original_prob->objective_vector;
+    double *negated_objective = NULL;
+    if (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
+    {
+        negated_objective = (double *)safe_malloc(
+            (size_t)original_prob->num_variables * sizeof(double));
+        for (int i = 0; i < original_prob->num_variables; ++i)
+        {
+            negated_objective[i] = -original_prob->objective_vector[i];
+        }
+        presolve_objective = negated_objective;
+    }
+
     info->presolver = new_presolver(
         original_prob->constraint_matrix_values,
         original_prob->constraint_matrix_col_indices,
@@ -96,8 +116,9 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool v
         original_prob->constraint_upper_bound,
         original_prob->variable_lower_bound,
         original_prob->variable_upper_bound,
-        original_prob->objective_vector,
+        presolve_objective,
         info->settings);
+    free(negated_objective);
 
     PresolveStatus status = run_presolver(info->presolver);
     info->presolve_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
@@ -220,9 +241,8 @@ void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
             obj += original_prob->objective_vector[i] * result->primal_solution[i];
         }
         obj += original_prob->objective_constant;
-        double objective_sign = (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
-        result->primal_objective_value = objective_sign * obj;
-        result->dual_objective_value = objective_sign * obj;
+        result->primal_objective_value = obj;
+        result->dual_objective_value = obj;
     }
     return;
 }

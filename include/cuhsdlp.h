@@ -32,10 +32,12 @@ extern "C"
         const double *var_ub,
         const double *objective_constant);
 
+    void set_objective_sense(lp_problem_t *prob, objective_sense_t sense);
+
     void set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
 
     cuhsdlp_result_t *solve_lp_problem(
-        const lp_problem_t *prob,
+        lp_problem_t *prob,
         const pdhg_parameters_t *params);
 
     void set_default_parameters(pdhg_parameters_t *params);

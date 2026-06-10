@@ -59,6 +59,7 @@ lp_problem_t *create_lp_problem(
     }
 
     prob->objective_constant = objective_constant ? *objective_constant : 0.0;
+    prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
     fill_or_copy(&prob->objective_vector, prob->num_variables, objective_c, 0.0);
     fill_or_copy(&prob->variable_lower_bound, prob->num_variables, var_lb, -INFINITY);
     fill_or_copy(&prob->variable_upper_bound, prob->num_variables, var_ub, INFINITY);
@@ -125,6 +126,13 @@ void lp_problem_free(lp_problem_t *prob)
     free(prob->dual_start);
     memset(prob, 0, sizeof(*prob));
     free(prob);
+}
+
+void set_objective_sense(lp_problem_t *prob, objective_sense_t sense)
+{
+    if (!prob)
+        return;
+    prob->objective_sense = sense;
 }
 
 void set_start_values(
@@ -199,7 +207,7 @@ void set_default_parameters(pdhg_parameters_t *params)
 }
 
 cuhsdlp_result_t *solve_lp_problem(
-    const lp_problem_t *prob,
+    lp_problem_t *prob,
     const pdhg_parameters_t *params)
 {
     if (!prob)
@@ -214,7 +222,7 @@ cuhsdlp_result_t *solve_lp_problem(
     else
         set_default_parameters(&local_params);
 
-    cuhsdlp_result_t *res = optimize(&local_params, (lp_problem_t *)prob);
+    cuhsdlp_result_t *res = optimize(&local_params, prob);
     if (!res)
     {
         fprintf(stderr, "[interface] optimize returned NULL.\n");

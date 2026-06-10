@@ -130,7 +130,7 @@ lp_problem_t      *create_lp_problem(const double *c,
                                      const double *l_v, const double *u_v,
                                      const double *objective_constant);
 void               set_default_parameters(pdhg_parameters_t *params);
-cuhsdlp_result_t  *solve_lp_problem(const lp_problem_t *prob,
+cuhsdlp_result_t  *solve_lp_problem(lp_problem_t *prob,
                                     const pdhg_parameters_t *params);
 void               cuhsdlp_result_free(cuhsdlp_result_t *result);
 void               lp_problem_free(lp_problem_t *prob);

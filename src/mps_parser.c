@@ -352,7 +352,7 @@ typedef struct
     char *objective_row_name;
     char *current_col_name;
     double objective_constant;
-    objective_sense_t objective_sense;
+    objective_sense_t model_sense;
     int error_flag;
 
     int warn_unknown_row;
@@ -579,7 +579,7 @@ lp_problem_t *read_mps_file(const char *filename)
                 if (current_section == SEC_OBJSENSE && n_tokens == 2 &&
                     token_has_prefix_ci(tokens[1], "MAX"))
                 {
-                    state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
+                    state.model_sense = OBJECTIVE_SENSE_MAXIMIZE;
                 }
                 continue;
             }
@@ -590,7 +590,7 @@ lp_problem_t *read_mps_file(const char *filename)
         case SEC_OBJSENSE:
             if (token_has_prefix_ci(tokens[0], "MAX"))
             {
-                state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
+                state.model_sense = OBJECTIVE_SENSE_MAXIMIZE;
             }
             else if (!token_has_prefix_ci(tokens[0], "MIN"))
             {
@@ -645,8 +645,8 @@ lp_problem_t *read_mps_file(const char *filename)
 
     prob->num_variables = state.col_map.size;
     prob->num_constraints = state.row_map.size;
-    prob->objective_constant = (state.objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -state.objective_constant : state.objective_constant;
-    prob->objective_sense = state.objective_sense;
+    prob->objective_constant = state.objective_constant;
+    prob->objective_sense = state.model_sense;
 
     prob->objective_vector = state.objective_coeffs;
     prob->variable_lower_bound = state.var_lower_bounds;
@@ -662,14 +662,6 @@ lp_problem_t *read_mps_file(const char *filename)
     state.var_upper_bounds = NULL;
     state.constraint_lower_bounds = NULL;
     state.constraint_upper_bounds = NULL;
-
-    if (state.objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        for (int i = 0; i < prob->num_variables; ++i)
-        {
-            prob->objective_vector[i] *= -1.0;
-        }
-    }
 
     matrix_desc_t desc = {0};
     desc.m = prob->num_constraints;
