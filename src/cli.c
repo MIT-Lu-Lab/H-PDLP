@@ -177,10 +177,10 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
     fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1] (default: 0.998).\n");
-    fprintf(stderr, "      --objective_coupling_budget <float> Objective coupling budget fraction (default: 0.05).\n");
+    fprintf(stderr, "      --objective_coupling_budget <float> Objective coupling budget fraction (default: 0.03).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
-    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 30).\n");
+    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 100).\n");
     fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: 1e-6).\n");
     fprintf(stderr, "\n  Termination:\n");
     fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: 3600.0).\n");
@@ -349,9 +349,11 @@ int main(int argc, char *argv[])
 
     cuhsdlp_result_t *result = optimize(&params, problem);
 
+    int exit_code = 0;
     if (result == NULL)
     {
         fprintf(stderr, "Solver failed.\n");
+        exit_code = 1;
     }
     else
     {
@@ -366,5 +368,5 @@ int main(int argc, char *argv[])
     lp_problem_free(problem);
     free(instance_name);
 
-    return 0;
+    return exit_code;
 }

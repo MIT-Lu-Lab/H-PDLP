@@ -92,10 +92,10 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--step_size_factor` | `float` | Step-size scaling factor in (0, 1]. | `0.998` |
-| `--objective_coupling_budget` | `float` | Objective coupling budget fraction. | `0.05` |
+| `--objective_coupling_budget` | `float` | Objective coupling budget fraction. | `0.03` |
 | `--singular_value_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
 | `--singular_value_tol` | `float` | Power-iteration tolerance. | `1e-4` |
-| `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `30` |
+| `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `100` |
 | `--cone_newton_tol` | `float` | Newton tolerance for cone projection. | `1e-6` |
 
 **Termination**
