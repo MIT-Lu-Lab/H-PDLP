@@ -20,6 +20,7 @@ limitations under the License.
 #include "utils.h"
 #include <ctype.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -28,6 +29,7 @@ limitations under the License.
 
 #define READER_BUFFER_SIZE (4 * 1024 * 1024)
 #define MPS_MAX_TOKENS 64
+#define MPS_WARN_PRINT_LIMIT 5
 
 typedef struct NameNode
 {
@@ -330,6 +332,7 @@ typedef struct
 
     NameMap row_map;
     NameMap col_map;
+    NameMap free_row_map;
 
     CooMatrix coo_matrix;
     BufferedRow *buffered_rows;
@@ -352,7 +355,66 @@ typedef struct
     objective_sense_t objective_sense;
     int error_flag;
 
+    int warn_unknown_row;
+    int warn_unknown_col;
+    int warn_bad_number;
+    int warn_integrality;
+
 } MpsParserState;
+
+static void parser_warning(int *count, const char *fmt, ...)
+{
+    ++*count;
+    if (*count > MPS_WARN_PRINT_LIMIT)
+        return;
+    va_list args;
+    va_start(args, fmt);
+    fprintf(stderr, "WARNING: ");
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    if (*count == MPS_WARN_PRINT_LIMIT)
+        fprintf(stderr, "WARNING: further warnings of this kind suppressed.\n");
+}
+
+static bool token_has_prefix_ci(const char *token, const char *prefix)
+{
+    for (; *prefix != '\0'; ++token, ++prefix)
+    {
+        if (toupper((unsigned char)*token) != *prefix)
+            return false;
+    }
+    return true;
+}
+
+static double parse_mps_number(MpsParserState *state, const char *token)
+{
+    char buf[64];
+    size_t len = strlen(token);
+    if (len >= sizeof(buf))
+    {
+        parser_warning(&state->warn_bad_number,
+                       "invalid numeric field '%s' treated as 0.\n", token);
+        return 0.0;
+    }
+    memcpy(buf, token, len + 1);
+    for (size_t i = 0; i < len; ++i)
+    {
+        if (buf[i] == 'D' || buf[i] == 'd')
+        {
+            buf[i] = 'E';
+            break;
+        }
+    }
+    char *endptr;
+    double value = strtod(buf, &endptr);
+    if (endptr == buf || *endptr != '\0')
+    {
+        parser_warning(&state->warn_bad_number,
+                       "invalid numeric field '%s' treated as 0.\n", token);
+        return 0.0;
+    }
+    return value;
+}
 
 static int add_coo_entry(CooMatrix *coo, int row, int col, double value)
 {
@@ -446,6 +508,7 @@ lp_problem_t *read_mps_file(const char *filename)
 
     namemap_init(&state.row_map, 1024);
     namemap_init(&state.col_map, 1024);
+    namemap_init(&state.free_row_map, 16);
 
     char line[4096];
     while (fast_reader_gets(reader, line, sizeof(line)))
@@ -477,8 +540,8 @@ lp_problem_t *read_mps_file(const char *filename)
 
         bool objsense_inline =
             n_tokens == 2 && strcmp(tokens[0], "OBJSENSE") == 0 &&
-            (strcmp(tokens[1], "MIN") == 0 || strcmp(tokens[1], "MINIMIZE") == 0 ||
-             strcmp(tokens[1], "MAX") == 0 || strcmp(tokens[1], "MAXIMIZE") == 0);
+            (token_has_prefix_ci(tokens[1], "MIN") ||
+             token_has_prefix_ci(tokens[1], "MAX"));
         if (isalpha((unsigned char)tokens[0][0]) &&
             (n_tokens == 1 || objsense_inline))
         {
@@ -514,8 +577,7 @@ lp_problem_t *read_mps_file(const char *filename)
                 if (current_section == SEC_ENDATA)
                     break;
                 if (current_section == SEC_OBJSENSE && n_tokens == 2 &&
-                    (strcmp(tokens[1], "MAX") == 0 ||
-                     strcmp(tokens[1], "MAXIMIZE") == 0))
+                    token_has_prefix_ci(tokens[1], "MAX"))
                 {
                     state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
                 }
@@ -526,10 +588,15 @@ lp_problem_t *read_mps_file(const char *filename)
         switch (current_section)
         {
         case SEC_OBJSENSE:
-            if (n_tokens > 0 && (strcmp(tokens[0], "MAX") == 0 ||
-                                 strcmp(tokens[0], "MAXIMIZE") == 0))
+            if (token_has_prefix_ci(tokens[0], "MAX"))
             {
                 state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
+            }
+            else if (!token_has_prefix_ci(tokens[0], "MIN"))
+            {
+                fprintf(stderr,
+                        "WARNING: unrecognized OBJSENSE value '%s' ignored "
+                        "(minimize assumed).\n", tokens[0]);
             }
             break;
         case SEC_ROWS:
@@ -555,6 +622,12 @@ lp_problem_t *read_mps_file(const char *filename)
         default:
             break;
         }
+    }
+
+    if (current_section == SEC_ROWS && !rows_finalized && !state.error_flag)
+    {
+        if (finalize_rows(&state) != 0)
+            state.error_flag = 1;
     }
 
     if (reader->read_error)
@@ -619,6 +692,31 @@ lp_problem_t *read_mps_file(const char *filename)
         return NULL;
     }
 
+    if ((size_t)prob->constraint_matrix_num_nonzeros < state.coo_matrix.nnz)
+    {
+        fprintf(stderr, "WARNING: %zu duplicate matrix entries were summed.\n",
+                state.coo_matrix.nnz -
+                    (size_t)prob->constraint_matrix_num_nonzeros);
+    }
+    if (state.warn_unknown_row > MPS_WARN_PRINT_LIMIT)
+    {
+        fprintf(stderr,
+                "WARNING: %d entries with unknown row names were ignored "
+                "in total.\n", state.warn_unknown_row);
+    }
+    if (state.warn_unknown_col > MPS_WARN_PRINT_LIMIT)
+    {
+        fprintf(stderr,
+                "WARNING: %d columns appeared only in BOUNDS in total.\n",
+                state.warn_unknown_col);
+    }
+    if (state.warn_bad_number > MPS_WARN_PRINT_LIMIT)
+    {
+        fprintf(stderr,
+                "WARNING: %d invalid numeric fields were treated as 0 "
+                "in total.\n", state.warn_bad_number);
+    }
+
     free_parser_state(&state);
     return prob;
 }
@@ -628,6 +726,22 @@ static int parse_rows_section(MpsParserState *state, char **tokens,
 {
     if (n_tokens < 2)
         return 0;
+
+    if (n_tokens > 2)
+    {
+        fprintf(stderr,
+                "ERROR: Row name '%s ...' contains spaces; "
+                "fixed-format MPS is not supported.\n",
+                tokens[1]);
+        return -1;
+    }
+
+    if (tokens[0][1] != '\0' || strchr("NELG", tokens[0][0]) == NULL)
+    {
+        fprintf(stderr, "ERROR: Invalid row type '%s' for row '%s'.\n",
+                tokens[0], tokens[1]);
+        return -1;
+    }
 
     if (state->num_buffered_rows >= state->buffered_rows_capacity)
     {
@@ -664,13 +778,15 @@ static int finalize_rows(MpsParserState *state)
 
     if (obj_idx == -1)
     {
-        fprintf(stderr, "ERROR: No objective (N) row found in ROWS section.\n");
-        return -1;
+        fprintf(stderr,
+                "WARNING: no objective (N) row found: using a zero objective.\n");
     }
-
-    state->objective_row_name = strdup(state->buffered_rows[obj_idx].name);
-    if (!state->objective_row_name)
-        return -1;
+    else
+    {
+        state->objective_row_name = strdup(state->buffered_rows[obj_idx].name);
+        if (!state->objective_row_name)
+            return -1;
+    }
 
     for (size_t i = 0; i < state->num_buffered_rows; ++i)
     {
@@ -691,6 +807,10 @@ static int finalize_rows(MpsParserState *state)
             }
             namemap_put(&state->row_map, state->buffered_rows[i].name);
             state->constraint_types[current_size] = type;
+        }
+        else
+        {
+            namemap_put(&state->free_row_map, state->buffered_rows[i].name);
         }
     }
     size_t num_constraints = state->row_map.size;
@@ -732,6 +852,14 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
 
     if (n_tokens >= 2 && strcmp(tokens[1], "'MARKER'") == 0)
     {
+        if (n_tokens >= 3 && strcmp(tokens[2], "'INTORG'") == 0 &&
+            state->warn_integrality == 0)
+        {
+            state->warn_integrality = 1;
+            fprintf(stderr,
+                    "WARNING: integrality markers ignored: "
+                    "solving the LP relaxation.\n");
+        }
         return 0;
     }
 
@@ -770,7 +898,7 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
     for (int i = pair_start_index; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
-        double value = atof(tokens[i + 1]);
+        double value = parse_mps_number(state, tokens[i + 1]);
 
         if (state->objective_row_name &&
             strcmp(row_name, state->objective_row_name) == 0)
@@ -787,18 +915,34 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
                     return -1;
                 }
             }
+            else if (namemap_get(&state->free_row_map, row_name) == -1)
+            {
+                parser_warning(&state->warn_unknown_row,
+                               "unknown row '%s' in COLUMNS section: "
+                               "entry ignored.\n", row_name);
+            }
         }
     }
     return 0;
 }
 
+static bool is_known_row(const MpsParserState *state, const char *name)
+{
+    if (namemap_get(&state->row_map, name) != -1)
+        return true;
+    if (namemap_get(&state->free_row_map, name) != -1)
+        return true;
+    return state->objective_row_name &&
+           strcmp(name, state->objective_row_name) == 0;
+}
+
 static int parse_rhs_section(MpsParserState *state, char **tokens,
                              int n_tokens)
 {
-    for (int i = (n_tokens % 2 != 0) ? 1 : 0; i + 1 < n_tokens; i += 2)
+    for (int i = is_known_row(state, tokens[0]) ? 0 : 1; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
-        double value = atof(tokens[i + 1]);
+        double value = parse_mps_number(state, tokens[i + 1]);
 
         if (state->objective_row_name &&
             strcmp(row_name, state->objective_row_name) == 0)
@@ -821,6 +965,12 @@ static int parse_rhs_section(MpsParserState *state, char **tokens,
                     state->constraint_upper_bounds[row_idx] = value;
                 }
             }
+            else if (namemap_get(&state->free_row_map, row_name) == -1)
+            {
+                parser_warning(&state->warn_unknown_row,
+                               "unknown row '%s' in RHS section: "
+                               "entry ignored.\n", row_name);
+            }
         }
     }
     return 0;
@@ -829,11 +979,18 @@ static int parse_rhs_section(MpsParserState *state, char **tokens,
 static int parse_ranges_section(MpsParserState *state, char **tokens,
                                 int n_tokens)
 {
-    for (int i = (n_tokens % 2 != 0) ? 1 : 0; i + 1 < n_tokens; i += 2)
+    for (int i = is_known_row(state, tokens[0]) ? 0 : 1; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
-        double range_val = atof(tokens[i + 1]);
+        double range_val = parse_mps_number(state, tokens[i + 1]);
         int row_idx = namemap_get(&state->row_map, row_name);
+
+        if (row_idx == -1 && !is_known_row(state, row_name))
+        {
+            parser_warning(&state->warn_unknown_row,
+                           "unknown row '%s' in RANGES section: "
+                           "entry ignored.\n", row_name);
+        }
 
         if (row_idx != -1)
         {
@@ -875,43 +1032,50 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
     bool has_value = strcmp(bound_type, "LO") == 0 || strcmp(bound_type, "LI") == 0 ||
                      strcmp(bound_type, "UP") == 0 || strcmp(bound_type, "UI") == 0 ||
                      strcmp(bound_type, "FX") == 0;
+    bool no_value = strcmp(bound_type, "FR") == 0 || strcmp(bound_type, "MI") == 0 ||
+                    strcmp(bound_type, "PL") == 0 || strcmp(bound_type, "BV") == 0;
+    if (!has_value && !no_value)
+    {
+        fprintf(stderr, "ERROR: Unknown bound type '%s'.\n", bound_type);
+        return -1;
+    }
 
     const char *col_name;
-    double value = 0.0;
-    if (has_value)
+    const char *value_token = NULL;
+    if (namemap_get(&state->col_map, tokens[1]) != -1 || n_tokens == 2)
     {
-        if (n_tokens >= 4)
-        {
-            col_name = tokens[2];
-            value = atof(tokens[3]);
-        }
-        else if (n_tokens == 3)
-        {
-            col_name = tokens[1];
-            value = atof(tokens[2]);
-        }
-        else
-        {
-            return 0;
-        }
+        col_name = tokens[1];
+        if (n_tokens >= 3)
+            value_token = tokens[2];
     }
     else
     {
-        col_name = (n_tokens >= 3) ? tokens[2] : tokens[1];
+        col_name = tokens[2];
+        if (n_tokens >= 4)
+            value_token = tokens[3];
     }
 
-    int col_idx = namemap_get(&state->col_map, col_name);
-    if (col_idx == -1 && !has_value && n_tokens >= 3)
+    if (has_value && value_token == NULL)
     {
-        char *endptr;
-        strtod(tokens[2], &endptr);
-        if (endptr != tokens[2] && *endptr == '\0')
-        {
-            col_idx = namemap_get(&state->col_map, tokens[1]);
-        }
+        fprintf(stderr,
+                "ERROR: Malformed %s bound line (missing value or unknown "
+                "column '%s').\n", bound_type, col_name);
+        return -1;
     }
+    double value = has_value ? parse_mps_number(state, value_token) : 0.0;
+
+    int col_idx = namemap_get(&state->col_map, col_name);
     if (col_idx == -1)
-        return 0;
+    {
+        if (!ensure_column_capacity(state))
+            return -1;
+        col_idx = namemap_put(&state->col_map, col_name);
+        if (col_idx == -1)
+            return -1;
+        parser_warning(&state->warn_unknown_col,
+                       "column '%s' appears only in BOUNDS: "
+                       "created with default bounds.\n", col_name);
+    }
 
     if (strcmp(bound_type, "LO") == 0 || strcmp(bound_type, "LI") == 0)
     {
@@ -962,6 +1126,7 @@ static void free_parser_state(MpsParserState *state)
 
     namemap_free(&state->row_map);
     namemap_free(&state->col_map);
+    namemap_free(&state->free_row_map);
 
     if (state->buffered_rows)
     {
