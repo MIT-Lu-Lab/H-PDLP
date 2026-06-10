@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "matrix_formats.h"
 #include "utils.h"
+#include <limits.h>
 #include <stdlib.h>
 
 typedef struct
@@ -74,6 +75,10 @@ const char *matrix_format_status_message(matrix_format_status_t status)
         return "invalid CSR column index";
     case MATRIX_FORMAT_INVALID_CSC_ROW:
         return "invalid CSC row index";
+    case MATRIX_FORMAT_INVALID_CSC_DATA:
+        return "invalid CSC matrix data";
+    case MATRIX_FORMAT_INVALID_DENSE_DATA:
+        return "invalid dense matrix data";
     default:
         return "unknown matrix format error";
     }
@@ -106,11 +111,21 @@ matrix_format_status_t dense_to_csr(const matrix_desc_t *desc, int **row_ptr, in
     const int m = desc->m;
     const int n = desc->n;
 
-    int nnz = 0;
-    for (int i = 0; i < m * n; ++i)
+    if (m < 0 || n < 0 ||
+        ((size_t)m * (size_t)n > 0 && desc->data.dense.A == NULL))
+    {
+        return MATRIX_FORMAT_INVALID_DENSE_DATA;
+    }
+
+    size_t nnz = 0;
+    for (size_t i = 0; i < (size_t)m * (size_t)n; ++i)
     {
         if (desc->data.dense.A[i] != 0.0)
             ++nnz;
+    }
+    if (nnz > (size_t)INT_MAX)
+    {
+        return MATRIX_FORMAT_INVALID_DENSE_DATA;
     }
 
     *row_ptr = (int *)safe_malloc((size_t)(m + 1) * sizeof(int));
@@ -123,7 +138,7 @@ matrix_format_status_t dense_to_csr(const matrix_desc_t *desc, int **row_ptr, in
         (*row_ptr)[i] = nnz_filled;
         for (int j = 0; j < n; ++j)
         {
-            double val = desc->data.dense.A[i * n + j];
+            double val = desc->data.dense.A[(size_t)i * (size_t)n + (size_t)j];
             if (val == 0.0)
                 continue;
             (*col_ind)[nnz_filled] = j;
@@ -141,9 +156,23 @@ matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
 {
     const int m = desc->m;
     const int n = desc->n;
+    const int nnz_in = desc->data.csc.nnz;
     const int *col_ptr = desc->data.csc.col_ptr;
     const int *row_ind = desc->data.csc.row_ind;
     const double *csc_vals = desc->data.csc.vals;
+
+    if (m < 0 || n < 0 || nnz_in < 0 || col_ptr == NULL || row_ind == NULL ||
+        csc_vals == NULL || col_ptr[0] != 0 || col_ptr[n] != nnz_in)
+    {
+        return MATRIX_FORMAT_INVALID_CSC_DATA;
+    }
+    for (int j = 0; j < n; ++j)
+    {
+        if (col_ptr[j] > col_ptr[j + 1])
+        {
+            return MATRIX_FORMAT_INVALID_CSC_DATA;
+        }
+    }
 
     int *raw_row_ptr = (int *)safe_malloc((size_t)(m + 1) * sizeof(int));
     for (int i = 0; i <= m; ++i)
@@ -328,6 +357,11 @@ static int build_csr_entries(int m, int n,
                              int *nnz_out,
                              matrix_format_status_t *status_out)
 {
+    if (row_ptr[m] != nnz_in)
+    {
+        *status_out = MATRIX_FORMAT_INVALID_CSR_ROW_PTR;
+        return -1;
+    }
     for (int i = 0; i < m; ++i)
     {
         int row_start = row_ptr[i];

@@ -32,7 +32,9 @@ extern "C"
         MATRIX_FORMAT_INVALID_CSR_DATA,
         MATRIX_FORMAT_INVALID_CSR_ROW_PTR,
         MATRIX_FORMAT_INVALID_CSR_COL,
-        MATRIX_FORMAT_INVALID_CSC_ROW
+        MATRIX_FORMAT_INVALID_CSC_ROW,
+        MATRIX_FORMAT_INVALID_CSC_DATA,
+        MATRIX_FORMAT_INVALID_DENSE_DATA
     } matrix_format_status_t;
 
     const char *matrix_format_status_message(matrix_format_status_t status);
