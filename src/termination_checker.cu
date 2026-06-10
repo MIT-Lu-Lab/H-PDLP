@@ -439,7 +439,7 @@ __global__ void compute_residual_kernel(
         double recc_lo = isfinite(var_lb[idx]) ? 0.0 : -INFINITY;
         double recc_hi = isfinite(var_ub[idx]) ? 0.0 : INFINITY;
         double x_recc_clamped = fmax(recc_lo, fmin(x, recc_hi));
-        variable_recession_res[idx] = (x - x_recc_clamped) * var_rescaling[idx];
+        variable_recession_res[idx] = (x - x_recc_clamped) / var_rescaling[idx];
     }
 }
 
@@ -560,7 +560,7 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->relative_primal_infeasibility_objective = rel_p_infeas_objective;
 
     double constr_recc = (*farkas_constraint_recession) / constraint_bound_rescaling;
-    double var_recc    = (*farkas_variable_recession) / objective_vector_rescaling;
+    double var_recc    = (*farkas_variable_recession) / constraint_bound_rescaling;
     double inv_primal_norm = (primal_solution_norm > 1.0e-30) ? 1.0 / primal_solution_norm : 0.0;
     double rel_constr_recc = (constr_recc * inv_primal_norm) / (1.0 + original_bound_norm);
     double rel_var_recc    = (var_recc    * inv_primal_norm) / (1.0 + original_bound_norm);
