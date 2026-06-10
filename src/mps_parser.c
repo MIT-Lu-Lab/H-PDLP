@@ -27,6 +27,7 @@ limitations under the License.
 #include <zlib.h>
 
 #define READER_BUFFER_SIZE (4 * 1024 * 1024)
+#define MPS_MAX_TOKENS 64
 
 typedef struct NameNode
 {
@@ -166,6 +167,7 @@ typedef struct
     char *buffer;
     char *current_pos;
     char *end_pos;
+    bool read_error;
 } FastLineReader;
 
 static FastLineReader *fast_reader_open(const char *filename)
@@ -237,6 +239,17 @@ static char *fast_reader_gets(FastLineReader *reader, char *line_buf,
                     gzread(reader->handle.gz_f, reader->buffer, READER_BUFFER_SIZE);
                 if (bytes_read <= 0)
                 {
+                    int errnum = Z_OK;
+                    gzerror(reader->handle.gz_f, &errnum);
+                    if (bytes_read < 0 ||
+                        (errnum != Z_OK && errnum != Z_STREAM_END))
+                    {
+                        fprintf(stderr,
+                                "ERROR: Failed to read compressed input "
+                                "(corrupt or truncated file).\n");
+                        reader->read_error = true;
+                        return NULL;
+                    }
                     return (len > 0) ? line_buf : NULL;
                 }
                 reader->end_pos = reader->buffer + bytes_read;
@@ -245,8 +258,14 @@ static char *fast_reader_gets(FastLineReader *reader, char *line_buf,
             {
                 size_t bytes_read =
                     fread(reader->buffer, 1, READER_BUFFER_SIZE, reader->handle.f);
-                if (bytes_read <= 0)
+                if (bytes_read == 0)
                 {
+                    if (ferror(reader->handle.f))
+                    {
+                        fprintf(stderr, "ERROR: Failed to read input file.\n");
+                        reader->read_error = true;
+                        return NULL;
+                    }
                     return (len > 0) ? line_buf : NULL;
                 }
                 reader->end_pos = reader->buffer + bytes_read;
@@ -272,6 +291,7 @@ static char *fast_reader_gets(FastLineReader *reader, char *line_buf,
         if (len + bytes_to_copy >= line_buf_size)
         {
             fprintf(stderr, "Error: Line too long to fit in buffer.\n");
+            reader->read_error = true;
             return NULL;
         }
 
@@ -436,19 +456,31 @@ lp_problem_t *read_mps_file(const char *filename)
         if (line[0] == '*' || line[0] == '\n' || line[0] == '\r')
             continue;
 
-        char *tokens[6] = {NULL};
+        char *tokens[MPS_MAX_TOKENS] = {NULL};
         int n_tokens = 0;
         char *saveptr;
         char *token = strtok_r(line, " \t\n\r", &saveptr);
-        while (token != NULL && n_tokens < 6)
+        while (token != NULL && n_tokens < MPS_MAX_TOKENS)
         {
             tokens[n_tokens++] = token;
             token = strtok_r(NULL, " \t\n\r", &saveptr);
         }
+        if (token != NULL)
+        {
+            fprintf(stderr, "ERROR: Too many fields on one line (limit %d).\n",
+                    MPS_MAX_TOKENS);
+            state.error_flag = 1;
+            break;
+        }
         if (n_tokens == 0)
             continue;
 
-        if (n_tokens == 1 && isalpha(tokens[0][0]))
+        bool objsense_inline =
+            n_tokens == 2 && strcmp(tokens[0], "OBJSENSE") == 0 &&
+            (strcmp(tokens[1], "MIN") == 0 || strcmp(tokens[1], "MINIMIZE") == 0 ||
+             strcmp(tokens[1], "MAX") == 0 || strcmp(tokens[1], "MAXIMIZE") == 0);
+        if (isalpha((unsigned char)tokens[0][0]) &&
+            (n_tokens == 1 || objsense_inline))
         {
             MpsSection next_section = SEC_NONE;
             if (strcmp(tokens[0], "ROWS") == 0)
@@ -481,6 +513,12 @@ lp_problem_t *read_mps_file(const char *filename)
                 current_section = next_section;
                 if (current_section == SEC_ENDATA)
                     break;
+                if (current_section == SEC_OBJSENSE && n_tokens == 2 &&
+                    (strcmp(tokens[1], "MAX") == 0 ||
+                     strcmp(tokens[1], "MAXIMIZE") == 0))
+                {
+                    state.objective_sense = OBJECTIVE_SENSE_MAXIMIZE;
+                }
                 continue;
             }
         }
@@ -519,6 +557,8 @@ lp_problem_t *read_mps_file(const char *filename)
         }
     }
 
+    if (reader->read_error)
+        state.error_flag = 1;
     fast_reader_close(reader);
 
     if (state.error_flag)
@@ -622,17 +662,15 @@ static int finalize_rows(MpsParserState *state)
         }
     }
 
-    if (obj_idx == -1 && state->num_buffered_rows > 0)
+    if (obj_idx == -1)
     {
-        obj_idx = 0;
+        fprintf(stderr, "ERROR: No objective (N) row found in ROWS section.\n");
+        return -1;
     }
 
-    if (obj_idx != -1)
-    {
-        state->objective_row_name = strdup(state->buffered_rows[obj_idx].name);
-        if (!state->objective_row_name)
-            return -1;
-    }
+    state->objective_row_name = strdup(state->buffered_rows[obj_idx].name);
+    if (!state->objective_row_name)
+        return -1;
 
     for (size_t i = 0; i < state->num_buffered_rows; ++i)
     {
@@ -757,7 +795,7 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
 static int parse_rhs_section(MpsParserState *state, char **tokens,
                              int n_tokens)
 {
-    for (int i = 1; i + 1 < n_tokens; i += 2)
+    for (int i = (n_tokens % 2 != 0) ? 1 : 0; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double value = atof(tokens[i + 1]);
@@ -791,7 +829,7 @@ static int parse_rhs_section(MpsParserState *state, char **tokens,
 static int parse_ranges_section(MpsParserState *state, char **tokens,
                                 int n_tokens)
 {
-    for (int i = 1; i + 1 < n_tokens; i += 2)
+    for (int i = (n_tokens % 2 != 0) ? 1 : 0; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double range_val = atof(tokens[i + 1]);
@@ -830,15 +868,48 @@ static int parse_ranges_section(MpsParserState *state, char **tokens,
 static int parse_bounds_section(MpsParserState *state, char **tokens,
                                 int n_tokens)
 {
-    if (n_tokens < 3)
+    if (n_tokens < 2)
         return 0;
 
     const char *bound_type = tokens[0];
+    bool has_value = strcmp(bound_type, "LO") == 0 || strcmp(bound_type, "LI") == 0 ||
+                     strcmp(bound_type, "UP") == 0 || strcmp(bound_type, "UI") == 0 ||
+                     strcmp(bound_type, "FX") == 0;
 
-    const char *col_name = tokens[2];
-    double value = (n_tokens > 3) ? atof(tokens[3]) : 0.0;
+    const char *col_name;
+    double value = 0.0;
+    if (has_value)
+    {
+        if (n_tokens >= 4)
+        {
+            col_name = tokens[2];
+            value = atof(tokens[3]);
+        }
+        else if (n_tokens == 3)
+        {
+            col_name = tokens[1];
+            value = atof(tokens[2]);
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    else
+    {
+        col_name = (n_tokens >= 3) ? tokens[2] : tokens[1];
+    }
 
     int col_idx = namemap_get(&state->col_map, col_name);
+    if (col_idx == -1 && !has_value && n_tokens >= 3)
+    {
+        char *endptr;
+        strtod(tokens[2], &endptr);
+        if (endptr != tokens[2] && *endptr == '\0')
+        {
+            col_idx = namemap_get(&state->col_map, tokens[1]);
+        }
+    }
     if (col_idx == -1)
         return 0;
 
