@@ -31,19 +31,15 @@ limitations under the License.
 
 const char *get_presolve_status_str(enum PresolveStatus_ status)
 {
-    switch (status)
-    {
-    case UNCHANGED:
-        return "UNCHANGED";
-    case REDUCED:
-        return "REDUCED";
-    case INFEASIBLE:
-        return "INFEASIBLE";
-    case UNBNDORINFEAS:
+    if ((status & UNBNDORINFEAS) == UNBNDORINFEAS)
         return "INFEASIBLE_OR_UNBOUNDED";
-    default:
-        return "UNKNOWN_STATUS";
-    }
+    if (status & INFEASIBLE)
+        return "INFEASIBLE";
+    if (status & REDUCED)
+        return "REDUCED";
+    if (status == UNCHANGED)
+        return "UNCHANGED";
+    return "UNKNOWN_STATUS";
 }
 
 static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob, const lp_problem_t *original_prob)
@@ -143,9 +139,9 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
     result->presolve_status = info->presolve_status;
     result->presolve_time = info->presolve_time;
 
-    if (info->presolve_status == INFEASIBLE)
+    if ((info->presolve_status & UNBNDORINFEAS) == UNBNDORINFEAS)
     {
-        result->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
+        result->termination_reason = TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED;
         result->absolute_primal_residual = INFINITY;
         result->relative_primal_residual = INFINITY;
         result->absolute_dual_residual = INFINITY;
@@ -155,9 +151,9 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
         result->objective_gap = INFINITY;
         result->relative_objective_gap = INFINITY;
     }
-    else if (info->presolve_status == UNBNDORINFEAS)
+    else if (info->presolve_status & INFEASIBLE)
     {
-        result->termination_reason = TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED;
+        result->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
         result->absolute_primal_residual = INFINITY;
         result->relative_primal_residual = INFINITY;
         result->absolute_dual_residual = INFINITY;
