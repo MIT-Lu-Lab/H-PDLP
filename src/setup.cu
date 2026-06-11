@@ -675,12 +675,13 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->hsd_dual_bound_reflected_d      = state->hsd_scalars_d + HSD_DUAL_BOUND_REFLECTED;
 
     CUDA_CHECK(cudaMalloc(&state->pdhg_reduce_d, PDHG_COUNT * sizeof(double)));
-    state->pdhg_primal_norm_d  = state->pdhg_reduce_d + PDHG_PRIMAL_NORM;
-    state->pdhg_dual_norm_d    = state->pdhg_reduce_d + PDHG_DUAL_NORM;
-    state->pdhg_slack_norm_d   = state->pdhg_reduce_d + PDHG_SLACK_NORM;
-    state->pdhg_primal_cross_d = state->pdhg_reduce_d + PDHG_PRIMAL_CROSS;
-    state->pdhg_dual_cross_d   = state->pdhg_reduce_d + PDHG_DUAL_CROSS;
-    state->pdhg_slack_cross_d  = state->pdhg_reduce_d + PDHG_SLACK_CROSS;
+    state->pdhg_primal_norm_d     = state->pdhg_reduce_d + PDHG_PRIMAL_NORM;
+    state->pdhg_dual_norm_d       = state->pdhg_reduce_d + PDHG_DUAL_NORM;
+    state->pdhg_slack_norm_d      = state->pdhg_reduce_d + PDHG_SLACK_NORM;
+    state->pdhg_primal_cross_d    = state->pdhg_reduce_d + PDHG_PRIMAL_CROSS;
+    state->pdhg_dual_cross_d      = state->pdhg_reduce_d + PDHG_DUAL_CROSS;
+    state->pdhg_slack_cross_d     = state->pdhg_reduce_d + PDHG_SLACK_CROSS;
+    state->pdhg_obj_delta_cross_d = state->pdhg_reduce_d + PDHG_OBJ_DELTA_CROSS;
 
     CUDA_CHECK(cudaMalloc(&state->farkas_reduce_d, FARKAS_COUNT * sizeof(double)));
     state->farkas_dual_solution_norm_d    = state->farkas_reduce_d + FARKAS_DUAL_SOLUTION_NORM;

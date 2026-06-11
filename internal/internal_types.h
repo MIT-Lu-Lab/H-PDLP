@@ -28,13 +28,14 @@ limitations under the License.
 typedef struct pdhg_metrics_t pdhg_metrics_t;
 
 enum PdhgReduction {
-    PDHG_PRIMAL_NORM   = 0,
-    PDHG_DUAL_NORM     = 1,
-    PDHG_SLACK_NORM    = 2,
-    PDHG_PRIMAL_CROSS  = 3,
-    PDHG_DUAL_CROSS    = 4,
-    PDHG_SLACK_CROSS   = 5,
-    PDHG_COUNT         = 6,
+    PDHG_PRIMAL_NORM     = 0,
+    PDHG_DUAL_NORM       = 1,
+    PDHG_SLACK_NORM      = 2,
+    PDHG_PRIMAL_CROSS    = 3,
+    PDHG_DUAL_CROSS      = 4,
+    PDHG_SLACK_CROSS     = 5,
+    PDHG_OBJ_DELTA_CROSS = 6,
+    PDHG_COUNT           = 7,
 };
 
 enum FarkasReduction {
@@ -232,6 +233,7 @@ typedef struct {
     double *pdhg_primal_cross_d;
     double *pdhg_dual_cross_d;
     double *pdhg_slack_cross_d;
+    double *pdhg_obj_delta_cross_d;
 
     double *farkas_reduce_d;
     double *farkas_dual_solution_norm_d;

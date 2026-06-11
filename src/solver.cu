@@ -117,6 +117,7 @@ __global__ void compute_fixed_point_error_kernel(
     const double *dual_cross,
     const double *slack_norm,
     const double *slack_cross,
+    const double *obj_delta_cross,
     const double *scale_pdhg,
     const double *scale_reflected,
     const double *dual_constraint_pdhg,
@@ -632,6 +633,15 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         1,
         state->pdhg_slack_cross_d));
 
+    CUBLAS_CHECK(cublasDdot(
+        state->blas_handle_A,
+        state->num_variables,
+        state->objective_vector_d,
+        1,
+        state->delta_primal_solution_d,
+        1,
+        state->pdhg_obj_delta_cross_d));
+
     compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
         state->fixed_point_error_mp,
         state->pdhg_primal_norm_d,
@@ -639,6 +649,7 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->pdhg_dual_cross_d,
         state->pdhg_slack_norm_d,
         state->pdhg_slack_cross_d,
+        state->pdhg_obj_delta_cross_d,
         state->hsd_scale_pdhg_d,
         state->hsd_scale_reflected_d,
         state->hsd_dual_constraint_pdhg_d,
@@ -1218,6 +1229,7 @@ __global__ void compute_fixed_point_error_kernel(
     const double *dual_cross,
     const double *slack_norm,
     const double *slack_cross,
+    const double *obj_delta_cross,
     const double *scale_pdhg,
     const double *scale_reflected,
     const double *dual_constraint_pdhg,
@@ -1236,6 +1248,7 @@ __global__ void compute_fixed_point_error_kernel(
     double cross_term = *dual_cross;
     double slack_norm_v = *slack_norm;
     double slack_cross_v = *slack_cross;
+    double obj_delta_cross_v = *obj_delta_cross;
 
     double dual_movement =
         (dual_norm_v * dual_norm_v +
@@ -1246,7 +1259,8 @@ __global__ void compute_fixed_point_error_kernel(
         primal_norm_v * primal_norm_v / step_size_primal +
         dual_movement +
         delta_primal_scale * delta_primal_scale / step_size_homogeneous;
-    double interaction = 2.0 * (cross_term - slack_cross_v);
+    double interaction = 2.0 * (delta_primal_scale * (obj_delta_cross_v + delta_constraint_offset + delta_bound_offset) -
+                                cross_term - slack_cross_v);
 
     fixed_point_error_d[0] = sqrt(fmax(0.0, movement + interaction));
 }
