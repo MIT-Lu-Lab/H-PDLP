@@ -755,6 +755,8 @@ static void apply_pid_step(
     bool clamp_step)
 {
     double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
+    if (!isfinite(error))
+        return;
     state->primal_weight_error_sum *= step_size_params->i_smooth;
     state->primal_weight_error_sum += error;
     double delta_error = error - state->primal_weight_last_error;
