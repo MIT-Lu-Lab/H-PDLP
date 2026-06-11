@@ -95,7 +95,7 @@ __global__ void rescale_solution_kernel(
     const double *__restrict__ cons_rescaling,
     const double obj_vec_rescaling,
     const double cons_bound_rescaling,
-    double tau,
+    double divisor,
     int n_vars,
     int n_cons);
 __global__ void compute_delta_kernel(
@@ -969,6 +969,20 @@ static cuhsdlp_result_t *create_result_from_state(
 
 static void rescale_solution(pdhg_solver_state_t *state)
 {
+    double divisor;
+    switch (state->termination_reason)
+    {
+    case TERMINATION_REASON_PRIMAL_INFEASIBLE:
+        divisor = state->metrics_h->dual_solution_norm;
+        break;
+    case TERMINATION_REASON_DUAL_INFEASIBLE:
+        divisor = state->metrics_h->primal_solution_norm;
+        break;
+    default:
+        divisor = state->metrics_h->pdhg_homogeneous_scale;
+        break;
+    }
+
     rescale_solution_kernel<<<
         state->num_blocks_primal_dual_slack,
         THREADS_PER_BLOCK,
@@ -981,7 +995,7 @@ static void rescale_solution(pdhg_solver_state_t *state)
         state->constraint_rescaling_d,
         state->objective_vector_rescaling,
         state->constraint_bound_rescaling,
-        state->metrics_h->pdhg_homogeneous_scale,
+        divisor,
         state->num_variables,
         state->num_constraints);
 }
@@ -1142,25 +1156,25 @@ __global__ void rescale_solution_kernel(
     const double *__restrict__ cons_rescaling,
     const double obj_vec_rescaling,
     const double cons_bound_rescaling,
-    double tau,
+    double divisor,
     int n_vars,
     int n_cons)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double inv_tau = (fabs(tau) > 1e-50) ? 1.0 / tau : 0.0;
+    double inv_divisor = (fabs(divisor) > 1e-50) ? 1.0 / divisor : 0.0;
     if (i < n_vars)
     {
-        primal_sol[i] = primal_sol[i] * inv_tau / var_rescaling[i] / cons_bound_rescaling;
+        primal_sol[i] = primal_sol[i] * inv_divisor / var_rescaling[i] / cons_bound_rescaling;
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        dual_sol[idx] = dual_sol[idx] * inv_tau / cons_rescaling[idx] / obj_vec_rescaling;
+        dual_sol[idx] = dual_sol[idx] * inv_divisor / cons_rescaling[idx] / obj_vec_rescaling;
     }
     else if (i < 2 * n_vars + n_cons)
     {
         int idx = i - n_vars - n_cons;
-        dual_slack[idx] = dual_slack[idx] * inv_tau * var_rescaling[idx] / obj_vec_rescaling;
+        dual_slack[idx] = dual_slack[idx] * inv_divisor * var_rescaling[idx] / obj_vec_rescaling;
     }
 }
 
