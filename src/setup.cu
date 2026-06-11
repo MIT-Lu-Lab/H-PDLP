@@ -83,14 +83,136 @@ static void free_sparse_resources(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
 static void free_solver_device_buffers(pdhg_solver_state_t *state);
 
+static void param_error(const char *requirement, double value)
+{
+    fprintf(stderr, "Error: %s (got %g).\n", requirement, value);
+    exit(EXIT_FAILURE);
+}
+
 void check_params_validity(const pdhg_parameters_t *params)
 {
     if (params->termination_evaluation_frequency < 3)
     {
-        fprintf(stderr,
-                "Error: termination_evaluation_frequency must be >= 3 (got %d).\n",
-                params->termination_evaluation_frequency);
-        exit(EXIT_FAILURE);
+        param_error("termination_evaluation_frequency must be >= 3",
+                    params->termination_evaluation_frequency);
+    }
+    if (!(params->reflection_coefficient > 0.0 &&
+          params->reflection_coefficient <= 1.0))
+    {
+        param_error("reflection_coefficient must be in (0, 1]",
+                    params->reflection_coefficient);
+    }
+    if (params->scaling_params.l_inf_ruiz_iterations < 0)
+    {
+        param_error("l_inf_ruiz_iterations must be >= 0",
+                    params->scaling_params.l_inf_ruiz_iterations);
+    }
+    if (params->scaling_params.has_pock_chambolle_alpha &&
+        !(params->scaling_params.pock_chambolle_alpha >= 0.0 &&
+          params->scaling_params.pock_chambolle_alpha <= 2.0))
+    {
+        param_error("pock_chambolle_alpha must be in [0, 2]",
+                    params->scaling_params.pock_chambolle_alpha);
+    }
+    if (!(params->scaling_params.matrix_zero_tol >= 0.0 &&
+          isfinite(params->scaling_params.matrix_zero_tol)))
+    {
+        param_error("matrix_zero_tol must be finite and >= 0",
+                    params->scaling_params.matrix_zero_tol);
+    }
+    if (params->power_iter_params.max_iter < 1)
+    {
+        param_error("singular_value_max_iter must be >= 1",
+                    params->power_iter_params.max_iter);
+    }
+    if (!(params->power_iter_params.tol > 0.0 &&
+          isfinite(params->power_iter_params.tol)))
+    {
+        param_error("singular_value_tol must be finite and > 0",
+                    params->power_iter_params.tol);
+    }
+    if (!(params->step_size_params.step_size_factor > 0.0 &&
+          params->step_size_params.step_size_factor <= 1.0))
+    {
+        param_error("step_size_factor must be in (0, 1]",
+                    params->step_size_params.step_size_factor);
+    }
+    if (!(params->step_size_params.objective_coupling_budget > 0.0 &&
+          params->step_size_params.objective_coupling_budget < 1.0))
+    {
+        param_error("objective_coupling_budget must be in (0, 1)",
+                    params->step_size_params.objective_coupling_budget);
+    }
+    if (!isfinite(params->step_size_params.k_p) ||
+        !isfinite(params->step_size_params.k_i) ||
+        !isfinite(params->step_size_params.k_d))
+    {
+        param_error("PID gains k_p, k_i, k_d must be finite",
+                    params->step_size_params.k_p);
+    }
+    if (!(params->step_size_params.i_smooth >= 0.0 &&
+          params->step_size_params.i_smooth < 1.0))
+    {
+        param_error("i_smooth must be in [0, 1)",
+                    params->step_size_params.i_smooth);
+    }
+    if (params->cone_params.max_iter < 1)
+    {
+        param_error("cone_newton_max_iter must be >= 1",
+                    params->cone_params.max_iter);
+    }
+    if (!(params->cone_params.tol > 0.0 && isfinite(params->cone_params.tol)))
+    {
+        param_error("cone_newton_tol must be finite and > 0",
+                    params->cone_params.tol);
+    }
+    if (!(params->termination_criteria.eps_optimal_relative > 0.0 &&
+          isfinite(params->termination_criteria.eps_optimal_relative)))
+    {
+        param_error("eps_opt must be finite and > 0",
+                    params->termination_criteria.eps_optimal_relative);
+    }
+    if (!(params->termination_criteria.eps_feasible_relative > 0.0 &&
+          isfinite(params->termination_criteria.eps_feasible_relative)))
+    {
+        param_error("eps_feas must be finite and > 0",
+                    params->termination_criteria.eps_feasible_relative);
+    }
+    if (!(params->termination_criteria.eps_infeas_residual > 0.0 &&
+          isfinite(params->termination_criteria.eps_infeas_residual)))
+    {
+        param_error("eps_infeas_residual must be finite and > 0",
+                    params->termination_criteria.eps_infeas_residual);
+    }
+    if (!(params->termination_criteria.eps_infeas_objective > 0.0 &&
+          isfinite(params->termination_criteria.eps_infeas_objective)))
+    {
+        param_error("eps_infeas_objective must be finite and > 0",
+                    params->termination_criteria.eps_infeas_objective);
+    }
+    if (!(params->termination_criteria.time_sec_limit > 0.0))
+    {
+        param_error("time_limit must be > 0",
+                    params->termination_criteria.time_sec_limit);
+    }
+    if (params->termination_criteria.iteration_limit < 1)
+    {
+        param_error("iter_limit must be >= 1",
+                    params->termination_criteria.iteration_limit);
+    }
+    if (!(params->restart_params.artificial_restart_threshold > 0.0 &&
+          params->restart_params.artificial_restart_threshold <= 1.0))
+    {
+        param_error("artificial_restart_threshold must be in (0, 1]",
+                    params->restart_params.artificial_restart_threshold);
+    }
+    if (!(params->restart_params.sufficient_reduction_for_restart > 0.0 &&
+          params->restart_params.sufficient_reduction_for_restart <=
+              params->restart_params.necessary_reduction_for_restart &&
+          params->restart_params.necessary_reduction_for_restart < 1.0))
+    {
+        param_error("restart reductions must satisfy 0 < sufficient <= necessary < 1",
+                    params->restart_params.sufficient_reduction_for_restart);
     }
 }
 
