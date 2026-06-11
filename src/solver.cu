@@ -983,14 +983,19 @@ static cuhsdlp_result_t *create_result_from_state(
 
 static void rescale_solution(pdhg_solver_state_t *state)
 {
+    double farkas_h[FARKAS_COUNT];
+    CUDA_CHECK(cudaMemcpy(farkas_h, state->farkas_reduce_d,
+                          FARKAS_COUNT * sizeof(double), cudaMemcpyDeviceToHost));
+
     double divisor;
     switch (state->termination_reason)
     {
     case TERMINATION_REASON_PRIMAL_INFEASIBLE:
-        divisor = state->metrics_h->dual_solution_norm;
+        divisor = sqrt(farkas_h[FARKAS_ORIG_DUAL_NORM] * farkas_h[FARKAS_ORIG_DUAL_NORM] +
+                       farkas_h[FARKAS_ORIG_SLACK_NORM] * farkas_h[FARKAS_ORIG_SLACK_NORM]);
         break;
     case TERMINATION_REASON_DUAL_INFEASIBLE:
-        divisor = state->metrics_h->primal_solution_norm;
+        divisor = farkas_h[FARKAS_ORIG_PRIMAL_NORM];
         break;
     default:
         divisor = state->metrics_h->pdhg_homogeneous_scale;

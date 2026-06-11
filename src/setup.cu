@@ -691,6 +691,9 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->farkas_variable_recession_d    = state->farkas_reduce_d + FARKAS_VARIABLE_RECESSION;
     state->farkas_support_constraint_d    = state->farkas_reduce_d + FARKAS_SUPPORT_CONSTRAINT;
     state->farkas_support_variable_d      = state->farkas_reduce_d + FARKAS_SUPPORT_VARIABLE;
+    state->farkas_orig_dual_norm_d        = state->farkas_reduce_d + FARKAS_ORIG_DUAL_NORM;
+    state->farkas_orig_slack_norm_d       = state->farkas_reduce_d + FARKAS_ORIG_SLACK_NORM;
+    state->farkas_orig_primal_norm_d      = state->farkas_reduce_d + FARKAS_ORIG_PRIMAL_NORM;
 
     CUDA_CHECK(cudaMalloc(&state->metrics_d, sizeof(pdhg_metrics_t)));
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));

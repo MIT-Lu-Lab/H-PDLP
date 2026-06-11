@@ -46,7 +46,10 @@ enum FarkasReduction {
     FARKAS_VARIABLE_RECESSION    = 4,
     FARKAS_SUPPORT_CONSTRAINT    = 5,
     FARKAS_SUPPORT_VARIABLE      = 6,
-    FARKAS_COUNT                 = 7,
+    FARKAS_ORIG_DUAL_NORM        = 7,
+    FARKAS_ORIG_SLACK_NORM       = 8,
+    FARKAS_ORIG_PRIMAL_NORM      = 9,
+    FARKAS_COUNT                 = 10,
 };
 
 enum HsdScalarSlot {
@@ -243,6 +246,9 @@ typedef struct {
     double *farkas_variable_recession_d;
     double *farkas_support_constraint_d;
     double *farkas_support_variable_d;
+    double *farkas_orig_dual_norm_d;
+    double *farkas_orig_slack_norm_d;
+    double *farkas_orig_primal_norm_d;
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;
