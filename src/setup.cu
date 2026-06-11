@@ -137,11 +137,11 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("step_size_factor must be in (0, 1]",
                     params->step_size_params.step_size_factor);
     }
-    if (!(params->step_size_params.objective_coupling_budget > 0.0 &&
-          params->step_size_params.objective_coupling_budget < 1.0))
+    if (!(params->step_size_params.rank_one_damping > 0.0 &&
+          params->step_size_params.rank_one_damping < 1.0))
     {
-        param_error("objective_coupling_budget must be in (0, 1)",
-                    params->step_size_params.objective_coupling_budget);
+        param_error("rank_one_damping must be in (0, 1)",
+                    params->step_size_params.rank_one_damping);
     }
     if (!isfinite(params->step_size_params.k_p) ||
         !isfinite(params->step_size_params.k_i) ||
@@ -682,6 +682,9 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->pdhg_dual_cross_d      = state->pdhg_reduce_d + PDHG_DUAL_CROSS;
     state->pdhg_slack_cross_d     = state->pdhg_reduce_d + PDHG_SLACK_CROSS;
     state->pdhg_obj_delta_cross_d = state->pdhg_reduce_d + PDHG_OBJ_DELTA_CROSS;
+    state->rank_one_dot_dual_d    = state->pdhg_reduce_d + PDHG_RANK_ONE_DOT_DUAL;
+    state->rank_one_dot_slack_d   = state->pdhg_reduce_d + PDHG_RANK_ONE_DOT_SLACK;
+    state->rank_one_correction_d       = state->pdhg_reduce_d + PDHG_RANK_ONE_CORRECTION;
 
     CUDA_CHECK(cudaMalloc(&state->farkas_reduce_d, FARKAS_COUNT * sizeof(double)));
     state->farkas_dual_solution_norm_d    = state->farkas_reduce_d + FARKAS_DUAL_SOLUTION_NORM;

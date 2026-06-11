@@ -349,6 +349,14 @@ void rescale_problem(
     compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
     state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
 
+    double objective_l2_norm = state->rescaled_objective_norm;
+    if (optimality_norm != NORM_TYPE_L2)
+    {
+        double bound_l2_norm_unused;
+        compute_lp_problem_norms_device(state, NORM_TYPE_L2, &objective_l2_norm, &bound_l2_norm_unused);
+    }
+    state->c_norm_sq = objective_l2_norm * objective_l2_norm;
+
     CUDA_CHECK(cudaFree(constraint_rescaling));
     CUDA_CHECK(cudaFree(variable_rescaling));
 

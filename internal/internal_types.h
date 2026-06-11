@@ -35,7 +35,10 @@ enum PdhgReduction {
     PDHG_DUAL_CROSS      = 4,
     PDHG_SLACK_CROSS     = 5,
     PDHG_OBJ_DELTA_CROSS = 6,
-    PDHG_COUNT           = 7,
+    PDHG_RANK_ONE_DOT_DUAL  = 7,
+    PDHG_RANK_ONE_DOT_SLACK = 8,
+    PDHG_RANK_ONE_CORRECTION     = 9,
+    PDHG_COUNT           = 10,
 };
 
 enum FarkasReduction {
@@ -205,6 +208,9 @@ typedef struct {
     double step_size_dual;
     double step_size_homogeneous;
     double step_size_base;
+    double c_norm_sq;
+    double rank_one_correction_gain;
+    double d_tau_schur;
     int    total_count;
     int    inner_count;
     int    restart_count;
@@ -237,6 +243,9 @@ typedef struct {
     double *pdhg_dual_cross_d;
     double *pdhg_slack_cross_d;
     double *pdhg_obj_delta_cross_d;
+    double *rank_one_dot_dual_d;
+    double *rank_one_dot_slack_d;
+    double *rank_one_correction_d;
 
     double *farkas_reduce_d;
     double *farkas_dual_solution_norm_d;
