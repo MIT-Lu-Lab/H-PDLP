@@ -82,19 +82,15 @@ __global__ void update_hsd_primal_solution_kernel(
     const double *__restrict__ obj_vec,
     const double *scale_reflected,
     const double *__restrict__ step_size_d,
-    const double *rank_one_correction_d,
+    const double *rank_one_dot_dual_d,
+    const double *rank_one_dot_slack_d,
     const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
+    double rank_one_gain,
+    double c_norm_sq,
     int n,
     bool is_major);
-__global__ void compute_rank_one_correction_kernel(
-    double *correction_out,
-    const double *scale_reflected,
-    const double *dot_dual,
-    const double *dot_slack,
-    double c_norm_sq,
-    double gain);
 __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
     double *__restrict__ dual_sol,
@@ -505,6 +501,14 @@ void hsd_update_dual_solution(
         state->hsd_dual_bound_reflected_d,
         is_major);
 
+    if (state->c_norm_sq > 0.0)
+        CUBLAS_CHECK(cublasDdot(
+            state->blas_handle_At,
+            state->num_variables,
+            state->objective_vector_d, 1,
+            state->reflected_dual_slack_d, 1,
+            state->rank_one_dot_slack_d));
+
     update_hsd_dual_solution_kernel<<<
         state->num_blocks_dual,
         THREADS_PER_BLOCK,
@@ -527,6 +531,15 @@ void hsd_update_dual_solution(
         is_major);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+
+
+    if (state->c_norm_sq > 0.0)
+        CUBLAS_CHECK(cublasDdot(
+            state->blas_handle_A,
+            state->num_constraints,
+            state->objective_product_d, 1,
+            state->reflected_dual_solution_d, 1,
+            state->rank_one_dot_dual_d));
 }
 
 void hsd_update_primal_solution(
@@ -549,26 +562,6 @@ void hsd_update_primal_solution(
         CUSPARSE_SPMV_CSR_ALG2,
         state->dual_spmv_buffer_d));
 
-    CUBLAS_CHECK(cublasDdot(
-        state->blas_handle_At,
-        state->num_variables,
-        state->objective_vector_d, 1,
-        state->dual_product_d, 1,
-        state->rank_one_dot_dual_d));
-    CUBLAS_CHECK(cublasDdot(
-        state->blas_handle_At,
-        state->num_variables,
-        state->objective_vector_d, 1,
-        state->reflected_dual_slack_d, 1,
-        state->rank_one_dot_slack_d));
-    compute_rank_one_correction_kernel<<<1, 1, 0, state->stream_At>>>(
-        state->rank_one_correction_d,
-        state->hsd_scale_reflected_d,
-        state->rank_one_dot_dual_d,
-        state->rank_one_dot_slack_d,
-        state->c_norm_sq,
-        state->rank_one_correction_gain);
-
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 
@@ -586,10 +579,13 @@ void hsd_update_primal_solution(
         state->objective_vector_d,
         state->hsd_scale_reflected_d,
         state->step_size_primal_d,
-        state->rank_one_correction_d,
+        state->rank_one_dot_dual_d,
+        state->rank_one_dot_slack_d,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
+        state->rank_one_correction_gain,
+        state->c_norm_sq,
         state->num_variables,
         is_major);
 }
@@ -1191,10 +1187,13 @@ __global__ void update_hsd_primal_solution_kernel(
     const double *__restrict__ obj_vec,
     const double *scale_reflected,
     const double *__restrict__ step_size_d,
-    const double *rank_one_correction_d,
+    const double *rank_one_dot_dual_d,
+    const double *rank_one_dot_slack_d,
     const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
+    double rank_one_gain,
+    double c_norm_sq,
     int n,
     bool is_major)
 {
@@ -1207,7 +1206,10 @@ __global__ void update_hsd_primal_solution_kernel(
     int k = base_count + k_offset;
     double weight = (double)(k) / (double)(k + 1);
 
-    double s = *rank_one_correction_d;
+    double s = (rank_one_gain == 0.0)
+        ? 0.0
+        : rank_one_gain * (tau_refl * c_norm_sq
+                           - (*rank_one_dot_dual_d) - (*rank_one_dot_slack_d));
     double grad = obj_vec[i] * tau_refl - dual_prod[i] - refl_dual_slack[i] - s * obj_vec[i];
     double next = cur[i] - step_size * grad;
 
@@ -1221,18 +1223,6 @@ __global__ void update_hsd_primal_solution_kernel(
     cur[i] = weight * mixed + (1.0 - weight) * init[i];
 }
 
-__global__ void compute_rank_one_correction_kernel(
-    double *correction_out,
-    const double *scale_reflected,
-    const double *dot_dual,
-    const double *dot_slack,
-    double c_norm_sq,
-    double gain)
-{
-    *correction_out = (gain == 0.0)
-        ? 0.0
-        : gain * ((*scale_reflected) * c_norm_sq - (*dot_dual) - (*dot_slack));
-}
 
 __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
