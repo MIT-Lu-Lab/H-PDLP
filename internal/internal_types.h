@@ -104,7 +104,8 @@ typedef struct {
     cudaStream_t      stream_At;
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
-    cudaEvent_t       event_s;
+    cudaEvent_t       event_x;
+    cudaEvent_t       event_tau;
     cudaGraphExec_t   graphExec;
     bool              graph_created;
 

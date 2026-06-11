@@ -269,7 +269,8 @@ pdhg_solver_state_t *initialize_solver_state(
     CUDA_CHECK(cudaStreamCreate(&state->stream_At));
     CUDA_CHECK(cudaEventCreateWithFlags(&state->event_A, cudaEventDisableTiming));
     CUDA_CHECK(cudaEventCreateWithFlags(&state->event_At, cudaEventDisableTiming));
-    CUDA_CHECK(cudaEventCreateWithFlags(&state->event_s, cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(&state->event_x, cudaEventDisableTiming));
+    CUDA_CHECK(cudaEventCreateWithFlags(&state->event_tau, cudaEventDisableTiming));
     CUSPARSE_CHECK(cusparseSetStream(state->sparse_handle_A, state->stream_A));
     CUSPARSE_CHECK(cusparseSetStream(state->sparse_handle_At, state->stream_At));
     CUBLAS_CHECK(cublasCreate(&state->blas_handle_A));
@@ -841,8 +842,10 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CUDA_CHECK(cudaEventDestroy(state->event_A));
     if (state->event_At)
         CUDA_CHECK(cudaEventDestroy(state->event_At));
-    if (state->event_s)
-        CUDA_CHECK(cudaEventDestroy(state->event_s));
+    if (state->event_x)
+        CUDA_CHECK(cudaEventDestroy(state->event_x));
+    if (state->event_tau)
+        CUDA_CHECK(cudaEventDestroy(state->event_tau));
     if (state->blas_handle_A)
         CUBLAS_CHECK(cublasDestroy(state->blas_handle_A));
     if (state->blas_handle_At)

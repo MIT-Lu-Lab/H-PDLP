@@ -376,8 +376,11 @@ void hsd_update_homogeneous_scale(
     const double reflection_coefficient,
     bool is_major)
 {
+    CUDA_CHECK(cudaEventRecord(state->event_x, state->stream_A));
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_x, 0));
+
     CUBLAS_CHECK(cublasDdot(
-        state->blas_handle_A,
+        state->blas_handle_At,
         state->num_variables,
         state->objective_vector_d,
         1,
@@ -385,7 +388,7 @@ void hsd_update_homogeneous_scale(
         1,
         state->pdhg_primal_cross_d));
 
-    update_hsd_homogeneous_scale_kernel<<<1, 1, 0, state->stream_A>>>(
+    update_hsd_homogeneous_scale_kernel<<<1, 1, 0, state->stream_At>>>(
         state->hsd_scale_initial_d,
         state->hsd_scale_current_d,
         state->hsd_scale_pdhg_d,
@@ -399,7 +402,7 @@ void hsd_update_homogeneous_scale(
         reflection_coefficient,
         is_major);
 
-    CUDA_CHECK(cudaEventRecord(state->event_s, state->stream_A));
+    CUDA_CHECK(cudaEventRecord(state->event_tau, state->stream_At));
 }
 
 void hsd_update_dual_solution(
@@ -423,6 +426,8 @@ void hsd_update_dual_solution(
         CUSPARSE_SPMV_CSR_ALG2,
         state->primal_spmv_buffer_d));
 
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_tau, 0));
+
     compute_hsd_unprojected_dual_kernel<<<
         state->num_blocks_dual,
         THREADS_PER_BLOCK,
@@ -436,8 +441,6 @@ void hsd_update_dual_solution(
         state->hsd_scale_reflected_d,
         state->step_size_dual_d,
         state->num_constraints);
-
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_s, 0));
 
     compute_hsd_unprojected_dual_kernel<<<
         state->num_blocks_primal,
