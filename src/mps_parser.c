@@ -1,4 +1,4 @@
-/*
+﻿/*
 Copyright 2026 Haihao Lu
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -521,21 +521,27 @@ lp_problem_t *read_mps_file(const char *filename)
 
         char *tokens[MPS_MAX_TOKENS] = {NULL};
         int n_tokens = 0;
+        bool too_many_fields = false;
         char *saveptr;
-        char *token = strtok_r(line, " \t\n\r", &saveptr);
-        while (token != NULL && n_tokens < MPS_MAX_TOKENS)
+        for (char *token = strtok_r(line, " \t\n\r", &saveptr);
+             token != NULL && token[0] != '$';
+             token = strtok_r(NULL, " \t\n\r", &saveptr))
         {
+            if (n_tokens >= MPS_MAX_TOKENS)
+            {
+                too_many_fields = true;
+                break;
+            }
             tokens[n_tokens++] = token;
-            token = strtok_r(NULL, " \t\n\r", &saveptr);
         }
-        if (token != NULL)
+        if (too_many_fields)
         {
             fprintf(stderr, "ERROR: Too many fields on one line (limit %d).\n",
                     MPS_MAX_TOKENS);
             state.error_flag = 1;
             break;
         }
-        if (n_tokens == 0)
+        if (n_tokens == 0 || tokens[0][0] == '*')
             continue;
 
         bool objsense_inline =
