@@ -969,6 +969,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->reflected_primal_solution_d);
     FREE_DEVICE_BUFFER(state->delta_primal_solution_d);
     FREE_DEVICE_BUFFER(state->primal_product_d);
+    FREE_DEVICE_BUFFER(state->objective_product_d);
     FREE_DEVICE_BUFFER(state->primal_vec_buffer_d);
 
     FREE_DEVICE_BUFFER(state->initial_dual_solution_d);
