@@ -541,9 +541,17 @@ lp_problem_t *read_mps_file(const char *filename)
             state.error_flag = 1;
             break;
         }
-        if (n_tokens == 0 || tokens[0][0] == '*')
+        if (n_tokens == 0)
             continue;
+        {
+            const char *t0 = tokens[0];
+            size_t l0 = strlen(t0);
+            bool delimited_name = l0 > 1 && t0[0] == '*' && t0[l0 - 1] == '*';
+            if (t0[0] == '*' && !delimited_name)
+                continue;
+        }
 
+            
         bool objsense_inline =
             n_tokens == 2 && strcmp(tokens[0], "OBJSENSE") == 0 &&
             (token_has_prefix_ci(tokens[1], "MIN") ||
