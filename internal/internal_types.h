@@ -28,13 +28,14 @@ limitations under the License.
 typedef struct pdhg_metrics_t pdhg_metrics_t;
 
 enum PdhgReduction {
-    PDHG_PRIMAL_NORM   = 0,
-    PDHG_DUAL_NORM     = 1,
-    PDHG_SLACK_NORM    = 2,
-    PDHG_PRIMAL_CROSS  = 3,
-    PDHG_DUAL_CROSS    = 4,
-    PDHG_SLACK_CROSS   = 5,
-    PDHG_COUNT         = 6,
+    PDHG_PRIMAL_NORM     = 0,
+    PDHG_DUAL_NORM       = 1,
+    PDHG_SLACK_NORM      = 2,
+    PDHG_PRIMAL_CROSS    = 3,
+    PDHG_DUAL_CROSS      = 4,
+    PDHG_SLACK_CROSS     = 5,
+    PDHG_OBJ_DELTA_CROSS = 6,
+    PDHG_COUNT           = 7,
 };
 
 enum FarkasReduction {
@@ -45,7 +46,10 @@ enum FarkasReduction {
     FARKAS_VARIABLE_RECESSION    = 4,
     FARKAS_SUPPORT_CONSTRAINT    = 5,
     FARKAS_SUPPORT_VARIABLE      = 6,
-    FARKAS_COUNT                 = 7,
+    FARKAS_ORIG_DUAL_NORM        = 7,
+    FARKAS_ORIG_SLACK_NORM       = 8,
+    FARKAS_ORIG_PRIMAL_NORM      = 9,
+    FARKAS_COUNT                 = 10,
 };
 
 enum HsdScalarSlot {
@@ -232,6 +236,7 @@ typedef struct {
     double *pdhg_primal_cross_d;
     double *pdhg_dual_cross_d;
     double *pdhg_slack_cross_d;
+    double *pdhg_obj_delta_cross_d;
 
     double *farkas_reduce_d;
     double *farkas_dual_solution_norm_d;
@@ -241,6 +246,9 @@ typedef struct {
     double *farkas_variable_recession_d;
     double *farkas_support_constraint_d;
     double *farkas_support_variable_d;
+    double *farkas_orig_dual_norm_d;
+    double *farkas_orig_slack_norm_d;
+    double *farkas_orig_primal_norm_d;
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;
