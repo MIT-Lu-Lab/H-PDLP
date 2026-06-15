@@ -35,7 +35,9 @@ enum PdhgReduction {
     PDHG_DUAL_CROSS      = 4,
     PDHG_SLACK_CROSS     = 5,
     PDHG_OBJ_DELTA_CROSS = 6,
-    PDHG_COUNT           = 7,
+    PDHG_RANK_ONE_DOT_DUAL  = 7,
+    PDHG_RANK_ONE_DOT_SLACK = 8,
+    PDHG_COUNT           = 9,
 };
 
 enum FarkasReduction {
@@ -122,6 +124,8 @@ typedef struct {
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
+    cusparseDnVecDescr_t spmv_objective_vector;
+    cusparseDnVecDescr_t spmv_objective_product;
     cusparseDnVecDescr_t spmv_power_iteration_vector;
     cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
     cusparseDnVecDescr_t spmv_power_iteration_product;
@@ -153,6 +157,7 @@ typedef struct {
     double *reflected_primal_solution_d;
     double *delta_primal_solution_d;
     double *primal_product_d;
+    double *objective_product_d;
     double *primal_vec_buffer_d;
 
     double *initial_dual_solution_d;
@@ -205,6 +210,9 @@ typedef struct {
     double step_size_dual;
     double step_size_homogeneous;
     double step_size_base;
+    double c_norm_sq;
+    double rank_one_correction_gain;
+    double d_tau_schur;
     int    total_count;
     int    inner_count;
     int    restart_count;
@@ -237,6 +245,8 @@ typedef struct {
     double *pdhg_dual_cross_d;
     double *pdhg_slack_cross_d;
     double *pdhg_obj_delta_cross_d;
+    double *rank_one_dot_dual_d;
+    double *rank_one_dot_slack_d;
 
     double *farkas_reduce_d;
     double *farkas_dual_solution_norm_d;

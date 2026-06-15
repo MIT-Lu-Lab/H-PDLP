@@ -82,9 +82,13 @@ __global__ void update_hsd_primal_solution_kernel(
     const double *__restrict__ obj_vec,
     const double *scale_reflected,
     const double *__restrict__ step_size_d,
+    const double *rank_one_dot_dual_d,
+    const double *rank_one_dot_slack_d,
     const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
+    double rank_one_gain,
+    double c_norm_sq,
     int n,
     bool is_major);
 __global__ void rescale_solution_kernel(
@@ -126,7 +130,8 @@ __global__ void compute_fixed_point_error_kernel(
     const double *dual_bound_reflected,
     double step_size_primal,
     double step_size_dual,
-    double step_size_homogeneous);
+    double step_size_homogeneous,
+    double d_tau_schur);
 __global__ void restart_hsd_scalars_kernel(
     double *scale_initial,           double *scale_current,           double *scale_pdhg,           double *scale_reflected,
     double *dual_constraint_initial, double *dual_constraint_current, double *dual_constraint_pdhg, double *dual_constraint_reflected,
@@ -324,14 +329,17 @@ static void compute_step_sizes(
 {
     double omega = state->primal_weight;
     double base = state->step_size_base;
-    double c_norm = state->rescaled_objective_norm;
     double factor = step_size_params->step_size_factor;
-    double xi = step_size_params->objective_coupling_budget;
+    double delta = step_size_params->rank_one_damping;
 
     state->step_size_primal = base / omega;
     state->step_size_dual = base * omega;
+
+    state->d_tau_schur = (state->c_norm_sq > 0.0)
+        ? state->step_size_primal * state->c_norm_sq * delta / (1.0 - delta)
+        : 0.0;
     state->step_size_homogeneous =
-        factor * xi / (c_norm * c_norm * base / omega + 2.0 * xi * base * omega);
+        factor / (state->d_tau_schur + 2.0 * base * omega);
 }
 
 static void initialize_step_size_and_primal_weight(
@@ -340,9 +348,12 @@ static void initialize_step_size_and_primal_weight(
 {
     double sigma = state->rescaled_constraint_norm;
     double factor = params->step_size_params.step_size_factor;
-    double xi = params->step_size_params.objective_coupling_budget;
+    double delta = params->step_size_params.rank_one_damping;
 
-    state->step_size_base = factor * sqrt((1.0 - xi) / (sigma * sigma + 1.0));
+    state->step_size_base = factor * sqrt(1.0 / (sigma * sigma + 1.0));
+    
+    state->rank_one_correction_gain =
+        (state->c_norm_sq > 0.0) ? (1.0 - delta) / state->c_norm_sq : 0.0;
 
     if (params->scaling_params.bound_objective_rescaling)
     {
@@ -490,6 +501,14 @@ void hsd_update_dual_solution(
         state->hsd_dual_bound_reflected_d,
         is_major);
 
+    if (state->c_norm_sq > 0.0)
+        CUBLAS_CHECK(cublasDdot(
+            state->blas_handle_At,
+            state->num_variables,
+            state->objective_vector_d, 1,
+            state->reflected_dual_slack_d, 1,
+            state->rank_one_dot_slack_d));
+
     update_hsd_dual_solution_kernel<<<
         state->num_blocks_dual,
         THREADS_PER_BLOCK,
@@ -512,6 +531,15 @@ void hsd_update_dual_solution(
         is_major);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+
+
+    if (state->c_norm_sq > 0.0)
+        CUBLAS_CHECK(cublasDdot(
+            state->blas_handle_A,
+            state->num_constraints,
+            state->objective_product_d, 1,
+            state->reflected_dual_solution_d, 1,
+            state->rank_one_dot_dual_d));
 }
 
 void hsd_update_primal_solution(
@@ -551,9 +579,13 @@ void hsd_update_primal_solution(
         state->objective_vector_d,
         state->hsd_scale_reflected_d,
         state->step_size_primal_d,
+        state->rank_one_dot_dual_d,
+        state->rank_one_dot_slack_d,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
+        state->rank_one_correction_gain,
+        state->c_norm_sq,
         state->num_variables,
         is_major);
 }
@@ -658,7 +690,8 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->hsd_dual_bound_reflected_d,
         state->step_size_primal,
         state->step_size_dual,
-        state->step_size_homogeneous);
+        state->step_size_homogeneous,
+        state->d_tau_schur);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
@@ -703,6 +736,12 @@ static void perform_restart(
         state->delta_dual_slack_d,
         1,
         state->pdhg_slack_norm_d));
+    CUBLAS_CHECK(cublasDdot(
+        state->blas_handle_A,
+        state->num_variables,
+        state->objective_vector_d, 1,
+        state->delta_primal_solution_d, 1,
+        state->pdhg_obj_delta_cross_d));
 
     update_primal_weight_via_restart_pid(state, step_size_params);
 
@@ -805,6 +844,13 @@ static void update_primal_weight_via_restart_pid(
         HSD_SCALARS_COUNT * sizeof(double),
         cudaMemcpyDeviceToHost,
         state->stream_A));
+    double obj_delta_cross_h;
+    CUDA_CHECK(cudaMemcpyAsync(
+        &obj_delta_cross_h,
+        state->pdhg_obj_delta_cross_d,
+        sizeof(double),
+        cudaMemcpyDeviceToHost,
+        state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
     double dx2     = restart_scalars_h[0] * restart_scalars_h[0];
@@ -818,14 +864,16 @@ static void update_primal_weight_via_restart_pid(
     double d_av    = hsd_scalars_h[HSD_DUAL_BOUND_PDHG]
                    - hsd_scalars_h[HSD_DUAL_BOUND_INITIAL];
 
-    double c_norm  = state->rescaled_objective_norm;
-    double xi      = step_size_params->objective_coupling_budget;
+    double c_norm2 = state->c_norm_sq;
+    double delta   = step_size_params->rank_one_damping;
     double base2   = state->step_size_base * state->step_size_base;
     double alpha_p = 2.0 * base2;
-    double alpha_d = c_norm * c_norm * base2 / xi;
+    double alpha_d = (c_norm2 > 0.0) ? c_norm2 * base2 * delta / (1.0 - delta) : 0.0;
+    double beta_p  = (c_norm2 > 0.0) ? (1.0 - delta) / (delta * c_norm2) : 0.0;
     double d_tau2  = d_tau * d_tau;
 
-    double primal_dist = sqrt(dx2 + alpha_p * d_tau2);
+    double primal_dist = sqrt(dx2 + beta_p * obj_delta_cross_h * obj_delta_cross_h
+                                  + alpha_p * d_tau2);
     double dual_dist   = sqrt(dy2_ds2 + d_ac * d_ac + d_av * d_av + alpha_d * d_tau2);
 
     double ratio_infeas = state->metrics_h->relative_dual_residual 
@@ -1139,9 +1187,13 @@ __global__ void update_hsd_primal_solution_kernel(
     const double *__restrict__ obj_vec,
     const double *scale_reflected,
     const double *__restrict__ step_size_d,
+    const double *rank_one_dot_dual_d,
+    const double *rank_one_dot_slack_d,
     const int *__restrict__ base_count_d,
     int k_offset,
     double refl_coeff,
+    double rank_one_gain,
+    double c_norm_sq,
     int n,
     bool is_major)
 {
@@ -1154,7 +1206,11 @@ __global__ void update_hsd_primal_solution_kernel(
     int k = base_count + k_offset;
     double weight = (double)(k) / (double)(k + 1);
 
-    double grad = obj_vec[i] * tau_refl - dual_prod[i] - refl_dual_slack[i];
+    double s = (rank_one_gain == 0.0)
+        ? 0.0
+        : rank_one_gain * (tau_refl * c_norm_sq
+                           - (*rank_one_dot_dual_d) - (*rank_one_dot_slack_d));
+    double grad = obj_vec[i] * tau_refl - dual_prod[i] - refl_dual_slack[i] - s * obj_vec[i];
     double next = cur[i] - step_size * grad;
 
     if (is_major)
@@ -1166,6 +1222,7 @@ __global__ void update_hsd_primal_solution_kernel(
     double mixed = refl_coeff * refl[i] + (1.0 - refl_coeff) * cur[i];
     cur[i] = weight * mixed + (1.0 - weight) * init[i];
 }
+
 
 __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
@@ -1243,7 +1300,8 @@ __global__ void compute_fixed_point_error_kernel(
     const double *dual_bound_reflected,
     double step_size_primal,
     double step_size_dual,
-    double step_size_homogeneous)
+    double step_size_homogeneous,
+    double d_tau_schur)
 {
     double delta_primal_scale = (*scale_reflected) - (*scale_pdhg);
     double delta_constraint_offset = (*dual_constraint_reflected) - (*dual_constraint_pdhg);
@@ -1266,8 +1324,11 @@ __global__ void compute_fixed_point_error_kernel(
         delta_primal_scale * delta_primal_scale / step_size_homogeneous;
     double interaction = 2.0 * (delta_primal_scale * (obj_delta_cross_v + delta_constraint_offset + delta_bound_offset) -
                                 cross_term - slack_cross_v);
+    double rank_one_term = (d_tau_schur > 0.0)
+        ? obj_delta_cross_v * obj_delta_cross_v / d_tau_schur
+        : 0.0;
 
-    fixed_point_error_d[0] = sqrt(fmax(0.0, movement + interaction));
+    fixed_point_error_d[0] = sqrt(fmax(0.0, movement + rank_one_term + interaction));
 }
 
 __global__ void restart_hsd_scalars_kernel(

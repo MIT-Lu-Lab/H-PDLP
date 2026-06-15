@@ -137,11 +137,11 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("step_size_factor must be in (0, 1]",
                     params->step_size_params.step_size_factor);
     }
-    if (!(params->step_size_params.objective_coupling_budget > 0.0 &&
-          params->step_size_params.objective_coupling_budget < 1.0))
+    if (!(params->step_size_params.rank_one_damping > 0.0 &&
+          params->step_size_params.rank_one_damping < 1.0))
     {
-        param_error("objective_coupling_budget must be in (0, 1)",
-                    params->step_size_params.objective_coupling_budget);
+        param_error("rank_one_damping must be in (0, 1)",
+                    params->step_size_params.rank_one_damping);
     }
     if (!isfinite(params->step_size_params.k_p) ||
         !isfinite(params->step_size_params.k_i) ||
@@ -309,6 +309,18 @@ pdhg_solver_state_t *initialize_solver_state(
 
     rescale_problem(params, state);
 
+    CUSPARSE_CHECK(cusparseSpMV(
+        state->sparse_handle_A,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &HOST_ONE,
+        state->matA,
+        state->spmv_objective_vector,
+        &HOST_ZERO,
+        state->spmv_objective_product,
+        CUDA_R_64F,
+        CUSPARSE_SPMV_CSR_ALG2,
+        state->primal_spmv_buffer_d));
+
     release_setup_only_matrix_data(state);
     initialize_iterates_from_starts(state);
     initialize_convergence_tracking(state);
@@ -452,6 +464,14 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         &state->spmv_dual_product,
         state->num_variables,
         state->dual_product_d);
+    create_dense_vector_descriptor(
+        &state->spmv_objective_vector,
+        state->num_variables,
+        state->objective_vector_d);
+    create_dense_vector_descriptor(
+        &state->spmv_objective_product,
+        state->num_constraints,
+        state->objective_product_d);
     create_dense_vector_descriptor(
         &state->spmv_power_iteration_vector,
         state->num_constraints,
@@ -605,6 +625,7 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->reflected_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->delta_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_product_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->objective_product_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_vec_buffer_d, var_bytes);
 
     allocate_zeroed_device_buffer((void **)&state->initial_dual_solution_d, con_bytes);
@@ -675,6 +696,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->hsd_dual_bound_reflected_d      = state->hsd_scalars_d + HSD_DUAL_BOUND_REFLECTED;
 
     CUDA_CHECK(cudaMalloc(&state->pdhg_reduce_d, PDHG_COUNT * sizeof(double)));
+    CUDA_CHECK(cudaMemset(state->pdhg_reduce_d, 0, PDHG_COUNT * sizeof(double)));
     state->pdhg_primal_norm_d     = state->pdhg_reduce_d + PDHG_PRIMAL_NORM;
     state->pdhg_dual_norm_d       = state->pdhg_reduce_d + PDHG_DUAL_NORM;
     state->pdhg_slack_norm_d      = state->pdhg_reduce_d + PDHG_SLACK_NORM;
@@ -682,6 +704,8 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->pdhg_dual_cross_d      = state->pdhg_reduce_d + PDHG_DUAL_CROSS;
     state->pdhg_slack_cross_d     = state->pdhg_reduce_d + PDHG_SLACK_CROSS;
     state->pdhg_obj_delta_cross_d = state->pdhg_reduce_d + PDHG_OBJ_DELTA_CROSS;
+    state->rank_one_dot_dual_d    = state->pdhg_reduce_d + PDHG_RANK_ONE_DOT_DUAL;
+    state->rank_one_dot_slack_d   = state->pdhg_reduce_d + PDHG_RANK_ONE_DOT_SLACK;
 
     CUDA_CHECK(cudaMalloc(&state->farkas_reduce_d, FARKAS_COUNT * sizeof(double)));
     state->farkas_dual_solution_norm_d    = state->farkas_reduce_d + FARKAS_DUAL_SOLUTION_NORM;
@@ -885,6 +909,10 @@ static void free_sparse_resources(pdhg_solver_state_t *state)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_product));
     if (state->spmv_dual_product)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_product));
+    if (state->spmv_objective_vector)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_objective_vector));
+    if (state->spmv_objective_product)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_objective_product));
     if (state->spmv_power_iteration_vector)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_vector));
     if (state->spmv_power_iteration_normalized_vector)
@@ -941,6 +969,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->reflected_primal_solution_d);
     FREE_DEVICE_BUFFER(state->delta_primal_solution_d);
     FREE_DEVICE_BUFFER(state->primal_product_d);
+    FREE_DEVICE_BUFFER(state->objective_product_d);
     FREE_DEVICE_BUFFER(state->primal_vec_buffer_d);
 
     FREE_DEVICE_BUFFER(state->initial_dual_solution_d);
