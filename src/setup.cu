@@ -642,7 +642,7 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->reflected_dual_slack_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->delta_dual_slack_d, var_bytes);
 
-    allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes + var_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_residual_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->homogeneous_dual_residual_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->constraint_recession_residual_d, con_bytes);

@@ -172,7 +172,7 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
 
 static void compute_linf_residual_norms(pdhg_solver_state_t *state)
 {
-    reduce_device_abs_max(state, state->primal_residual_d, state->num_constraints,
+    reduce_device_abs_max(state, state->primal_residual_d, state->num_constraints + state->num_variables,
                           state->pdhg_primal_norm_d);
     reduce_device_abs_max(state, state->dual_residual_d, state->num_variables,
                           state->pdhg_dual_norm_d);
@@ -199,7 +199,7 @@ static void compute_linf_residual_norms(pdhg_solver_state_t *state)
 static void compute_l2_residual_norms(pdhg_solver_state_t *state)
 {
     CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_constraints,
+        state->blas_handle_A, state->num_constraints + state->num_variables,
         state->primal_residual_d, 1,
         state->pdhg_primal_norm_d));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
@@ -322,7 +322,6 @@ void check_termination_criteria(
     solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
 
     double ratio = solver_state->metrics_h->normalized_homogeneous_ratio;
-
     if (ratio < 0.01)
     {
         if (optimality_criteria_met(solver_state, criteria))
@@ -474,6 +473,11 @@ __global__ void compute_residual_kernel(
         homogeneous_dual_res[idx] = (aty + yv) * var_rescaling[idx];
 
         double x = primal_sol[idx];
+
+        double x_hat = x * inv_tau;
+        double x_box_clamped = fmax(var_lb[idx], fmin(x_hat, var_ub[idx]));
+        primal_res[n_cons + idx] = (x_hat - x_box_clamped) / var_rescaling[idx];
+
         double recc_lo = isfinite(var_lb[idx]) ? 0.0 : -INFINITY;
         double recc_hi = isfinite(var_ub[idx]) ? 0.0 : INFINITY;
         double x_recc_clamped = fmax(recc_lo, fmin(x, recc_hi));
@@ -541,13 +545,12 @@ __global__ void compute_residual_metrics_kernel(
     double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;
     double absolute_dual_residual = (*dual_norm) / objective_vector_rescaling;
     double objective_dot_primal = *primal_cross;
-    double scaled_dual_constraint_offset = pdhg_dual_constraint_offset * inv_primal_scale;
-    double scaled_dual_bound_offset = pdhg_dual_bound_offset * inv_primal_scale;
+    double support_dual_objective = (*farkas_support_constraint) + (*farkas_support_variable);
 
     double primal_objective_value = objective_dot_primal * inv_primal_scale
                                   / (constraint_bound_rescaling * objective_vector_rescaling)
                                   + objective_constant;
-    double dual_objective_value = - (scaled_dual_constraint_offset + scaled_dual_bound_offset)
+    double dual_objective_value = support_dual_objective * inv_primal_scale
                                 / (constraint_bound_rescaling * objective_vector_rescaling)
                                 + objective_constant;
     double objective_gap = fabs(primal_objective_value - dual_objective_value);
@@ -583,8 +586,9 @@ __global__ void compute_residual_metrics_kernel(
                              + pdhg_dual_constraint_offset * pdhg_dual_constraint_offset
                              + pdhg_dual_bound_offset * pdhg_dual_bound_offset);
     double inv_iterate_norm = (iterate_norm > 1e-30) ? 1.0 / iterate_norm : 0.0;
+
     double homogeneous_scale_hat = primal_scale * inv_iterate_norm;
-    double homogeneous_gap_hat = fabs(homogeneous_gap) * inv_iterate_norm;
+    double homogeneous_gap_hat = fmax(-homogeneous_gap, 0.0) * inv_iterate_norm;
     double ratio_denominator = homogeneous_gap_hat + homogeneous_scale_hat;
     metrics_d->normalized_homogeneous_scale = homogeneous_scale_hat;
     metrics_d->normalized_homogeneous_gap   = homogeneous_gap_hat;
