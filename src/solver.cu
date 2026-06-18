@@ -139,7 +139,7 @@ __global__ void restart_hsd_scalars_kernel(
     double *constraint_cone_scale_d,
     double *bound_cone_scale_d,
     double  cone_warm_start_scale);
-__global__ void normalize_hsd_scalars_kernel(
+__global__ void scale_hsd_scalars_kernel(
     double *scale_pdhg,
     double *dual_constraint_pdhg,
     double *dual_bound_pdhg,
@@ -176,7 +176,7 @@ static void perform_restart(
 static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
-static void normalize_hsd_variables(pdhg_solver_state_t *state);
+static double apply_gauge_control(pdhg_solver_state_t *state);
 static void rescale_solution(pdhg_solver_state_t *state);
 static cuhsdlp_result_t *create_result_from_state(
     pdhg_solver_state_t *state,
@@ -747,7 +747,7 @@ static void perform_restart(
 
     compute_step_sizes(state, step_size_params);
 
-    normalize_hsd_variables(state);
+    double cone_warm_start_scale = apply_gauge_control(state);
 
     CUDA_CHECK(cudaMemcpyAsync(
         state->initial_primal_solution_d,
@@ -794,7 +794,7 @@ static void perform_restart(
         state->hsd_dual_bound_initial_d,        state->hsd_dual_bound_current_d,        state->hsd_dual_bound_pdhg_d,        state->hsd_dual_bound_reflected_d,
         state->constraint_cone_state.scale_d,
         state->bound_cone_state.scale_d,
-        state->cone_warm_start_scale);
+        cone_warm_start_scale);
 
     state->inner_count = 0;
     state->last_trial_fixed_point_error = INFINITY;
@@ -919,27 +919,25 @@ static void update_primal_weight_via_restart_pid(
     }
 }
 
-static void normalize_hsd_variables(pdhg_solver_state_t *state)
+
+static double apply_gauge_control(pdhg_solver_state_t *state)
 {
     double tau = state->metrics_h->pdhg_homogeneous_scale;
-    if (tau >= 0.1 && tau <= 10.0)
-    {
-        state->cone_warm_start_scale = 1.0;
-        return;
-    }
+    double max_block_norm = fmax(fmax(state->metrics_h->primal_solution_norm,
+                                      state->metrics_h->dual_solution_norm),
+                            fmax(fabs(tau),
+                            fmax(fabs(state->metrics_h->pdhg_dual_constraint_offset),
+                                 fabs(state->metrics_h->pdhg_dual_bound_offset))));
 
     double inv_scale;
-    double iterate_block_norm = fmax(fmax(state->metrics_h->primal_solution_norm,
-                                          state->metrics_h->dual_solution_norm),
-                                fmax(fabs(tau),
-                                fmax(fabs(state->metrics_h->pdhg_dual_constraint_offset),
-                                     fabs(state->metrics_h->pdhg_dual_bound_offset))));
-    if (tau > 1.0e-3)
+    if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
+        inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
+    else if (tau >= 0.1 && tau <= 10.0)
+        return 1.0;
+    else if (tau > 1.0e-3)
         inv_scale = 1.0 / tau;
-    else if (iterate_block_norm > 1.0e12)
-        inv_scale = 1.0 / iterate_block_norm;
     else
-        inv_scale = 10.0;
+        return 1.0;
 
     CUDA_CHECK(cudaMemcpyAsync(
         state->hsd_inverse_scale_d,
@@ -961,7 +959,7 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
         state->num_variables,
         state->hsd_inverse_scale_d,
         state->pdhg_dual_slack_d, 1));
-    normalize_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
+    scale_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_scale_pdhg_d,
         state->hsd_dual_constraint_pdhg_d,
         state->hsd_dual_bound_pdhg_d,
@@ -969,7 +967,7 @@ static void normalize_hsd_variables(pdhg_solver_state_t *state)
     state->metrics_h->pdhg_homogeneous_scale      *= inv_scale;
     state->metrics_h->pdhg_dual_constraint_offset *= inv_scale;
     state->metrics_h->pdhg_dual_bound_offset      *= inv_scale;
-    state->cone_warm_start_scale = inv_scale;
+    return inv_scale;
 }
 
 static cuhsdlp_result_t *create_result_from_state(
@@ -1358,7 +1356,7 @@ __global__ void restart_hsd_scalars_kernel(
     *bound_cone_scale_d      *= cone_warm_start_scale;
 }
 
-__global__ void normalize_hsd_scalars_kernel(
+__global__ void scale_hsd_scalars_kernel(
     double *scale_pdhg,
     double *dual_constraint_pdhg,
     double *dual_bound_pdhg,
