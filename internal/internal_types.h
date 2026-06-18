@@ -207,6 +207,7 @@ typedef struct {
 
     double step_size_primal;
     double step_size_dual;
+    double step_size_dual_bound;
     double step_size_homogeneous;
     double step_size_base;
     double c_norm_sq;
@@ -222,6 +223,7 @@ typedef struct {
     int    *inner_count_d;
     double *step_size_primal_d;
     double *step_size_dual_d;
+    double *step_size_dual_bound_d;
     double *step_size_homogeneous_d;
 
     double primal_weight;

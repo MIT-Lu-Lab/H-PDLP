@@ -725,6 +725,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->inner_count_d, sizeof(int));
     allocate_zeroed_device_buffer((void **)&state->step_size_primal_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->step_size_dual_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->step_size_dual_bound_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->step_size_homogeneous_d, sizeof(double));
     state->graphExec = NULL;
     state->graph_created = false;
@@ -1009,6 +1010,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->inner_count_d);
     FREE_DEVICE_BUFFER(state->step_size_primal_d);
     FREE_DEVICE_BUFFER(state->step_size_dual_d);
+    FREE_DEVICE_BUFFER(state->step_size_dual_bound_d);
     FREE_DEVICE_BUFFER(state->step_size_homogeneous_d);
     FREE_DEVICE_BUFFER(state->pdhg_reduce_d);
     FREE_DEVICE_BUFFER(state->farkas_reduce_d);
