@@ -137,11 +137,11 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("step_size_factor must be in (0, 1]",
                     params->step_size_params.step_size_factor);
     }
-    if (!(params->step_size_params.rank_one_damping > 0.0 &&
-          params->step_size_params.rank_one_damping < 1.0))
+    if (!(params->step_size_params.objective_coupling_budget > 0.0 &&
+          params->step_size_params.objective_coupling_budget < 1.0))
     {
-        param_error("rank_one_damping must be in (0, 1)",
-                    params->step_size_params.rank_one_damping);
+        param_error("objective_coupling_budget must be in (0, 1)",
+                    params->step_size_params.objective_coupling_budget);
     }
     if (!isfinite(params->step_size_params.k_p) ||
         !isfinite(params->step_size_params.k_i) ||

@@ -89,7 +89,7 @@ extern "C"
     typedef struct
     {
         double step_size_factor;
-        double rank_one_damping;
+        double objective_coupling_budget;
         double k_p;
         double k_i;
         double k_d;
