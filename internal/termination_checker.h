@@ -54,7 +54,9 @@ extern "C"
         double normalized_homogeneous_ratio;
     } pdhg_metrics_t;
 
-    void compute_residual(pdhg_solver_state_t *state, norm_type_t optimality_norm);
+    void compute_termination_metrics(
+        pdhg_solver_state_t *state,
+        norm_type_t optimality_norm);
 
     void check_termination_criteria(
         pdhg_solver_state_t *solver_state,

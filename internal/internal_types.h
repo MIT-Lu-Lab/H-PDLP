@@ -28,11 +28,11 @@ limitations under the License.
 typedef struct pdhg_metrics_t pdhg_metrics_t;
 
 enum PdhgReduction {
-    PDHG_PRIMAL_NORM     = 0,
-    PDHG_DUAL_NORM       = 1,
-    PDHG_PRIMAL_CROSS    = 2,
-    PDHG_DUAL_CROSS      = 3,
-    PDHG_COUNT           = 4,
+    PDHG_PRIMAL_NORM         = 0,
+    PDHG_DUAL_NORM           = 1,
+    PDHG_OBJECTIVE_DOT_X     = 2,
+    PDHG_OPERATOR_CROSS_TERM = 3,
+    PDHG_COUNT               = 4,
 };
 
 enum FarkasReduction {
@@ -42,9 +42,9 @@ enum FarkasReduction {
     FARKAS_VARIABLE_RECESSION    = 3,
     FARKAS_SUPPORT_CONSTRAINT    = 4,
     FARKAS_SUPPORT_VARIABLE      = 5,
-    FARKAS_ORIG_DUAL_NORM        = 6,
-    FARKAS_ORIG_SLACK_NORM       = 7,
-    FARKAS_ORIG_PRIMAL_NORM      = 8,
+    FARKAS_ORIGINAL_DUAL_NORM         = 6,
+    FARKAS_ORIGINAL_REDUCED_COST_NORM = 7,
+    FARKAS_ORIGINAL_PRIMAL_NORM       = 8,
     FARKAS_COUNT                 = 9,
 };
 
@@ -215,7 +215,7 @@ typedef struct {
     double *pdhg_primal_norm_d;
     double *pdhg_dual_norm_d;
     double *objective_dot_primal_d;
-    double *pdhg_dual_cross_d;
+    double *fixed_point_operator_cross_d;
 
     double *farkas_reduce_d;
     double *farkas_dual_solution_norm_d;
@@ -224,9 +224,9 @@ typedef struct {
     double *farkas_variable_recession_d;
     double *constraint_support_value_d;
     double *variable_support_value_d;
-    double *farkas_orig_dual_norm_d;
-    double *farkas_orig_slack_norm_d;
-    double *farkas_orig_primal_norm_d;
+    double *farkas_original_dual_norm_d;
+    double *farkas_original_reduced_cost_norm_d;
+    double *farkas_original_primal_norm_d;
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;

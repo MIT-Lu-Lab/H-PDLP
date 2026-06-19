@@ -19,6 +19,7 @@ limitations under the License.
 #include "cuda_macros.h"
 #include "cuhsdlp_types.h"
 #include <cuda_runtime.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -46,18 +47,30 @@ void solve_dual_cone_newton(
     const double *unprojected_vector,
     cudaStream_t stream);
 
-void solve_primal_box_resolvent_scale(
+void update_primal_box_resolvent(
     const cone_parameters_t *cone_params,
-    box_newton_state_t *cone_state,
+    box_newton_state_t *newton_state,
+    double *current_primal,
+    double *reflected_primal,
+    double *evaluation_primal,
+    const double *initial_primal,
     const double *unprojected_vector,
     const double *objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const int *base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    double *initial_homogeneous_scale,
+    double *current_homogeneous_scale,
+    double *evaluation_homogeneous_scale,
+    double *reflected_homogeneous_scale,
+    bool save_evaluation_iterate,
     cudaStream_t stream);
 
-int max_cooperative_dual_cone_grid();
+int max_cooperative_dual_cone_blocks();
 
-int max_cooperative_primal_box_grid();
+int max_cooperative_primal_box_blocks();
 
 #ifdef __cplusplus
 }
