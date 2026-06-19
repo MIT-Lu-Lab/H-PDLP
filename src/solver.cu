@@ -320,8 +320,6 @@ static void initialize_step_size_and_primal_weight(
     }
 
     compute_step_sizes(state, &params->step_size_params);
-
-    state->best_primal_weight = state->primal_weight;
 }
 
 static void hsd_run_iteration_step(
@@ -620,8 +618,7 @@ static void apply_pid_step(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params,
     double primal_dist,
-    double dual_dist,
-    bool clamp_step)
+    double dual_dist)
 {
     double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
     if (!isfinite(error))
@@ -632,11 +629,8 @@ static void apply_pid_step(
     double step = step_size_params->k_p * error +
                   step_size_params->k_i * state->primal_weight_error_sum +
                   step_size_params->k_d * delta_error;
-    if (clamp_step)
-    {
-        const double max_log_step = log(10.0);
-        step = fmin(fmax(step, -max_log_step), max_log_step);
-    }
+    const double max_log_step = log(10.0);
+    step = fmin(fmax(step, -max_log_step), max_log_step);
     state->primal_weight *= exp(step);
     state->primal_weight_last_error = error;
 }
@@ -679,9 +673,6 @@ static void update_primal_weight_via_restart_pid(
         sqrt(dx2 + alpha_p * homogeneous_scale_delta_squared);
     double dual_dist   = sqrt(dy2 + d_ac * d_ac);
 
-    double ratio_infeas = state->metrics_h->relative_dual_residual 
-                        / state->metrics_h->relative_primal_residual;
-
     double scale_reference =
         fmax(hsd_scalars_h[HSD_SCALE_PDHG], 1e-300);
     bool dist_ok =
@@ -689,41 +680,9 @@ static void update_primal_weight_via_restart_pid(
         dual_dist > 1e-16 * scale_reference &&
         primal_dist < 1e12 * scale_reference &&
         dual_dist < 1e12 * scale_reference;
-    bool ratio_ok = ratio_infeas > 1e-8 && ratio_infeas < 1e8;
-    bool signal_bad = !dist_ok || !ratio_ok;
 
-    const int PID_OOB_STREAK_THRESHOLD = 3;
-    if (!signal_bad)
-    {
-        apply_pid_step(state, step_size_params, primal_dist, dual_dist, false);
-        state->pid_has_succeeded = true;
-        state->pid_oob_streak = 0;
-    }
-    else if (!state->pid_has_succeeded)
-    {
-        apply_pid_step(state, step_size_params, primal_dist, dual_dist, true);
-    }
-    else
-    {
-        state->pid_oob_streak++;
-        if (state->pid_oob_streak >= PID_OOB_STREAK_THRESHOLD)
-        {
-            apply_pid_step(state, step_size_params, primal_dist, dual_dist, true);
-        }
-        else
-        {
-            state->primal_weight = state->best_primal_weight;
-            state->primal_weight_error_sum = 0.0;
-            state->primal_weight_last_error = 0.0;
-        }
-    }
-
-    double primal_dual_residual_gap = fabs(log10(ratio_infeas));
-    if (primal_dual_residual_gap < state->best_primal_dual_residual_gap)
-    {
-        state->best_primal_dual_residual_gap = primal_dual_residual_gap;
-        state->best_primal_weight = state->primal_weight;
-    }
+    if (dist_ok)
+        apply_pid_step(state, step_size_params, primal_dist, dual_dist);
 }
 
 
