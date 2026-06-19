@@ -745,7 +745,7 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
     else if (homogeneous_scale > 1.0e-3)
         inv_scale = 1.0 / homogeneous_scale;
     else
-        return 1.0;
+        inv_scale = 10.0;
 
     CUDA_CHECK(cudaMemcpyAsync(
         state->hsd_inverse_scale_d,
