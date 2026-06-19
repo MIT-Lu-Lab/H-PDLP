@@ -26,27 +26,38 @@ extern "C"
 #endif
 
 typedef struct {
-    double denom;
-    double numer;
-} newton_denom_numer_t;
+    double derivative;
+    double function_value;
+} newton_terms_t;
 
 typedef struct {
     const double *lower_bound_d;
     const double *upper_bound_d;
     int num_elements;
     int num_blocks_newton;
-    double *scale_d;
-    double *unprojected_scale_d;
-    newton_denom_numer_t *newton_partials_d;
-} cone_projection_state_t;
+    double *scalar_d;
+    double *unprojected_scalar_d;
+    newton_terms_t *newton_partials_d;
+} box_newton_state_t;
 
-void solve_cone_newton(
+void solve_dual_cone_newton(
     const cone_parameters_t *cone_params,
-    cone_projection_state_t *cone_state,
+    box_newton_state_t *cone_state,
     const double *unprojected_vector,
     cudaStream_t stream);
 
-int max_cooperative_cone_grid();
+void solve_primal_box_resolvent_scale(
+    const cone_parameters_t *cone_params,
+    box_newton_state_t *cone_state,
+    const double *unprojected_vector,
+    const double *objective_d,
+    const double *step_size_d,
+    const double *step_size_homogeneous_d,
+    cudaStream_t stream);
+
+int max_cooperative_dual_cone_grid();
+
+int max_cooperative_primal_box_grid();
 
 #ifdef __cplusplus
 }

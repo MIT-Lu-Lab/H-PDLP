@@ -30,28 +30,22 @@ typedef struct pdhg_metrics_t pdhg_metrics_t;
 enum PdhgReduction {
     PDHG_PRIMAL_NORM     = 0,
     PDHG_DUAL_NORM       = 1,
-    PDHG_SLACK_NORM      = 2,
-    PDHG_PRIMAL_CROSS    = 3,
-    PDHG_DUAL_CROSS      = 4,
-    PDHG_SLACK_CROSS     = 5,
-    PDHG_OBJ_DELTA_CROSS = 6,
-    PDHG_RANK_ONE_DOT_DUAL  = 7,
-    PDHG_RANK_ONE_DOT_SLACK = 8,
-    PDHG_COUNT           = 9,
+    PDHG_PRIMAL_CROSS    = 2,
+    PDHG_DUAL_CROSS      = 3,
+    PDHG_COUNT           = 4,
 };
 
 enum FarkasReduction {
     FARKAS_DUAL_SOLUTION_NORM    = 0,
-    FARKAS_DUAL_SLACK_NORM       = 1,
-    FARKAS_HOMOGENEOUS_DUAL_NORM = 2,
-    FARKAS_CONSTRAINT_RECESSION  = 3,
-    FARKAS_VARIABLE_RECESSION    = 4,
-    FARKAS_SUPPORT_CONSTRAINT    = 5,
-    FARKAS_SUPPORT_VARIABLE      = 6,
-    FARKAS_ORIG_DUAL_NORM        = 7,
-    FARKAS_ORIG_SLACK_NORM       = 8,
-    FARKAS_ORIG_PRIMAL_NORM      = 9,
-    FARKAS_COUNT                 = 10,
+    FARKAS_HOMOGENEOUS_DUAL_NORM = 1,
+    FARKAS_CONSTRAINT_RECESSION  = 2,
+    FARKAS_VARIABLE_RECESSION    = 3,
+    FARKAS_SUPPORT_CONSTRAINT    = 4,
+    FARKAS_SUPPORT_VARIABLE      = 5,
+    FARKAS_ORIG_DUAL_NORM        = 6,
+    FARKAS_ORIG_SLACK_NORM       = 7,
+    FARKAS_ORIG_PRIMAL_NORM      = 8,
+    FARKAS_COUNT                 = 9,
 };
 
 enum HsdScalarSlot {
@@ -63,11 +57,7 @@ enum HsdScalarSlot {
     HSD_DUAL_CONSTRAINT_CURRENT   = 5,
     HSD_DUAL_CONSTRAINT_PDHG      = 6,
     HSD_DUAL_CONSTRAINT_REFLECTED = 7,
-    HSD_DUAL_BOUND_INITIAL        = 8,
-    HSD_DUAL_BOUND_CURRENT        = 9,
-    HSD_DUAL_BOUND_PDHG           = 10,
-    HSD_DUAL_BOUND_REFLECTED      = 11,
-    HSD_SCALARS_COUNT             = 12,
+    HSD_SCALARS_COUNT             = 8,
 };
 
 typedef struct {
@@ -89,7 +79,7 @@ typedef struct {
     int num_blocks_primal;
     int num_blocks_dual;
     int num_blocks_primal_dual;
-    int num_blocks_primal_dual_slack;
+    int num_blocks_rescale;
     int num_blocks_nnz;
 
     cu_sparse_matrix_csr_t *constraint_matrix;
@@ -110,8 +100,6 @@ typedef struct {
     cudaStream_t      stream_At;
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
-    cudaEvent_t       event_x;
-    cudaEvent_t       event_tau;
     cudaGraphExec_t   graphExec;
     bool              graph_created;
 
@@ -124,8 +112,6 @@ typedef struct {
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
-    cusparseDnVecDescr_t spmv_objective_vector;
-    cusparseDnVecDescr_t spmv_objective_product;
     cusparseDnVecDescr_t spmv_power_iteration_vector;
     cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
     cusparseDnVecDescr_t spmv_power_iteration_product;
@@ -157,7 +143,6 @@ typedef struct {
     double *reflected_primal_solution_d;
     double *delta_primal_solution_d;
     double *primal_product_d;
-    double *objective_product_d;
     double *primal_vec_buffer_d;
 
     double *initial_dual_solution_d;
@@ -168,11 +153,8 @@ typedef struct {
     double *dual_product_d;
     double *dual_vec_buffer_d;
 
-    double *initial_dual_slack_d;
-    double *current_dual_slack_d;
-    double *pdhg_dual_slack_d;
-    double *reflected_dual_slack_d;
-    double *delta_dual_slack_d;
+    double *pdhg_reduced_cost_d;
+    double *reduced_cost_ray_d;
 
     double *hsd_scalars_d;
     double *hsd_inverse_scale_d;
@@ -184,10 +166,6 @@ typedef struct {
     double *hsd_dual_constraint_current_d;
     double *hsd_dual_constraint_pdhg_d;
     double *hsd_dual_constraint_reflected_d;
-    double *hsd_dual_bound_initial_d;
-    double *hsd_dual_bound_current_d;
-    double *hsd_dual_bound_pdhg_d;
-    double *hsd_dual_bound_reflected_d;
 
     double *power_iteration_vector_d;
     double *power_iteration_normalized_vector_d;
@@ -202,16 +180,13 @@ typedef struct {
     double *constraint_recession_residual_d;
     double *variable_recession_residual_d;
 
-    cone_projection_state_t constraint_cone_state;
-    cone_projection_state_t bound_cone_state;
+    box_newton_state_t constraint_cone_state;
+    box_newton_state_t primal_box_resolvent_state;
 
     double step_size_primal;
     double step_size_dual;
     double step_size_homogeneous;
     double step_size_base;
-    double c_norm_sq;
-    double rank_one_correction_gain;
-    double d_tau_schur;
     int    total_count;
     int    inner_count;
     int    restart_count;
@@ -239,22 +214,16 @@ typedef struct {
     double *pdhg_reduce_d;
     double *pdhg_primal_norm_d;
     double *pdhg_dual_norm_d;
-    double *pdhg_slack_norm_d;
-    double *pdhg_primal_cross_d;
+    double *objective_dot_primal_d;
     double *pdhg_dual_cross_d;
-    double *pdhg_slack_cross_d;
-    double *pdhg_obj_delta_cross_d;
-    double *rank_one_dot_dual_d;
-    double *rank_one_dot_slack_d;
 
     double *farkas_reduce_d;
     double *farkas_dual_solution_norm_d;
-    double *farkas_dual_slack_norm_d;
     double *farkas_homogeneous_dual_norm_d;
     double *farkas_constraint_recession_d;
     double *farkas_variable_recession_d;
-    double *farkas_support_constraint_d;
-    double *farkas_support_variable_d;
+    double *constraint_support_value_d;
+    double *variable_support_value_d;
     double *farkas_orig_dual_norm_d;
     double *farkas_orig_slack_norm_d;
     double *farkas_orig_primal_norm_d;
