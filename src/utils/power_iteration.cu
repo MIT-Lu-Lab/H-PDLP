@@ -49,7 +49,7 @@ __global__ void compute_power_iteration_residual_kernel(
 
 static void run_power_iteration_step(pdhg_solver_state_t *state, int m)
 {
-    double *power_iteration_vector_d = state->power_iteration_vector_d;
+    double *power_iteration_vector_d = state->primal_product_d;
     double *power_iteration_normalized_vector_d = state->power_iteration_normalized_vector_d;
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
@@ -76,22 +76,22 @@ static void run_power_iteration_step(pdhg_solver_state_t *state, int m)
         state->matAt,
         state->spmv_power_iteration_normalized_vector,
         &HOST_ZERO,
-        state->spmv_power_iteration_product,
+        state->spmv_dual_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->dual_spmv_buffer_d));
+        state->matAt_spmv_workspace_d));
 
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &HOST_ONE,
         state->matA,
-        state->spmv_power_iteration_product,
+        state->spmv_dual_product,
         &HOST_ZERO,
-        state->spmv_power_iteration_vector,
+        state->spmv_primal_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->primal_spmv_buffer_d));
+        state->matA_spmv_workspace_d));
 
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,
@@ -128,10 +128,13 @@ double estimate_maximum_singular_value(
     const int window = 5;
     int m = state->num_constraints;
 
+    if (m == 0)
+        return 0.0;
+
     size_t curand_count = ((size_t)m + 1) & ~(size_t)1;
     CURAND_CHECK(curandGenerateNormalDouble(
         state->curand_gen,
-        state->power_iteration_vector_d,
+        state->primal_product_d,
         curand_count,
         0.0,
         1.0));
@@ -139,26 +142,55 @@ double estimate_maximum_singular_value(
     *state->power_iter_sigma_squared_mp = 1.0;
     *state->power_iter_residual_norm_mp = INFINITY;
 
-    cudaGraph_t graph = NULL;
-    cudaGraphExec_t graphExec = NULL;
-    CUDA_CHECK(cudaStreamBeginCapture(state->stream_A, cudaStreamCaptureModeGlobal));
-    for (int k = 0; k < window; ++k)
-    {
-        run_power_iteration_step(state, m);
-    }
-    CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
-    CUDA_CHECK(cudaGraphInstantiate(&graphExec, graph, NULL, NULL, 0));
-    CUDA_CHECK(cudaGraphDestroy(graph));
-
     const int num_windows = power_iter_params->max_iter / window;
-    for (int j = 0; j < num_windows; ++j)
+    const int remainder = power_iter_params->max_iter % window;
+
+    if (num_windows > 0)
     {
-        CUDA_CHECK(cudaGraphLaunch(graphExec, state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-        if (*state->power_iter_residual_norm_mp < power_iter_params->tol)
-            break;
+        cudaGraph_t graph = NULL;
+        cudaGraphExec_t graph_exec = NULL;
+        CUDA_CHECK(cudaStreamBeginCapture(
+            state->stream_A,
+            cudaStreamCaptureModeGlobal));
+        for (int k = 0; k < window; ++k)
+        {
+            run_power_iteration_step(state, m);
+        }
+        CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
+        CUDA_CHECK(cudaGraphInstantiate(
+            &graph_exec,
+            graph,
+            NULL,
+            NULL,
+            0));
+        CUDA_CHECK(cudaGraphDestroy(graph));
+
+        for (int j = 0; j < num_windows; ++j)
+        {
+            CUDA_CHECK(cudaGraphLaunch(
+                graph_exec,
+                state->stream_A));
+            CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+            if (*state->power_iter_residual_norm_mp <
+                power_iter_params->tol)
+            {
+                break;
+            }
+        }
+
+        CUDA_CHECK(cudaGraphExecDestroy(graph_exec));
     }
 
-    CUDA_CHECK(cudaGraphExecDestroy(graphExec));
+    if (remainder > 0 &&
+        *state->power_iter_residual_norm_mp >=
+            power_iter_params->tol)
+    {
+        for (int k = 0; k < remainder; ++k)
+        {
+            run_power_iteration_step(state, m);
+        }
+        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    }
+
     return sqrt(*state->power_iter_sigma_squared_mp);
 }

@@ -26,14 +26,6 @@ limitations under the License.
 const double HOST_ONE = 1.0;
 const double HOST_ZERO = 0.0;
 
-struct AbsTransform
-{
-    __host__ __device__ double operator()(const double &x) const
-    {
-        return fabs(x);
-    }
-};
-
 static __global__ void compute_objective_norm_entries_kernel(
     const double *__restrict__ obj_vec,
     double *__restrict__ entries,
@@ -209,8 +201,10 @@ void compute_lp_problem_norms_device(
 {
     const int use_linf = (optimality_norm == NORM_TYPE_L_INF);
 
-    double *norm_entries_vars = state->primal_vec_buffer_d;
-    double *norm_entries_cons = state->dual_vec_buffer_d;
+    double *norm_entries_vars =
+        state->variable_reduction_entries_d;
+    double *norm_entries_cons =
+        state->constraint_reduction_entries_d;
 
     compute_objective_norm_entries_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->objective_vector_d, norm_entries_vars, state->num_variables, use_linf);
@@ -224,27 +218,29 @@ void compute_lp_problem_norms_device(
     if (use_linf)
     {
         reduce_device_max(state, norm_entries_vars, state->num_variables,
-                          state->precond_objective_norm_mp);
+                          state->objective_norm_workspace_mp);
         reduce_device_max(state, norm_entries_cons, state->num_constraints,
-                          state->precond_bound_norm_mp);
+                          state->bound_norm_workspace_mp);
     }
     else
     {
         reduce_device_sum(state, norm_entries_vars, state->num_variables,
-                          state->precond_objective_norm_mp);
+                          state->objective_norm_workspace_mp);
         reduce_device_sum(state, norm_entries_cons, state->num_constraints,
-                          state->precond_bound_norm_mp);
+                          state->bound_norm_workspace_mp);
     }
 
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
     if (!use_linf) {
-        *state->precond_objective_norm_mp = sqrt(*state->precond_objective_norm_mp);
-        *state->precond_bound_norm_mp = sqrt(*state->precond_bound_norm_mp);
+        *state->objective_norm_workspace_mp =
+            sqrt(*state->objective_norm_workspace_mp);
+        *state->bound_norm_workspace_mp =
+            sqrt(*state->bound_norm_workspace_mp);
     }
 
-    *out_objective_norm = *state->precond_objective_norm_mp;
-    *out_bound_norm = *state->precond_bound_norm_mp;
+    *out_objective_norm = *state->objective_norm_workspace_mp;
+    *out_bound_norm = *state->bound_norm_workspace_mp;
 }
 
 static __global__ void compute_objective_norm_entries_kernel(
@@ -324,7 +320,10 @@ void reduce_device_abs_max(
     int length,
     double *output)
 {
-    auto abs_input = thrust::make_transform_iterator(input, AbsTransform{});
+    auto abs_input =
+        thrust::make_transform_iterator(
+            input,
+            absolute_value_transform_t{});
     CUDA_CHECK(cub::DeviceReduce::Max(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,

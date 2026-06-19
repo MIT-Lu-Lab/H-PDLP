@@ -22,6 +22,16 @@ limitations under the License.
 #include <stdlib.h>
 
 #ifdef __cplusplus
+struct absolute_value_transform_t
+{
+    __host__ __device__ double operator()(const double &value) const
+    {
+        return value < 0.0 ? -value : value;
+    }
+};
+#endif
+
+#ifdef __cplusplus
 extern "C"
 {
 #endif

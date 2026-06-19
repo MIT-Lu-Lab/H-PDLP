@@ -24,6 +24,7 @@ limitations under the License.
 #include <stdio.h>
 #include <thrust/execution_policy.h>
 #include <thrust/fill.h>
+#include <thrust/system/cuda/execution_policy.h>
 #include <time.h>
 
 #define SCALING_EPSILON 1e-12
@@ -116,7 +117,11 @@ static void scale_problem(
     int num_constraints = state->num_constraints;
     int num_nonzeros = state->constraint_matrix->num_nonzeros;
 
-    scale_variables_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+    scale_variables_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         state->objective_vector_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
@@ -125,7 +130,11 @@ static void scale_problem(
         num_variables);
     CUDA_CHECK(cudaGetLastError());
 
-    scale_constraints_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    scale_constraints_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
         state->initial_dual_solution_d,
@@ -133,7 +142,11 @@ static void scale_problem(
         num_constraints);
     CUDA_CHECK(cudaGetLastError());
 
-    scale_csr_nnz_kernel<<<state->num_blocks_nnz, THREADS_PER_BLOCK>>>(
+    scale_csr_nnz_kernel<<<
+        state->num_blocks_nnz,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         state->constraint_matrix->row_ind,
         state->constraint_matrix->col_ind,
         state->constraint_matrix->val,
@@ -156,22 +169,38 @@ static void ruiz_rescaling(
 
     for (int iter = 0; iter < num_iterations; ++iter)
     {
-        compute_csr_row_absmax_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        compute_csr_row_absmax_kernel<<<
+            state->num_blocks_dual,
+            THREADS_PER_BLOCK,
+            0,
+            state->stream_A>>>(
             state->constraint_matrix->row_ptr,
             state->constraint_matrix->val,
             num_constraints,
             constraint_rescaling);
-        clamp_sqrt_and_accum_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+        clamp_sqrt_and_accum_kernel<<<
+            state->num_blocks_dual,
+            THREADS_PER_BLOCK,
+            0,
+            state->stream_A>>>(
             constraint_rescaling,
             state->constraint_rescaling_d,
             num_constraints);
 
-        compute_csr_row_absmax_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        compute_csr_row_absmax_kernel<<<
+            state->num_blocks_primal,
+            THREADS_PER_BLOCK,
+            0,
+            state->stream_A>>>(
             state->constraint_matrix_t->row_ptr,
             state->constraint_matrix_t->val,
             num_variables,
             variable_rescaling);
-        clamp_sqrt_and_accum_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+        clamp_sqrt_and_accum_kernel<<<
+            state->num_blocks_primal,
+            THREADS_PER_BLOCK,
+            0,
+            state->stream_A>>>(
             variable_rescaling,
             state->variable_rescaling_d,
             num_variables);
@@ -189,24 +218,40 @@ static void pock_chambolle_rescaling(
     const int num_constraints = state->num_constraints;
     const int num_variables = state->num_variables;
 
-    compute_csr_row_powsum_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    compute_csr_row_powsum_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         state->constraint_matrix->row_ptr,
         state->constraint_matrix->val,
         num_constraints,
         alpha,
         constraint_rescaling);
-    clamp_sqrt_and_accum_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK>>>(
+    clamp_sqrt_and_accum_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         constraint_rescaling,
         state->constraint_rescaling_d,
         num_constraints);
 
-    compute_csr_row_powsum_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+    compute_csr_row_powsum_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         state->constraint_matrix_t->row_ptr,
         state->constraint_matrix_t->val,
         num_variables,
         2.0 - alpha,
         variable_rescaling);
-    clamp_sqrt_and_accum_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK>>>(
+    clamp_sqrt_and_accum_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
         variable_rescaling,
         state->variable_rescaling_d,
         num_variables);
@@ -220,7 +265,8 @@ static void bound_objective_rescaling(
     const int num_constraints = state->num_constraints;
     const int num_variables = state->num_variables;
 
-    double *bound_contrib_d = state->dual_vec_buffer_d;
+    double *bound_contrib_d =
+        state->constraint_reduction_entries_d;
     compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         bound_contrib_d,
         state->constraint_lower_bound_d,
@@ -231,7 +277,7 @@ static void bound_objective_rescaling(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
         bound_contrib_d,
-        state->precond_bound_norm_mp,
+        state->bound_norm_workspace_mp,
         num_constraints,
         state->stream_A));
 
@@ -240,16 +286,17 @@ static void bound_objective_rescaling(
         state->num_variables,
         state->objective_vector_d,
         1,
-        state->precond_objective_norm_mp));
+        state->objective_norm_workspace_mp));
 
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    *state->precond_bound_norm_mp = sqrt(*state->precond_bound_norm_mp);
+    *state->bound_norm_workspace_mp =
+        sqrt(*state->bound_norm_workspace_mp);
 
     compute_bound_objective_scales_kernel<<<1, 1, 0, state->stream_A>>>(
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
-        state->precond_bound_norm_mp,
-        state->precond_objective_norm_mp);
+        state->bound_norm_workspace_mp,
+        state->objective_norm_workspace_mp);
 
     scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->constraint_lower_bound_d,
@@ -306,13 +353,37 @@ void rescale_problem(
 
     clock_t start_rescaling = clock();
 
-    thrust::fill_n(thrust::device, state->constraint_rescaling_d, num_constraints, 1.0);
-    thrust::fill_n(thrust::device, state->variable_rescaling_d,   num_variables,   1.0);
+    thrust::fill_n(
+        thrust::cuda::par.on(state->stream_A),
+        state->constraint_rescaling_d,
+        num_constraints,
+        1.0);
+    thrust::fill_n(
+        thrust::cuda::par.on(state->stream_A),
+        state->variable_rescaling_d,
+        num_variables,
+        1.0);
 
     double *constraint_rescaling = NULL;
     double *variable_rescaling = NULL;
-    CUDA_CHECK(cudaMalloc(&constraint_rescaling, num_constraints * sizeof(double)));
-    CUDA_CHECK(cudaMalloc(&variable_rescaling, num_variables * sizeof(double)));
+    const bool needs_equilibration_workspace =
+        scaling_params->l_inf_ruiz_iterations > 0 ||
+        scaling_params->has_pock_chambolle_alpha;
+    if (needs_equilibration_workspace)
+    {
+        CUDA_CHECK(cudaMalloc(
+            &constraint_rescaling,
+            (size_t)((num_constraints > 0)
+                         ? num_constraints
+                         : 1) *
+                sizeof(double)));
+        CUDA_CHECK(cudaMalloc(
+            &variable_rescaling,
+            (size_t)((num_variables > 0)
+                         ? num_variables
+                         : 1) *
+                sizeof(double)));
+    }
 
     if (scaling_params->l_inf_ruiz_iterations > 0)
     {
@@ -344,13 +415,15 @@ void rescale_problem(
         bound_objective_rescaling(state);
     }
 
-    state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
-
     compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
     state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
+    state->rescaling_time_sec =
+        (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
 
-    CUDA_CHECK(cudaFree(constraint_rescaling));
-    CUDA_CHECK(cudaFree(variable_rescaling));
+    if (constraint_rescaling)
+        CUDA_CHECK(cudaFree(constraint_rescaling));
+    if (variable_rescaling)
+        CUDA_CHECK(cudaFree(variable_rescaling));
 
     if (verbose)
     {

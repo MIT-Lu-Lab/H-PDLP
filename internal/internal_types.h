@@ -112,11 +112,9 @@ typedef struct {
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
-    cusparseDnVecDescr_t spmv_power_iteration_vector;
     cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
-    cusparseDnVecDescr_t spmv_power_iteration_product;
-    void   *primal_spmv_buffer_d;
-    void   *dual_spmv_buffer_d;
+    void   *matA_spmv_workspace_d;
+    void   *matAt_spmv_workspace_d;
     void   *cub_reduce_workspace_d;
     size_t  cub_reduce_workspace_bytes;
 
@@ -130,8 +128,8 @@ typedef struct {
     double  objective_vector_rescaling;
     double  objective_sign;
     double  rescaling_time_sec;
-    double *precond_bound_norm_mp;
-    double *precond_objective_norm_mp;
+    double *bound_norm_workspace_mp;
+    double *objective_norm_workspace_mp;
     double *constraint_rescaling_d;
     double *variable_rescaling_d;
     double *constraint_bound_rescaling_d;
@@ -143,7 +141,8 @@ typedef struct {
     double *reflected_primal_solution_d;
     double *delta_primal_solution_d;
     double *primal_product_d;
-    double *primal_vec_buffer_d;
+    double *primal_resolvent_input_d;
+    double *variable_reduction_entries_d;
 
     double *initial_dual_solution_d;
     double *current_dual_solution_d;
@@ -151,10 +150,13 @@ typedef struct {
     double *reflected_dual_solution_d;
     double *delta_dual_solution_d;
     double *dual_product_d;
-    double *dual_vec_buffer_d;
+    double *dual_cone_projection_input_d;
+    double *constraint_reduction_entries_d;
 
     double *pdhg_reduced_cost_d;
     double *reduced_cost_ray_d;
+    double *dual_ray_d;
+    double *primal_ray_d;
 
     double *hsd_scalars_d;
     double *hsd_inverse_scale_d;
@@ -167,9 +169,7 @@ typedef struct {
     double *hsd_dual_constraint_pdhg_d;
     double *hsd_dual_constraint_reflected_d;
 
-    double *power_iteration_vector_d;
     double *power_iteration_normalized_vector_d;
-    double *power_iteration_product_d;
     double *power_iteration_vector_norm_scalar_d;
     double *power_iter_sigma_squared_mp;
     double *power_iter_residual_norm_mp;

@@ -123,7 +123,7 @@ static void compute_residual_products(pdhg_solver_state_t *state)
         state->spmv_primal_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->primal_spmv_buffer_d));
+        state->matA_spmv_workspace_d));
 
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_At,
@@ -135,7 +135,7 @@ static void compute_residual_products(pdhg_solver_state_t *state)
         state->spmv_dual_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
-        state->dual_spmv_buffer_d));
+        state->matAt_spmv_workspace_d));
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
@@ -161,9 +161,9 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
         state->homogeneous_dual_residual_d,
         state->constraint_recession_residual_d,
         state->variable_recession_residual_d,
-        state->delta_dual_solution_d,
+        state->dual_ray_d,
         state->reduced_cost_ray_d,
-        state->delta_primal_solution_d,
+        state->primal_ray_d,
         state->pdhg_reduced_cost_d,
         state->num_constraints,
         state->num_variables);
@@ -186,11 +186,11 @@ static void compute_linf_residual_norms(pdhg_solver_state_t *state)
                           &state->metrics_d->primal_solution_norm);
     reduce_device_abs_max(state, state->pdhg_dual_solution_d, state->num_constraints,
                           state->farkas_dual_solution_norm_d);
-    reduce_device_abs_max(state, state->delta_dual_solution_d, state->num_constraints,
+    reduce_device_abs_max(state, state->dual_ray_d, state->num_constraints,
                           state->farkas_original_dual_norm_d);
     reduce_device_abs_max(state, state->reduced_cost_ray_d, state->num_variables,
                           state->farkas_original_reduced_cost_norm_d);
-    reduce_device_abs_max(state, state->delta_primal_solution_d, state->num_variables,
+    reduce_device_abs_max(state, state->primal_ray_d, state->num_variables,
                           state->farkas_original_primal_norm_d);
 }
 
@@ -226,7 +226,7 @@ static void compute_l2_residual_norms(pdhg_solver_state_t *state)
         state->farkas_dual_solution_norm_d));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_constraints,
-        state->delta_dual_solution_d, 1,
+        state->dual_ray_d, 1,
         state->farkas_original_dual_norm_d));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
@@ -234,7 +234,7 @@ static void compute_l2_residual_norms(pdhg_solver_state_t *state)
         state->farkas_original_reduced_cost_norm_d));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
-        state->delta_primal_solution_d, 1,
+        state->primal_ray_d, 1,
         state->farkas_original_primal_norm_d));
 }
 
@@ -249,7 +249,7 @@ static void compute_objective_and_support_terms(pdhg_solver_state_t *state)
 
     compute_box_support_contribution_kernel<<<
         state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->dual_vec_buffer_d,
+        state->constraint_reduction_entries_d,
         state->pdhg_dual_solution_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
@@ -257,13 +257,13 @@ static void compute_objective_and_support_terms(pdhg_solver_state_t *state)
     CUDA_CHECK(cub::DeviceReduce::Sum(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
-        state->dual_vec_buffer_d,
+        state->constraint_reduction_entries_d,
         state->constraint_support_value_d,
         state->num_constraints, state->stream_A));
 
     compute_box_support_contribution_kernel<<<
         state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->primal_vec_buffer_d,
+        state->variable_reduction_entries_d,
         state->pdhg_reduced_cost_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
@@ -271,7 +271,7 @@ static void compute_objective_and_support_terms(pdhg_solver_state_t *state)
     CUDA_CHECK(cub::DeviceReduce::Sum(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
-        state->primal_vec_buffer_d,
+        state->variable_reduction_entries_d,
         state->variable_support_value_d,
         state->num_variables, state->stream_A));
 }
