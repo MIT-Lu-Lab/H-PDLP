@@ -41,10 +41,24 @@ typedef struct {
     newton_terms_t *newton_partials_d;
 } box_newton_state_t;
 
-void solve_dual_cone_newton(
+void update_hsd_cone_dual(
     const cone_parameters_t *cone_params,
     box_newton_state_t *cone_state,
-    const double *unprojected_vector,
+    double *current_dual,
+    double *reflected_dual,
+    double *evaluation_dual,
+    const double *initial_dual,
+    const double *gradient,
+    const double *step_size_d,
+    const double *homogeneous_scale_current,
+    const int *base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    const double *offset_initial,
+    double *offset_current,
+    double *offset_evaluation,
+    double *offset_reflected,
+    bool save_evaluation_iterate,
     cudaStream_t stream);
 
 void update_primal_box_resolvent(

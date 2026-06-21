@@ -34,15 +34,6 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
-__global__ void compute_hsd_unprojected_dual_kernel(
-    double *__restrict__ out,
-    const double *__restrict__ current,
-    const double *__restrict__ gradient,
-    double *scalar_out,
-    const double *scalar_current,
-    const double *scalar_gradient,
-    const double *__restrict__ step_size_d,
-    int n);
 __global__ void compute_primal_homogeneous_resolvent_input_kernel(
     double *__restrict__ out,
     const double *__restrict__ current,
@@ -54,22 +45,6 @@ __global__ void compute_primal_homogeneous_resolvent_input_kernel(
     const double *__restrict__ step_size_d,
     const double *step_size_homogeneous_d,
     int n);
-__global__ void update_hsd_dual_solution_kernel(
-    double *__restrict__ cur,
-    double *__restrict__ refl,
-    double *__restrict__ pdhg,
-    const double *__restrict__ init,
-    const double *__restrict__ unprojected,
-    box_newton_state_t cone,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double refl_coeff,
-    int n,
-    double *offset_initial,
-    double *offset_current,
-    double *offset_pdhg,
-    double *offset_reflected,
-    bool is_major);
 __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
     double *__restrict__ dual_sol,
@@ -359,46 +334,25 @@ static void hsd_update_dual_solution(
         CUSPARSE_SPMV_CSR_ALG2,
         state->matA_spmv_workspace_d));
 
-    compute_hsd_unprojected_dual_kernel<<<
-        state->num_blocks_dual,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->dual_cone_projection_input_d,
-        state->current_dual_solution_d,
-        state->primal_product_d,
-        state->constraint_cone_state.unprojected_scalar_d,
-        state->hsd_dual_constraint_current_d,
-        state->hsd_scale_current_d,
-        state->step_size_dual_d,
-        state->num_constraints);
-
-    solve_dual_cone_newton(
+    update_hsd_cone_dual(
         cone_params,
         &state->constraint_cone_state,
-        state->dual_cone_projection_input_d,
-        state->stream_A);
-
-    update_hsd_dual_solution_kernel<<<
-        state->num_blocks_dual,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
         state->current_dual_solution_d,
         state->reflected_dual_solution_d,
         state->pdhg_dual_solution_d,
         state->initial_dual_solution_d,
-        state->dual_cone_projection_input_d,
-        state->constraint_cone_state,
+        state->primal_product_d,
+        state->step_size_dual_d,
+        state->hsd_scale_current_d,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
-        state->num_constraints,
         state->hsd_dual_constraint_initial_d,
         state->hsd_dual_constraint_current_d,
         state->hsd_dual_constraint_pdhg_d,
         state->hsd_dual_constraint_reflected_d,
-        is_major);
+        is_major,
+        state->stream_A);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
 }
@@ -828,24 +782,6 @@ static void rescale_solution(pdhg_solver_state_t *state)
         state->num_constraints);
 }
 
-__global__ void compute_hsd_unprojected_dual_kernel(
-    double *__restrict__ out,
-    const double *__restrict__ current,
-    const double *__restrict__ gradient,
-    double *scalar_out,
-    const double *scalar_current,
-    const double *scalar_gradient,
-    const double *__restrict__ step_size_d,
-    int n)
-{
-    double step_size = *step_size_d;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n)
-        out[i] = current[i] - step_size * gradient[i];
-    else if (i == n)
-        *scalar_out = (*scalar_current) - step_size * (*scalar_gradient);
-}
-
 __global__ void compute_primal_homogeneous_resolvent_input_kernel(
     double *__restrict__ out,
     const double *__restrict__ current,
@@ -866,64 +802,6 @@ __global__ void compute_primal_homogeneous_resolvent_input_kernel(
     {
         *scalar_out = (*scalar_current) + (*step_size_homogeneous_d) * (*scalar_gradient);
         *scale_seed_out = *scalar_current;
-    }
-}
-
-__global__ void update_hsd_dual_solution_kernel(
-    double *__restrict__ cur,
-    double *__restrict__ refl,
-    double *__restrict__ pdhg,
-    const double *__restrict__ init,
-    const double *__restrict__ unprojected,
-    box_newton_state_t cone,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double refl_coeff,
-    int n,
-    double *offset_initial,
-    double *offset_current,
-    double *offset_pdhg,
-    double *offset_reflected,
-    bool is_major)
-{
-    int base_count = *base_count_d;
-    double scale = *cone.scalar_d;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n)
-    {
-        int k = base_count + k_offset;
-        double weight = (double)(k) / (double)(k + 1);
-
-        double u = unprojected[i];
-        double li = cone.lower_bound_d[i];
-        double ui = cone.upper_bound_d[i];
-        double box_lower = isfinite(li) ? li * scale : -INFINITY;
-        double box_upper = isfinite(ui) ? ui * scale : INFINITY;
-        double proj_i = u + fmin(fmax(-u, box_lower), box_upper);
-
-        if (is_major)
-        {
-            pdhg[i] = proj_i;
-        }
-
-        refl[i] = 2.0 * proj_i - cur[i];
-        double mixed = refl_coeff * refl[i] + (1.0 - refl_coeff) * cur[i];
-        cur[i] = weight * mixed + (1.0 - weight) * init[i];
-    }
-    if (i == n)
-    {
-        int k = base_count + k_offset;
-        double weight = (double)(k) / (double)(k + 1);
-        double unprojected_scalar = *cone.unprojected_scalar_d;
-        double projected = unprojected_scalar + scale;
-        if (is_major)
-        {
-            *offset_pdhg = projected;
-        }
-        double reflected = 2.0 * projected - (*offset_current);
-        double mixed = refl_coeff * reflected + (1.0 - refl_coeff) * (*offset_current);
-        *offset_current = weight * mixed + (1.0 - weight) * (*offset_initial);
-        *offset_reflected = reflected;
     }
 }
 

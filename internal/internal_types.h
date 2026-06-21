@@ -150,7 +150,6 @@ typedef struct {
     double *reflected_dual_solution_d;
     double *delta_dual_solution_d;
     double *dual_product_d;
-    double *dual_cone_projection_input_d;
     double *constraint_reduction_entries_d;
 
     double *pdhg_reduced_cost_d;

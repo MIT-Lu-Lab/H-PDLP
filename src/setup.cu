@@ -660,9 +660,6 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->delta_dual_solution_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_product_d, var_bytes);
     allocate_zeroed_device_buffer(
-        (void **)&state->dual_cone_projection_input_d,
-        con_bytes);
-    allocate_zeroed_device_buffer(
         (void **)&state->constraint_reduction_entries_d,
         con_bytes);
 
@@ -762,7 +759,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->graph_created = false;
 
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scalar_d, sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.unprojected_scalar_d, sizeof(double));
+    state->constraint_cone_state.unprojected_scalar_d = NULL;
     state->constraint_cone_state.lower_bound_d = state->constraint_lower_bound_d;
     state->constraint_cone_state.upper_bound_d = state->constraint_upper_bound_d;
     state->constraint_cone_state.num_elements = state->num_constraints;
@@ -1024,7 +1021,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->reflected_dual_solution_d);
     FREE_DEVICE_BUFFER(state->delta_dual_solution_d);
     FREE_DEVICE_BUFFER(state->dual_product_d);
-    FREE_DEVICE_BUFFER(state->dual_cone_projection_input_d);
     FREE_DEVICE_BUFFER(state->constraint_reduction_entries_d);
 
     FREE_DEVICE_BUFFER(state->pdhg_reduced_cost_d);

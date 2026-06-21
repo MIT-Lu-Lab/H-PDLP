@@ -34,13 +34,41 @@ struct SumNewtonTerms {
 
 typedef cub::BlockReduce<newton_terms_t, THREADS_PER_BLOCK> ConeBlockReduce;
 
-__global__ void solve_dual_cone_newton_cooperative_kernel(
-    const double *__restrict__ unprojected,
+__global__ void update_hsd_cone_dual_cooperative_kernel(
+    double *__restrict__ current_dual,
+    double *__restrict__ reflected_dual,
+    double *__restrict__ evaluation_dual,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ gradient,
+    const double *step_size_d,
+    const double *homogeneous_scale_current,
+    const int *__restrict__ base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    const double *offset_initial,
+    double *offset_current,
+    double *offset_evaluation,
+    double *offset_reflected,
+    bool save_evaluation_iterate,
     box_newton_state_t cone,
     int max_iter,
     double tol);
-__global__ void solve_dual_cone_newton_single_block_kernel(
-    const double *__restrict__ unprojected,
+__global__ void update_hsd_cone_dual_single_block_kernel(
+    double *__restrict__ current_dual,
+    double *__restrict__ reflected_dual,
+    double *__restrict__ evaluation_dual,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ gradient,
+    const double *step_size_d,
+    const double *homogeneous_scale_current,
+    const int *__restrict__ base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    const double *offset_initial,
+    double *offset_current,
+    double *offset_evaluation,
+    double *offset_reflected,
+    bool save_evaluation_iterate,
     box_newton_state_t cone,
     int max_iter,
     double tol);
@@ -110,19 +138,47 @@ __device__ __forceinline__ bool update_newton_bracket(
     double &scale_low,
     double &scale_high);
 
-void solve_dual_cone_newton(
+void update_hsd_cone_dual(
     const cone_parameters_t *cone_params,
     box_newton_state_t *cone_state,
-    const double *unprojected_vector,
+    double *current_dual,
+    double *reflected_dual,
+    double *evaluation_dual,
+    const double *initial_dual,
+    const double *gradient,
+    const double *step_size_d,
+    const double *homogeneous_scale_current,
+    const int *base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    const double *offset_initial,
+    double *offset_current,
+    double *offset_evaluation,
+    double *offset_reflected,
+    bool save_evaluation_iterate,
     cudaStream_t stream)
 {
     const box_newton_state_t cone = *cone_state;
 
     if (cone.num_blocks_newton == 1)
     {
-        solve_dual_cone_newton_single_block_kernel<<<
+        update_hsd_cone_dual_single_block_kernel<<<
             1, THREADS_PER_BLOCK, 0, stream>>>(
-            unprojected_vector,
+            current_dual,
+            reflected_dual,
+            evaluation_dual,
+            initial_dual,
+            gradient,
+            step_size_d,
+            homogeneous_scale_current,
+            base_count_d,
+            k_offset,
+            reflection_coefficient,
+            offset_initial,
+            offset_current,
+            offset_evaluation,
+            offset_reflected,
+            save_evaluation_iterate,
             cone,
             cone_params->max_iter,
             cone_params->tol);
@@ -144,8 +200,22 @@ void solve_dual_cone_newton(
 
     CUDA_CHECK(cudaLaunchKernelEx(
         &config,
-        solve_dual_cone_newton_cooperative_kernel,
-        unprojected_vector,
+        update_hsd_cone_dual_cooperative_kernel,
+        current_dual,
+        reflected_dual,
+        evaluation_dual,
+        initial_dual,
+        gradient,
+        step_size_d,
+        homogeneous_scale_current,
+        base_count_d,
+        k_offset,
+        reflection_coefficient,
+        offset_initial,
+        offset_current,
+        offset_evaluation,
+        offset_reflected,
+        save_evaluation_iterate,
         cone,
         cone_params->max_iter,
         cone_params->tol));
@@ -247,7 +317,7 @@ int max_cooperative_dual_cone_blocks()
     int active = 0;
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
         &active,
-        solve_dual_cone_newton_cooperative_kernel,
+        update_hsd_cone_dual_cooperative_kernel,
         THREADS_PER_BLOCK,
         0));
     return active * sm_count;
@@ -269,8 +339,22 @@ int max_cooperative_primal_box_blocks()
     return active * sm_count;
 }
 
-__global__ void solve_dual_cone_newton_cooperative_kernel(
-    const double *__restrict__ unprojected,
+__global__ void update_hsd_cone_dual_cooperative_kernel(
+    double *__restrict__ current_dual,
+    double *__restrict__ reflected_dual,
+    double *__restrict__ evaluation_dual,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ gradient,
+    const double *step_size_d,
+    const double *homogeneous_scale_current,
+    const int *__restrict__ base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    const double *offset_initial,
+    double *offset_current,
+    double *offset_evaluation,
+    double *offset_reflected,
+    bool save_evaluation_iterate,
     box_newton_state_t cone,
     int max_iter,
     double tol)
@@ -284,7 +368,9 @@ __global__ void solve_dual_cone_newton_cooperative_kernel(
     double scale = *cone.scalar_d;
     double scale_low = 0.0;
     double scale_high = INFINITY;
-    const double unprojected_scale = *cone.unprojected_scalar_d;
+    const double step_size = *step_size_d;
+    const double unprojected_scale =
+        *offset_current - step_size * (*homogeneous_scale_current);
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
@@ -296,8 +382,13 @@ __global__ void solve_dual_cone_newton_cooperative_kernel(
              i += cone.num_blocks_newton * blockDim.x)
         {
             double function_contribution, derivative_contribution;
+            // Recompute instead of materializing an n-element intermediate.
+            // This keeps the fused kernel valid for arbitrarily large cones
+            // without fixed-size per-thread register arrays.
+            const double unprojected =
+                current_dual[i] - step_size * gradient[i];
             evaluate_dual_cone_newton_terms(
-                unprojected[i], cone.lower_bound_d[i], cone.upper_bound_d[i], scale,
+                unprojected, cone.lower_bound_d[i], cone.upper_bound_d[i], scale,
                 function_contribution, derivative_contribution);
             thread_derivative += derivative_contribution;
             thread_function += function_contribution;
@@ -343,14 +434,65 @@ __global__ void solve_dual_cone_newton_cooperative_kernel(
         }
     }
 
+    const int base_count = *base_count_d;
+    const int k = base_count + k_offset;
+    const double weight = (double)k / (double)(k + 1);
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < cone.num_elements;
+         i += cone.num_blocks_newton * blockDim.x)
+    {
+        const double current = current_dual[i];
+        const double unprojected = current - step_size * gradient[i];
+        const double lower = cone.lower_bound_d[i];
+        const double upper = cone.upper_bound_d[i];
+        const double box_lower = isfinite(lower) ? lower * scale : -INFINITY;
+        const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
+        const double projected =
+            unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
+        if (save_evaluation_iterate)
+            evaluation_dual[i] = projected;
+        const double reflected = 2.0 * projected - current;
+        reflected_dual[i] = reflected;
+        const double relaxed =
+            reflection_coefficient * reflected +
+            (1.0 - reflection_coefficient) * current;
+        current_dual[i] =
+            weight * relaxed + (1.0 - weight) * initial_dual[i];
+    }
+
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
         *cone.scalar_d = scale;
+        const double projected = unprojected_scale + scale;
+        if (save_evaluation_iterate)
+            *offset_evaluation = projected;
+        const double current = *offset_current;
+        const double reflected = 2.0 * projected - current;
+        const double relaxed =
+            reflection_coefficient * reflected +
+            (1.0 - reflection_coefficient) * current;
+        *offset_current =
+            weight * relaxed + (1.0 - weight) * (*offset_initial);
+        *offset_reflected = reflected;
     }
 }
 
-__global__ void solve_dual_cone_newton_single_block_kernel(
-    const double *__restrict__ unprojected,
+__global__ void update_hsd_cone_dual_single_block_kernel(
+    double *__restrict__ current_dual,
+    double *__restrict__ reflected_dual,
+    double *__restrict__ evaluation_dual,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ gradient,
+    const double *step_size_d,
+    const double *homogeneous_scale_current,
+    const int *__restrict__ base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    const double *offset_initial,
+    double *offset_current,
+    double *offset_evaluation,
+    double *offset_reflected,
+    bool save_evaluation_iterate,
     box_newton_state_t cone,
     int max_iter,
     double tol)
@@ -362,7 +504,9 @@ __global__ void solve_dual_cone_newton_single_block_kernel(
     double scale = *cone.scalar_d;
     double scale_low = 0.0;
     double scale_high = INFINITY;
-    const double unprojected_scale = *cone.unprojected_scalar_d;
+    const double step_size = *step_size_d;
+    const double unprojected_scale =
+        *offset_current - step_size * (*homogeneous_scale_current);
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
@@ -370,8 +514,10 @@ __global__ void solve_dual_cone_newton_single_block_kernel(
         for (int i = threadIdx.x; i < cone.num_elements; i += blockDim.x)
         {
             double function_contribution, derivative_contribution;
+            const double unprojected =
+                current_dual[i] - step_size * gradient[i];
             evaluate_dual_cone_newton_terms(
-                unprojected[i], cone.lower_bound_d[i], cone.upper_bound_d[i], scale,
+                unprojected, cone.lower_bound_d[i], cone.upper_bound_d[i], scale,
                 function_contribution, derivative_contribution);
             thread_derivative += derivative_contribution;
             thread_function += function_contribution;
@@ -399,9 +545,44 @@ __global__ void solve_dual_cone_newton_single_block_kernel(
         }
     }
 
+    const int base_count = *base_count_d;
+    const int k = base_count + k_offset;
+    const double weight = (double)k / (double)(k + 1);
+    for (int i = threadIdx.x; i < cone.num_elements; i += blockDim.x)
+    {
+        const double current = current_dual[i];
+        const double unprojected = current - step_size * gradient[i];
+        const double lower = cone.lower_bound_d[i];
+        const double upper = cone.upper_bound_d[i];
+        const double box_lower = isfinite(lower) ? lower * scale : -INFINITY;
+        const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
+        const double projected =
+            unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
+        if (save_evaluation_iterate)
+            evaluation_dual[i] = projected;
+        const double reflected = 2.0 * projected - current;
+        reflected_dual[i] = reflected;
+        const double relaxed =
+            reflection_coefficient * reflected +
+            (1.0 - reflection_coefficient) * current;
+        current_dual[i] =
+            weight * relaxed + (1.0 - weight) * initial_dual[i];
+    }
+
     if (threadIdx.x == 0)
     {
         *cone.scalar_d = scale;
+        const double projected = unprojected_scale + scale;
+        if (save_evaluation_iterate)
+            *offset_evaluation = projected;
+        const double current = *offset_current;
+        const double reflected = 2.0 * projected - current;
+        const double relaxed =
+            reflection_coefficient * reflected +
+            (1.0 - reflection_coefficient) * current;
+        *offset_current =
+            weight * relaxed + (1.0 - weight) * (*offset_initial);
+        *offset_reflected = reflected;
     }
 }
 
