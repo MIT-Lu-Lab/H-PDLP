@@ -37,7 +37,6 @@ typedef struct {
     int num_elements;
     int num_blocks_newton;
     double *scalar_d;
-    double *unprojected_scalar_d;
     newton_terms_t *newton_partials_d;
 } box_newton_state_t;
 
@@ -68,10 +67,11 @@ void update_primal_box_resolvent(
     double *reflected_primal,
     double *evaluation_primal,
     const double *initial_primal,
-    const double *unprojected_vector,
+    const double *gradient,
     const double *objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
     const int *base_count_d,
     int k_offset,
     double reflection_coefficient,

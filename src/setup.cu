@@ -647,9 +647,6 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
         (void **)&state->primal_product_d,
         padded_constraint_count * sizeof(double));
     allocate_zeroed_device_buffer(
-        (void **)&state->primal_resolvent_input_d,
-        var_bytes);
-    allocate_zeroed_device_buffer(
         (void **)&state->variable_reduction_entries_d,
         var_bytes);
 
@@ -759,13 +756,11 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->graph_created = false;
 
     allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scalar_d, sizeof(double));
-    state->constraint_cone_state.unprojected_scalar_d = NULL;
     state->constraint_cone_state.lower_bound_d = state->constraint_lower_bound_d;
     state->constraint_cone_state.upper_bound_d = state->constraint_upper_bound_d;
     state->constraint_cone_state.num_elements = state->num_constraints;
 
     allocate_zeroed_device_buffer((void **)&state->primal_box_resolvent_state.scalar_d, sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->primal_box_resolvent_state.unprojected_scalar_d, sizeof(double));
     state->primal_box_resolvent_state.lower_bound_d = state->variable_lower_bound_d;
     state->primal_box_resolvent_state.upper_bound_d = state->variable_upper_bound_d;
     state->primal_box_resolvent_state.num_elements = state->num_variables;
@@ -1012,7 +1007,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->reflected_primal_solution_d);
     FREE_DEVICE_BUFFER(state->delta_primal_solution_d);
     FREE_DEVICE_BUFFER(state->primal_product_d);
-    FREE_DEVICE_BUFFER(state->primal_resolvent_input_d);
     FREE_DEVICE_BUFFER(state->variable_reduction_entries_d);
 
     FREE_DEVICE_BUFFER(state->initial_dual_solution_d);
@@ -1040,10 +1034,8 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
 
     FREE_DEVICE_BUFFER(state->constraint_cone_state.scalar_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.unprojected_scalar_d);
     FREE_DEVICE_BUFFER(state->constraint_cone_state.newton_partials_d);
     FREE_DEVICE_BUFFER(state->primal_box_resolvent_state.scalar_d);
-    FREE_DEVICE_BUFFER(state->primal_box_resolvent_state.unprojected_scalar_d);
     FREE_DEVICE_BUFFER(state->primal_box_resolvent_state.newton_partials_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);

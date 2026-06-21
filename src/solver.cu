@@ -34,17 +34,6 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
-__global__ void compute_primal_homogeneous_resolvent_input_kernel(
-    double *__restrict__ out,
-    const double *__restrict__ current,
-    const double *__restrict__ gradient,
-    double *scalar_out,
-    double *scale_seed_out,
-    const double *scalar_current,
-    const double *scalar_gradient,
-    const double *__restrict__ step_size_d,
-    const double *step_size_homogeneous_d,
-    int n);
 __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
     double *__restrict__ dual_sol,
@@ -383,22 +372,6 @@ static void update_hsd_primal_and_homogeneous_scale(
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 
-    compute_primal_homogeneous_resolvent_input_kernel<<<
-        state->num_blocks_primal,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->primal_resolvent_input_d,
-        state->current_primal_solution_d,
-        state->dual_product_d,
-        state->primal_box_resolvent_state.unprojected_scalar_d,
-        state->primal_box_resolvent_state.scalar_d,
-        state->hsd_scale_current_d,
-        state->hsd_dual_constraint_reflected_d,
-        state->step_size_primal_d,
-        state->step_size_homogeneous_d,
-        state->num_variables);
-
     update_primal_box_resolvent(
         cone_params,
         &state->primal_box_resolvent_state,
@@ -406,10 +379,11 @@ static void update_hsd_primal_and_homogeneous_scale(
         state->reflected_primal_solution_d,
         state->pdhg_primal_solution_d,
         state->initial_primal_solution_d,
-        state->primal_resolvent_input_d,
+        state->dual_product_d,
         state->objective_vector_d,
         state->step_size_primal_d,
         state->step_size_homogeneous_d,
+        state->hsd_dual_constraint_reflected_d,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
@@ -780,29 +754,6 @@ static void rescale_solution(pdhg_solver_state_t *state)
         divisor,
         state->num_variables,
         state->num_constraints);
-}
-
-__global__ void compute_primal_homogeneous_resolvent_input_kernel(
-    double *__restrict__ out,
-    const double *__restrict__ current,
-    const double *__restrict__ gradient,
-    double *scalar_out,
-    double *scale_seed_out,
-    const double *scalar_current,
-    const double *scalar_gradient,
-    const double *__restrict__ step_size_d,
-    const double *step_size_homogeneous_d,
-    int n)
-{
-    double step_size = *step_size_d;
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n)
-        out[i] = current[i] + step_size * gradient[i];
-    else if (i == n)
-    {
-        *scalar_out = (*scalar_current) + (*step_size_homogeneous_d) * (*scalar_gradient);
-        *scale_seed_out = *scalar_current;
-    }
 }
 
 __global__ void rescale_solution_kernel(

@@ -77,10 +77,11 @@ __global__ void primal_box_resolvent_cooperative_kernel(
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
     const double *__restrict__ initial_primal,
-    const double *__restrict__ unprojected_vector,
+    const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
     const int *__restrict__ base_count_d,
     int k_offset,
     double reflection_coefficient,
@@ -97,10 +98,11 @@ __global__ void primal_box_resolvent_single_block_kernel(
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
     const double *__restrict__ initial_primal,
-    const double *__restrict__ unprojected_vector,
+    const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
     const int *__restrict__ base_count_d,
     int k_offset,
     double reflection_coefficient,
@@ -228,10 +230,11 @@ void update_primal_box_resolvent(
     double *reflected_primal,
     double *evaluation_primal,
     const double *initial_primal,
-    const double *unprojected_vector,
+    const double *gradient,
     const double *objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
     const int *base_count_d,
     int k_offset,
     double reflection_coefficient,
@@ -252,10 +255,11 @@ void update_primal_box_resolvent(
             reflected_primal,
             evaluation_primal,
             initial_primal,
-            unprojected_vector,
+            gradient,
             objective_d,
             step_size_d,
             step_size_homogeneous_d,
+            homogeneous_dual_gradient,
             base_count_d,
             k_offset,
             reflection_coefficient,
@@ -290,10 +294,11 @@ void update_primal_box_resolvent(
         reflected_primal,
         evaluation_primal,
         initial_primal,
-        unprojected_vector,
+        gradient,
         objective_d,
         step_size_d,
         step_size_homogeneous_d,
+        homogeneous_dual_gradient,
         base_count_d,
         k_offset,
         reflection_coefficient,
@@ -591,10 +596,11 @@ __global__ void primal_box_resolvent_cooperative_kernel(
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
     const double *__restrict__ initial_primal,
-    const double *__restrict__ unprojected_vector,
+    const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
     const int *__restrict__ base_count_d,
     int k_offset,
     double reflection_coefficient,
@@ -613,12 +619,15 @@ __global__ void primal_box_resolvent_cooperative_kernel(
     __shared__ double s_scale;
     __shared__ int s_converged;
 
-    double homogeneous_scale = *state.scalar_d;
+    const double primal_step = *step_size_d;
+    const double current_scale = *current_homogeneous_scale;
+    double homogeneous_scale = current_scale;
     double scale_low = 0.0;
     double scale_high = INFINITY;
     const double unprojected_homogeneous_scale =
-        *state.unprojected_scalar_d;
-    const double primal_metric = 1.0 / (*step_size_d);
+        current_scale +
+        (*step_size_homogeneous_d) * (*homogeneous_dual_gradient);
+    const double primal_metric = 1.0 / primal_step;
     const double homogeneous_metric =
         1.0 / (*step_size_homogeneous_d);
 
@@ -634,8 +643,10 @@ __global__ void primal_box_resolvent_cooperative_kernel(
              i += state.num_blocks_newton * blockDim.x)
         {
             double function_contribution, derivative_contribution;
+            const double unprojected =
+                current_primal[i] + primal_step * gradient[i];
             evaluate_primal_box_newton_terms(
-                unprojected_vector[i], objective_d[i],
+                unprojected, objective_d[i],
                 state.lower_bound_d[i], state.upper_bound_d[i],
                 homogeneous_scale, primal_metric, function_contribution, derivative_contribution);
             thread_derivative += derivative_contribution;
@@ -695,13 +706,12 @@ __global__ void primal_box_resolvent_cooperative_kernel(
     const int base_count = *base_count_d;
     const int k = base_count + k_offset;
     const double weight = (double)k / (double)(k + 1);
-    const double primal_step = *step_size_d;
-
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
     {
-        const double unprojected = unprojected_vector[i];
+        const double unprojected =
+            current_primal[i] + primal_step * gradient[i];
         const double shifted =
             unprojected - primal_step * objective_d[i] * homogeneous_scale;
         const double lower =
@@ -750,10 +760,11 @@ __global__ void primal_box_resolvent_single_block_kernel(
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
     const double *__restrict__ initial_primal,
-    const double *__restrict__ unprojected_vector,
+    const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
     const int *__restrict__ base_count_d,
     int k_offset,
     double reflection_coefficient,
@@ -770,12 +781,15 @@ __global__ void primal_box_resolvent_single_block_kernel(
     __shared__ double s_scale;
     __shared__ int s_converged;
 
-    double homogeneous_scale = *state.scalar_d;
+    const double primal_step = *step_size_d;
+    const double current_scale = *current_homogeneous_scale;
+    double homogeneous_scale = current_scale;
     double scale_low = 0.0;
     double scale_high = INFINITY;
     const double unprojected_homogeneous_scale =
-        *state.unprojected_scalar_d;
-    const double primal_metric = 1.0 / (*step_size_d);
+        current_scale +
+        (*step_size_homogeneous_d) * (*homogeneous_dual_gradient);
+    const double primal_metric = 1.0 / primal_step;
     const double homogeneous_metric =
         1.0 / (*step_size_homogeneous_d);
 
@@ -787,8 +801,10 @@ __global__ void primal_box_resolvent_single_block_kernel(
              i += blockDim.x)
         {
             double function_contribution, derivative_contribution;
+            const double unprojected =
+                current_primal[i] + primal_step * gradient[i];
             evaluate_primal_box_newton_terms(
-                unprojected_vector[i], objective_d[i],
+                unprojected, objective_d[i],
                 state.lower_bound_d[i], state.upper_bound_d[i],
                 homogeneous_scale, primal_metric, function_contribution, derivative_contribution);
             thread_derivative += derivative_contribution;
@@ -828,11 +844,10 @@ __global__ void primal_box_resolvent_single_block_kernel(
     const int base_count = *base_count_d;
     const int k = base_count + k_offset;
     const double weight = (double)k / (double)(k + 1);
-    const double primal_step = *step_size_d;
-
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
-        const double unprojected = unprojected_vector[i];
+        const double unprojected =
+            current_primal[i] + primal_step * gradient[i];
         const double shifted =
             unprojected - primal_step * objective_d[i] * homogeneous_scale;
         const double lower =

@@ -141,7 +141,6 @@ typedef struct {
     double *reflected_primal_solution_d;
     double *delta_primal_solution_d;
     double *primal_product_d;
-    double *primal_resolvent_input_d;
     double *variable_reduction_entries_d;
 
     double *initial_dual_solution_d;
