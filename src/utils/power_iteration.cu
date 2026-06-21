@@ -47,7 +47,10 @@ __global__ void compute_power_iteration_residual_kernel(
     residual_d[i] = vector_d[i] - sigma_squared * normalized_vector_d[i];
 }
 
-static void run_power_iteration_step(pdhg_solver_state_t *state, int m)
+static void run_power_iteration_step(
+    pdhg_solver_state_t *state,
+    int m,
+    bool evaluate_residual)
 {
     double *power_iteration_vector_d = state->primal_product_d;
     double *power_iteration_normalized_vector_d = state->power_iteration_normalized_vector_d;
@@ -102,23 +105,26 @@ static void run_power_iteration_step(pdhg_solver_state_t *state, int m)
         1,
         state->power_iter_sigma_squared_mp));
 
-    compute_power_iteration_residual_kernel<<<
-        state->num_blocks_dual,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        power_iteration_normalized_vector_d,
-        power_iteration_vector_d,
-        power_iteration_normalized_vector_d,
-        state->power_iter_sigma_squared_mp,
-        m);
+    if (evaluate_residual)
+    {
+        compute_power_iteration_residual_kernel<<<
+            state->num_blocks_dual,
+            THREADS_PER_BLOCK,
+            0,
+            state->stream_A>>>(
+            power_iteration_normalized_vector_d,
+            power_iteration_vector_d,
+            power_iteration_normalized_vector_d,
+            state->power_iter_sigma_squared_mp,
+            m);
 
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A,
-        m,
-        power_iteration_normalized_vector_d,
-        1,
-        state->power_iter_residual_norm_mp));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A,
+            m,
+            power_iteration_normalized_vector_d,
+            1,
+            state->power_iter_residual_norm_mp));
+    }
 }
 
 double estimate_maximum_singular_value(
@@ -152,10 +158,11 @@ double estimate_maximum_singular_value(
         CUDA_CHECK(cudaStreamBeginCapture(
             state->stream_A,
             cudaStreamCaptureModeGlobal));
-        for (int k = 0; k < window; ++k)
+        for (int k = 0; k < window - 1; ++k)
         {
-            run_power_iteration_step(state, m);
+            run_power_iteration_step(state, m, false);
         }
+        run_power_iteration_step(state, m, true);
         CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
         CUDA_CHECK(cudaGraphInstantiate(
             &graph_exec,
@@ -185,10 +192,11 @@ double estimate_maximum_singular_value(
         *state->power_iter_residual_norm_mp >=
             power_iter_params->tol)
     {
-        for (int k = 0; k < remainder; ++k)
+        for (int k = 0; k < remainder - 1; ++k)
         {
-            run_power_iteration_step(state, m);
+            run_power_iteration_step(state, m, false);
         }
+        run_power_iteration_step(state, m, true);
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     }
 
