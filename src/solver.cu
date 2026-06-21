@@ -307,7 +307,7 @@ static void initialize_step_size_and_primal_weight(
     double sigma = state->rescaled_constraint_norm;
     double factor = params->step_size_params.step_size_factor;
 
-    state->step_size_base = factor / fmax(1.0, sigma);
+    state->step_size_base = factor / sigma;
 
     if (params->scaling_params.bound_objective_rescaling)
     {
