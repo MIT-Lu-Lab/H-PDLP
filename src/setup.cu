@@ -677,7 +677,7 @@ static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
     state->metrics_h->initial_homogeneous_scale = 1.0;
     state->metrics_h->current_homogeneous_scale = 1.0;
     state->metrics_h->pdhg_homogeneous_scale = 1.0;
-    state->metrics_h->pdhg_dual_constraint_offset = 1.0;
+    state->metrics_h->pdhg_dual_scale_offset = 1.0;
 }
 
 static void initialize_power_iteration_buffers(pdhg_solver_state_t *state)
@@ -712,14 +712,14 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
 static void allocate_device_scalars(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double)));
-    state->hsd_scale_initial_d             = state->hsd_scalars_d + HSD_SCALE_INITIAL;
-    state->hsd_scale_current_d             = state->hsd_scalars_d + HSD_SCALE_CURRENT;
-    state->hsd_scale_pdhg_d                = state->hsd_scalars_d + HSD_SCALE_PDHG;
-    state->hsd_scale_reflected_d           = state->hsd_scalars_d + HSD_SCALE_REFLECTED;
-    state->hsd_dual_constraint_initial_d   = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_INITIAL;
-    state->hsd_dual_constraint_current_d   = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_CURRENT;
-    state->hsd_dual_constraint_pdhg_d      = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_PDHG;
-    state->hsd_dual_constraint_reflected_d = state->hsd_scalars_d + HSD_DUAL_CONSTRAINT_REFLECTED;
+    state->hsd_primal_scale_initial_d             = state->hsd_scalars_d + HSD_PRIMAL_SCALE_INITIAL;
+    state->hsd_primal_scale_current_d             = state->hsd_scalars_d + HSD_PRIMAL_SCALE_CURRENT;
+    state->hsd_primal_scale_pdhg_d                = state->hsd_scalars_d + HSD_PRIMAL_SCALE_PDHG;
+    state->hsd_primal_scale_reflected_d           = state->hsd_scalars_d + HSD_PRIMAL_SCALE_REFLECTED;
+    state->hsd_dual_scale_initial_d   = state->hsd_scalars_d + HSD_DUAL_SCALE_INITIAL;
+    state->hsd_dual_scale_current_d   = state->hsd_scalars_d + HSD_DUAL_SCALE_CURRENT;
+    state->hsd_dual_scale_pdhg_d      = state->hsd_scalars_d + HSD_DUAL_SCALE_PDHG;
+    state->hsd_dual_scale_reflected_d = state->hsd_scalars_d + HSD_DUAL_SCALE_REFLECTED;
 
     CUDA_CHECK(cudaMalloc(&state->pdhg_reduce_d, PDHG_COUNT * sizeof(double)));
     CUDA_CHECK(cudaMemset(state->pdhg_reduce_d, 0, PDHG_COUNT * sizeof(double)));
@@ -755,15 +755,15 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->graphExec = NULL;
     state->graph_created = false;
 
-    allocate_zeroed_device_buffer((void **)&state->constraint_cone_state.scalar_d, sizeof(double));
-    state->constraint_cone_state.lower_bound_d = state->constraint_lower_bound_d;
-    state->constraint_cone_state.upper_bound_d = state->constraint_upper_bound_d;
-    state->constraint_cone_state.num_elements = state->num_constraints;
+    allocate_zeroed_device_buffer((void **)&state->dual_box_cone_state.scalar_d, sizeof(double));
+    state->dual_box_cone_state.lower_bound_d = state->constraint_lower_bound_d;
+    state->dual_box_cone_state.upper_bound_d = state->constraint_upper_bound_d;
+    state->dual_box_cone_state.num_elements = state->num_constraints;
 
-    allocate_zeroed_device_buffer((void **)&state->primal_box_resolvent_state.scalar_d, sizeof(double));
-    state->primal_box_resolvent_state.lower_bound_d = state->variable_lower_bound_d;
-    state->primal_box_resolvent_state.upper_bound_d = state->variable_upper_bound_d;
-    state->primal_box_resolvent_state.num_elements = state->num_variables;
+    allocate_zeroed_device_buffer((void **)&state->primal_box_cone_state.scalar_d, sizeof(double));
+    state->primal_box_cone_state.lower_bound_d = state->variable_lower_bound_d;
+    state->primal_box_cone_state.upper_bound_d = state->variable_upper_bound_d;
+    state->primal_box_cone_state.num_elements = state->num_variables;
 }
 
 static void apply_warm_starts(
@@ -817,11 +817,11 @@ static void initialize_newton_workspace(
 static void initialize_newton_workspaces(pdhg_solver_state_t *state)
 {
     initialize_newton_workspace(
-        &state->constraint_cone_state,
-        max_cooperative_dual_cone_blocks());
+        &state->dual_box_cone_state,
+        compute_max_cooperative_dual_box_cone_blocks());
     initialize_newton_workspace(
-        &state->primal_box_resolvent_state,
-        max_cooperative_primal_box_blocks());
+        &state->primal_box_cone_state,
+        compute_max_cooperative_primal_box_cone_blocks());
 }
 
 static void release_preprocessing_resources(
@@ -1033,10 +1033,10 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->constraint_recession_residual_d);
     FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
 
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.scalar_d);
-    FREE_DEVICE_BUFFER(state->constraint_cone_state.newton_partials_d);
-    FREE_DEVICE_BUFFER(state->primal_box_resolvent_state.scalar_d);
-    FREE_DEVICE_BUFFER(state->primal_box_resolvent_state.newton_partials_d);
+    FREE_DEVICE_BUFFER(state->dual_box_cone_state.scalar_d);
+    FREE_DEVICE_BUFFER(state->dual_box_cone_state.newton_partials_d);
+    FREE_DEVICE_BUFFER(state->primal_box_cone_state.scalar_d);
+    FREE_DEVICE_BUFFER(state->primal_box_cone_state.newton_partials_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
     FREE_DEVICE_BUFFER(state->inner_count_d);

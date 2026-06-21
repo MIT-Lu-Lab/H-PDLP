@@ -71,7 +71,7 @@ __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
     int n_vars);
-__global__ void compute_bound_contrib_kernel(
+__global__ void compute_bound_contribution_kernel(
     double *__restrict__ contrib,
     const double *__restrict__ cons_lb,
     const double *__restrict__ cons_ub,
@@ -267,7 +267,7 @@ static void bound_objective_rescaling(
 
     double *bound_contrib_d =
         state->constraint_reduction_entries_d;
-    compute_bound_contrib_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+    compute_bound_contribution_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         bound_contrib_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
@@ -568,7 +568,7 @@ __global__ void clamp_sqrt_and_accum_kernel(
     }
 }
 
-__global__ void compute_bound_contrib_kernel(
+__global__ void compute_bound_contribution_kernel(
     double *__restrict__ contrib,
     const double *__restrict__ cons_lb,
     const double *__restrict__ cons_ub,

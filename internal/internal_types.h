@@ -49,14 +49,14 @@ enum FarkasReduction {
 };
 
 enum HsdScalarSlot {
-    HSD_SCALE_INITIAL             = 0,
-    HSD_SCALE_CURRENT             = 1,
-    HSD_SCALE_PDHG                = 2,
-    HSD_SCALE_REFLECTED           = 3,
-    HSD_DUAL_CONSTRAINT_INITIAL   = 4,
-    HSD_DUAL_CONSTRAINT_CURRENT   = 5,
-    HSD_DUAL_CONSTRAINT_PDHG      = 6,
-    HSD_DUAL_CONSTRAINT_REFLECTED = 7,
+    HSD_PRIMAL_SCALE_INITIAL             = 0,
+    HSD_PRIMAL_SCALE_CURRENT             = 1,
+    HSD_PRIMAL_SCALE_PDHG                = 2,
+    HSD_PRIMAL_SCALE_REFLECTED           = 3,
+    HSD_DUAL_SCALE_INITIAL   = 4,
+    HSD_DUAL_SCALE_CURRENT   = 5,
+    HSD_DUAL_SCALE_PDHG      = 6,
+    HSD_DUAL_SCALE_REFLECTED = 7,
     HSD_SCALARS_COUNT             = 8,
 };
 
@@ -158,14 +158,14 @@ typedef struct {
 
     double *hsd_scalars_d;
     double *hsd_inverse_scale_d;
-    double *hsd_scale_initial_d;
-    double *hsd_scale_current_d;
-    double *hsd_scale_pdhg_d;
-    double *hsd_scale_reflected_d;
-    double *hsd_dual_constraint_initial_d;
-    double *hsd_dual_constraint_current_d;
-    double *hsd_dual_constraint_pdhg_d;
-    double *hsd_dual_constraint_reflected_d;
+    double *hsd_primal_scale_initial_d;
+    double *hsd_primal_scale_current_d;
+    double *hsd_primal_scale_pdhg_d;
+    double *hsd_primal_scale_reflected_d;
+    double *hsd_dual_scale_initial_d;
+    double *hsd_dual_scale_current_d;
+    double *hsd_dual_scale_pdhg_d;
+    double *hsd_dual_scale_reflected_d;
 
     double *power_iteration_normalized_vector_d;
     double *power_iteration_vector_norm_scalar_d;
@@ -178,8 +178,8 @@ typedef struct {
     double *constraint_recession_residual_d;
     double *variable_recession_residual_d;
 
-    box_newton_state_t constraint_cone_state;
-    box_newton_state_t primal_box_resolvent_state;
+    box_newton_state_t dual_box_cone_state;
+    box_newton_state_t primal_box_cone_state;
 
     double step_size_primal;
     double step_size_dual;

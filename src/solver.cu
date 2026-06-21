@@ -59,22 +59,22 @@ __global__ void compute_fixed_point_error_kernel(
     const double *primal_norm,
     const double *dual_norm,
     const double *dual_cross,
-    const double *scale_pdhg,
-    const double *scale_reflected,
-    const double *dual_constraint_pdhg,
-    const double *dual_constraint_reflected,
+    const double *primal_scale_pdhg,
+    const double *primal_scale_reflected,
+    const double *dual_scale_pdhg,
+    const double *dual_scale_reflected,
     double step_size_primal,
     double step_size_dual,
     double step_size_homogeneous);
 __global__ void restart_hsd_scalars_kernel(
-    double *scale_initial,           double *scale_current,           double *scale_pdhg,           double *scale_reflected,
-    double *dual_constraint_initial, double *dual_constraint_current, double *dual_constraint_pdhg, double *dual_constraint_reflected,
+    double *primal_scale_initial,           double *primal_scale_current,           double *primal_scale_pdhg,           double *primal_scale_reflected,
+    double *dual_scale_initial, double *dual_scale_current, double *dual_scale_pdhg, double *dual_scale_reflected,
     double *constraint_cone_scale_d,
     double *variable_cone_scale_d,
     double  cone_warm_start_scale);
 __global__ void scale_hsd_scalars_kernel(
-    double *scale_pdhg,
-    double *dual_constraint_pdhg,
+    double *primal_scale_pdhg,
+    double *dual_scale_pdhg,
     double  inv_scale);
 static void compute_fixed_point_error(pdhg_solver_state_t *state);
 static void hsd_run_iteration_step(
@@ -323,23 +323,23 @@ static void hsd_update_dual_solution(
         CUSPARSE_SPMV_CSR_ALG2,
         state->matA_spmv_workspace_d));
 
-    update_hsd_cone_dual(
+    update_dual_box_cone_projection(
         cone_params,
-        &state->constraint_cone_state,
+        &state->dual_box_cone_state,
         state->current_dual_solution_d,
         state->reflected_dual_solution_d,
         state->pdhg_dual_solution_d,
         state->initial_dual_solution_d,
         state->primal_product_d,
         state->step_size_dual_d,
-        state->hsd_scale_current_d,
+        state->hsd_primal_scale_current_d,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
-        state->hsd_dual_constraint_initial_d,
-        state->hsd_dual_constraint_current_d,
-        state->hsd_dual_constraint_pdhg_d,
-        state->hsd_dual_constraint_reflected_d,
+        state->hsd_dual_scale_initial_d,
+        state->hsd_dual_scale_current_d,
+        state->hsd_dual_scale_pdhg_d,
+        state->hsd_dual_scale_reflected_d,
         is_major,
         state->stream_A);
 
@@ -372,9 +372,9 @@ static void update_hsd_primal_and_homogeneous_scale(
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 
-    update_primal_box_resolvent(
+    update_primal_box_cone_resolvent(
         cone_params,
-        &state->primal_box_resolvent_state,
+        &state->primal_box_cone_state,
         state->current_primal_solution_d,
         state->reflected_primal_solution_d,
         state->pdhg_primal_solution_d,
@@ -383,14 +383,14 @@ static void update_hsd_primal_and_homogeneous_scale(
         state->objective_vector_d,
         state->step_size_primal_d,
         state->step_size_homogeneous_d,
-        state->hsd_dual_constraint_reflected_d,
+        state->hsd_dual_scale_reflected_d,
         state->inner_count_d,
         k_offset,
         reflection_coefficient,
-        state->hsd_scale_initial_d,
-        state->hsd_scale_current_d,
-        state->hsd_scale_pdhg_d,
-        state->hsd_scale_reflected_d,
+        state->hsd_primal_scale_initial_d,
+        state->hsd_primal_scale_current_d,
+        state->hsd_primal_scale_pdhg_d,
+        state->hsd_primal_scale_reflected_d,
         is_major,
         state->stream_A);
 }
@@ -456,10 +456,10 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->pdhg_primal_norm_d,
         state->pdhg_dual_norm_d,
         state->fixed_point_operator_cross_d,
-        state->hsd_scale_pdhg_d,
-        state->hsd_scale_reflected_d,
-        state->hsd_dual_constraint_pdhg_d,
-        state->hsd_dual_constraint_reflected_d,
+        state->hsd_primal_scale_pdhg_d,
+        state->hsd_primal_scale_reflected_d,
+        state->hsd_dual_scale_pdhg_d,
+        state->hsd_dual_scale_reflected_d,
         state->step_size_primal,
         state->step_size_dual,
         state->step_size_homogeneous);
@@ -532,10 +532,10 @@ static void perform_restart(
     state->metrics_h->current_homogeneous_scale = state->metrics_h->pdhg_homogeneous_scale;
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->hsd_scale_initial_d,             state->hsd_scale_current_d,             state->hsd_scale_pdhg_d,             state->hsd_scale_reflected_d,
-        state->hsd_dual_constraint_initial_d,   state->hsd_dual_constraint_current_d,   state->hsd_dual_constraint_pdhg_d,   state->hsd_dual_constraint_reflected_d,
-        state->constraint_cone_state.scalar_d,
-        state->primal_box_resolvent_state.scalar_d,
+        state->hsd_primal_scale_initial_d,             state->hsd_primal_scale_current_d,             state->hsd_primal_scale_pdhg_d,             state->hsd_primal_scale_reflected_d,
+        state->hsd_dual_scale_initial_d,   state->hsd_dual_scale_current_d,   state->hsd_dual_scale_pdhg_d,   state->hsd_dual_scale_reflected_d,
+        state->dual_box_cone_state.scalar_d,
+        state->primal_box_cone_state.scalar_d,
         cone_warm_start_scale);
 
     state->inner_count = 0;
@@ -588,10 +588,10 @@ static void update_primal_weight_via_restart_pid(
     double dy2     = restart_scalars_h[1] * restart_scalars_h[1];
 
     double homogeneous_scale_delta =
-        hsd_scalars_h[HSD_SCALE_PDHG] -
-        hsd_scalars_h[HSD_SCALE_INITIAL];
-    double d_ac    = hsd_scalars_h[HSD_DUAL_CONSTRAINT_PDHG]
-                   - hsd_scalars_h[HSD_DUAL_CONSTRAINT_INITIAL];
+        hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG] -
+        hsd_scalars_h[HSD_PRIMAL_SCALE_INITIAL];
+    double d_ac    = hsd_scalars_h[HSD_DUAL_SCALE_PDHG]
+                   - hsd_scalars_h[HSD_DUAL_SCALE_INITIAL];
     double base2   = state->step_size_base * state->step_size_base;
     double alpha_p = base2 / step_size_params->step_size_factor;
     double homogeneous_scale_delta_squared =
@@ -602,7 +602,7 @@ static void update_primal_weight_via_restart_pid(
     double dual_dist   = sqrt(dy2 + d_ac * d_ac);
 
     double scale_reference =
-        fmax(hsd_scalars_h[HSD_SCALE_PDHG], 1e-300);
+        fmax(hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG], 1e-300);
     bool dist_ok =
         primal_dist > 1e-16 * scale_reference &&
         dual_dist > 1e-16 * scale_reference &&
@@ -621,7 +621,7 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
     double max_block_norm = fmax(fmax(state->metrics_h->primal_solution_norm,
                                       state->metrics_h->dual_solution_norm),
                             fmax(fabs(homogeneous_scale),
-                                 fabs(state->metrics_h->pdhg_dual_constraint_offset)));
+                                 fabs(state->metrics_h->pdhg_dual_scale_offset)));
 
     double inv_scale;
     if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
@@ -650,11 +650,11 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
         state->hsd_inverse_scale_d,
         state->pdhg_dual_solution_d, 1));
     scale_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->hsd_scale_pdhg_d,
-        state->hsd_dual_constraint_pdhg_d,
+        state->hsd_primal_scale_pdhg_d,
+        state->hsd_dual_scale_pdhg_d,
         inv_scale);
     state->metrics_h->pdhg_homogeneous_scale      *= inv_scale;
-    state->metrics_h->pdhg_dual_constraint_offset *= inv_scale;
+    state->metrics_h->pdhg_dual_scale_offset *= inv_scale;
     return inv_scale;
 }
 
@@ -813,16 +813,16 @@ __global__ void compute_fixed_point_error_kernel(
     const double *primal_norm,
     const double *dual_norm,
     const double *dual_cross,
-    const double *scale_pdhg,
-    const double *scale_reflected,
-    const double *dual_constraint_pdhg,
-    const double *dual_constraint_reflected,
+    const double *primal_scale_pdhg,
+    const double *primal_scale_reflected,
+    const double *dual_scale_pdhg,
+    const double *dual_scale_reflected,
     double step_size_primal,
     double step_size_dual,
     double step_size_homogeneous)
 {
-    double delta_primal_scale = (*scale_reflected) - (*scale_pdhg);
-    double delta_constraint_offset = (*dual_constraint_reflected) - (*dual_constraint_pdhg);
+    double delta_primal_scale = (*primal_scale_reflected) - (*primal_scale_pdhg);
+    double delta_constraint_offset = (*dual_scale_reflected) - (*dual_scale_pdhg);
     double primal_norm_v = *primal_norm;
     double dual_norm_v = *dual_norm;
     double cross_term = *dual_cross;
@@ -839,31 +839,31 @@ __global__ void compute_fixed_point_error_kernel(
 }
 
 __global__ void restart_hsd_scalars_kernel(
-    double *scale_initial,           double *scale_current,           double *scale_pdhg,           double *scale_reflected,
-    double *dual_constraint_initial, double *dual_constraint_current, double *dual_constraint_pdhg, double *dual_constraint_reflected,
+    double *primal_scale_initial,           double *primal_scale_current,           double *primal_scale_pdhg,           double *primal_scale_reflected,
+    double *dual_scale_initial, double *dual_scale_current, double *dual_scale_pdhg, double *dual_scale_reflected,
     double *constraint_cone_scale_d,
     double *variable_cone_scale_d,
     double  cone_warm_start_scale)
 {
-    double s = *scale_pdhg;
-    *scale_initial   = s;
-    *scale_current   = s;
-    *scale_reflected = s;
+    double s = *primal_scale_pdhg;
+    *primal_scale_initial   = s;
+    *primal_scale_current   = s;
+    *primal_scale_reflected = s;
 
-    double dc = *dual_constraint_pdhg;
-    *dual_constraint_initial   = dc;
-    *dual_constraint_current   = dc;
-    *dual_constraint_reflected = dc;
+    double dc = *dual_scale_pdhg;
+    *dual_scale_initial   = dc;
+    *dual_scale_current   = dc;
+    *dual_scale_reflected = dc;
 
     *constraint_cone_scale_d *= cone_warm_start_scale;
     *variable_cone_scale_d *= cone_warm_start_scale;
 }
 
 __global__ void scale_hsd_scalars_kernel(
-    double *scale_pdhg,
-    double *dual_constraint_pdhg,
+    double *primal_scale_pdhg,
+    double *dual_scale_pdhg,
     double  inv_scale)
 {
-    *scale_pdhg           *= inv_scale;
-    *dual_constraint_pdhg *= inv_scale;
+    *primal_scale_pdhg           *= inv_scale;
+    *dual_scale_pdhg *= inv_scale;
 }

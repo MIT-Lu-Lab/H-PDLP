@@ -38,7 +38,7 @@ __global__ void compute_residual_kernel(
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ primal_sol,
-    const double *scale_pdhg,
+    const double *primal_scale_pdhg,
     double *__restrict__ homogeneous_dual_res,
     double *__restrict__ constraint_recession_res,
     double *__restrict__ variable_recession_res,
@@ -68,10 +68,10 @@ __global__ void compute_residual_metrics_kernel(
     const double *farkas_original_dual_norm,
     const double *farkas_original_reduced_cost_norm,
     const double *farkas_original_primal_norm,
-    const double *scale_initial,
-    const double *scale_current,
-    const double *scale_pdhg,
-    const double *dual_constraint_pdhg,
+    const double *primal_scale_initial,
+    const double *primal_scale_current,
+    const double *primal_scale_pdhg,
+    const double *dual_scale_pdhg,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
@@ -157,7 +157,7 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
         state->pdhg_primal_solution_d,
-        state->hsd_scale_pdhg_d,
+        state->hsd_primal_scale_pdhg_d,
         state->homogeneous_dual_residual_d,
         state->constraint_recession_residual_d,
         state->variable_recession_residual_d,
@@ -292,10 +292,10 @@ static void update_residual_metrics(pdhg_solver_state_t *state)
         state->farkas_original_dual_norm_d,
         state->farkas_original_reduced_cost_norm_d,
         state->farkas_original_primal_norm_d,
-        state->hsd_scale_initial_d,
-        state->hsd_scale_current_d,
-        state->hsd_scale_pdhg_d,
-        state->hsd_dual_constraint_pdhg_d,
+        state->hsd_primal_scale_initial_d,
+        state->hsd_primal_scale_current_d,
+        state->hsd_primal_scale_pdhg_d,
+        state->hsd_dual_scale_pdhg_d,
         state->constraint_bound_rescaling,
         state->objective_vector_rescaling,
         state->original_bound_norm,
@@ -422,7 +422,7 @@ __global__ void compute_residual_kernel(
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ primal_sol,
-    const double *scale_pdhg,
+    const double *primal_scale_pdhg,
     double *__restrict__ homogeneous_dual_res,
     double *__restrict__ constraint_recession_res,
     double *__restrict__ variable_recession_res,
@@ -434,7 +434,7 @@ __global__ void compute_residual_kernel(
     int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double homogeneous_scale = *scale_pdhg;
+    double homogeneous_scale = *primal_scale_pdhg;
     double inverse_homogeneous_scale =
         (fabs(homogeneous_scale) > 1e-50)
             ? 1.0 / homogeneous_scale
@@ -563,10 +563,10 @@ __global__ void compute_residual_metrics_kernel(
     const double *farkas_original_dual_norm,
     const double *farkas_original_reduced_cost_norm,
     const double *farkas_original_primal_norm,
-    const double *scale_initial,
-    const double *scale_current,
-    const double *scale_pdhg,
-    const double *dual_constraint_pdhg,
+    const double *primal_scale_initial,
+    const double *primal_scale_current,
+    const double *primal_scale_pdhg,
+    const double *dual_scale_pdhg,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
@@ -574,9 +574,9 @@ __global__ void compute_residual_metrics_kernel(
     double original_constraint_norm,
     double objective_constant)
 {
-    double primal_scale = *scale_pdhg;
+    double primal_scale = *primal_scale_pdhg;
     double inv_primal_scale = (fabs(primal_scale) > 1e-50) ? 1.0 / primal_scale : 0.0;
-    double pdhg_dual_constraint_offset = *dual_constraint_pdhg;
+    double pdhg_dual_scale_offset = *dual_scale_pdhg;
     double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;
     double absolute_dual_residual = (*dual_norm) / objective_vector_rescaling;
     double objective_dot_primal_value = *objective_dot_primal;
@@ -601,10 +601,10 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->dual_objective   = dual_objective_value;
     metrics_d->objective_gap    = objective_gap;
     metrics_d->relative_objective_gap = relative_objective_gap;
-    metrics_d->initial_homogeneous_scale   = *scale_initial;
-    metrics_d->current_homogeneous_scale   = *scale_current;
+    metrics_d->initial_homogeneous_scale   = *primal_scale_initial;
+    metrics_d->current_homogeneous_scale   = *primal_scale_current;
     metrics_d->pdhg_homogeneous_scale      = primal_scale;
-    metrics_d->pdhg_dual_constraint_offset = pdhg_dual_constraint_offset;
+    metrics_d->pdhg_dual_scale_offset = pdhg_dual_scale_offset;
 
     double yc_norm = *farkas_dual_solution_norm;
     double dual_solution_norm = yc_norm;
@@ -613,12 +613,12 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->dual_solution_norm = dual_solution_norm;
 
     double homogeneous_gap =
-        objective_dot_primal_value + pdhg_dual_constraint_offset -
+        objective_dot_primal_value + pdhg_dual_scale_offset -
         (*variable_support);
     double iterate_norm = sqrt(primal_solution_norm * primal_solution_norm
                              + dual_solution_norm * dual_solution_norm
                              + primal_scale * primal_scale
-                             + pdhg_dual_constraint_offset * pdhg_dual_constraint_offset);
+                             + pdhg_dual_scale_offset * pdhg_dual_scale_offset);
     double inv_iterate_norm = (iterate_norm > 1e-30) ? 1.0 / iterate_norm : 0.0;
 
     double homogeneous_scale_hat = primal_scale * inv_iterate_norm;

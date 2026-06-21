@@ -40,9 +40,9 @@ typedef struct {
     newton_terms_t *newton_partials_d;
 } box_newton_state_t;
 
-void update_hsd_cone_dual(
+void update_dual_box_cone_projection(
     const cone_parameters_t *cone_params,
-    box_newton_state_t *cone_state,
+    box_newton_state_t *dual_state,
     double *current_dual,
     double *reflected_dual,
     double *evaluation_dual,
@@ -60,9 +60,9 @@ void update_hsd_cone_dual(
     bool save_evaluation_iterate,
     cudaStream_t stream);
 
-void update_primal_box_resolvent(
+void update_primal_box_cone_resolvent(
     const cone_parameters_t *cone_params,
-    box_newton_state_t *newton_state,
+    box_newton_state_t *primal_state,
     double *current_primal,
     double *reflected_primal,
     double *evaluation_primal,
@@ -82,9 +82,9 @@ void update_primal_box_resolvent(
     bool save_evaluation_iterate,
     cudaStream_t stream);
 
-int max_cooperative_dual_cone_blocks();
+int compute_max_cooperative_dual_box_cone_blocks();
 
-int max_cooperative_primal_box_blocks();
+int compute_max_cooperative_primal_box_cone_blocks();
 
 #ifdef __cplusplus
 }

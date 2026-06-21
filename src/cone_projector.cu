@@ -34,7 +34,7 @@ struct SumNewtonTerms {
 
 typedef cub::BlockReduce<newton_terms_t, THREADS_PER_BLOCK> ConeBlockReduce;
 
-__global__ void update_hsd_cone_dual_cooperative_kernel(
+__global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
@@ -50,10 +50,10 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
     double *offset_evaluation,
     double *offset_reflected,
     bool save_evaluation_iterate,
-    box_newton_state_t cone,
+    box_newton_state_t state,
     int max_iter,
     double tol);
-__global__ void update_hsd_cone_dual_single_block_kernel(
+__global__ void update_dual_box_cone_projection_single_block_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
@@ -69,10 +69,10 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
     double *offset_evaluation,
     double *offset_reflected,
     bool save_evaluation_iterate,
-    box_newton_state_t cone,
+    box_newton_state_t state,
     int max_iter,
     double tol);
-__global__ void primal_box_resolvent_cooperative_kernel(
+__global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
@@ -93,7 +93,7 @@ __global__ void primal_box_resolvent_cooperative_kernel(
     box_newton_state_t state,
     int max_iter,
     double tol);
-__global__ void primal_box_resolvent_single_block_kernel(
+__global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
@@ -116,10 +116,10 @@ __global__ void primal_box_resolvent_single_block_kernel(
     double tol);
 __device__ __forceinline__ double select_active_dual_bound(
     double vi, double l, double u, double scale);
-__device__ __forceinline__ void evaluate_dual_cone_newton_terms(
+__device__ __forceinline__ void evaluate_dual_box_cone_newton_terms(
     double unprojected_value, double l, double u, double scale,
     double &function_contribution, double &derivative_contribution);
-__device__ __forceinline__ void evaluate_primal_box_newton_terms(
+__device__ __forceinline__ void evaluate_primal_box_cone_newton_terms(
     double vi, double ci, double li, double ui,
     double homogeneous_scale, double primal_metric,
     double &function_contribution, double &derivative_contribution);
@@ -140,9 +140,9 @@ __device__ __forceinline__ bool update_newton_bracket(
     double &scale_low,
     double &scale_high);
 
-void update_hsd_cone_dual(
+void update_dual_box_cone_projection(
     const cone_parameters_t *cone_params,
-    box_newton_state_t *cone_state,
+    box_newton_state_t *dual_state,
     double *current_dual,
     double *reflected_dual,
     double *evaluation_dual,
@@ -160,11 +160,11 @@ void update_hsd_cone_dual(
     bool save_evaluation_iterate,
     cudaStream_t stream)
 {
-    const box_newton_state_t cone = *cone_state;
+    const box_newton_state_t state = *dual_state;
 
-    if (cone.num_blocks_newton == 1)
+    if (state.num_blocks_newton == 1)
     {
-        update_hsd_cone_dual_single_block_kernel<<<
+        update_dual_box_cone_projection_single_block_kernel<<<
             1, THREADS_PER_BLOCK, 0, stream>>>(
             current_dual,
             reflected_dual,
@@ -181,7 +181,7 @@ void update_hsd_cone_dual(
             offset_evaluation,
             offset_reflected,
             save_evaluation_iterate,
-            cone,
+            state,
             cone_params->max_iter,
             cone_params->tol);
         CUDA_CHECK(cudaGetLastError());
@@ -193,7 +193,7 @@ void update_hsd_cone_dual(
     attr.val.cooperative = 1;
 
     cudaLaunchConfig_t config = {};
-    config.gridDim = dim3(cone.num_blocks_newton);
+    config.gridDim = dim3(state.num_blocks_newton);
     config.blockDim = dim3(THREADS_PER_BLOCK);
     config.dynamicSmemBytes = 0;
     config.stream = stream;
@@ -202,7 +202,7 @@ void update_hsd_cone_dual(
 
     CUDA_CHECK(cudaLaunchKernelEx(
         &config,
-        update_hsd_cone_dual_cooperative_kernel,
+        update_dual_box_cone_projection_cooperative_kernel,
         current_dual,
         reflected_dual,
         evaluation_dual,
@@ -218,14 +218,14 @@ void update_hsd_cone_dual(
         offset_evaluation,
         offset_reflected,
         save_evaluation_iterate,
-        cone,
+        state,
         cone_params->max_iter,
         cone_params->tol));
 }
 
-void update_primal_box_resolvent(
+void update_primal_box_cone_resolvent(
     const cone_parameters_t *cone_params,
-    box_newton_state_t *newton_state,
+    box_newton_state_t *primal_state,
     double *current_primal,
     double *reflected_primal,
     double *evaluation_primal,
@@ -245,11 +245,11 @@ void update_primal_box_resolvent(
     bool save_evaluation_iterate,
     cudaStream_t stream)
 {
-    const box_newton_state_t state = *newton_state;
+    const box_newton_state_t state = *primal_state;
 
     if (state.num_blocks_newton == 1)
     {
-        primal_box_resolvent_single_block_kernel<<<
+        update_primal_box_cone_resolvent_single_block_kernel<<<
             1, THREADS_PER_BLOCK, 0, stream>>>(
             current_primal,
             reflected_primal,
@@ -289,7 +289,7 @@ void update_primal_box_resolvent(
 
     CUDA_CHECK(cudaLaunchKernelEx(
         &config,
-        primal_box_resolvent_cooperative_kernel,
+        update_primal_box_cone_resolvent_cooperative_kernel,
         current_primal,
         reflected_primal,
         evaluation_primal,
@@ -312,7 +312,7 @@ void update_primal_box_resolvent(
         cone_params->tol));
 }
 
-int max_cooperative_dual_cone_blocks()
+int compute_max_cooperative_dual_box_cone_blocks()
 {
     int device = 0;
     CUDA_CHECK(cudaGetDevice(&device));
@@ -322,13 +322,13 @@ int max_cooperative_dual_cone_blocks()
     int active = 0;
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
         &active,
-        update_hsd_cone_dual_cooperative_kernel,
+        update_dual_box_cone_projection_cooperative_kernel,
         THREADS_PER_BLOCK,
         0));
     return active * sm_count;
 }
 
-int max_cooperative_primal_box_blocks()
+int compute_max_cooperative_primal_box_cone_blocks()
 {
     int device = 0;
     CUDA_CHECK(cudaGetDevice(&device));
@@ -338,13 +338,13 @@ int max_cooperative_primal_box_blocks()
     int active = 0;
     CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
         &active,
-        primal_box_resolvent_cooperative_kernel,
+        update_primal_box_cone_resolvent_cooperative_kernel,
         THREADS_PER_BLOCK,
         0));
     return active * sm_count;
 }
 
-__global__ void update_hsd_cone_dual_cooperative_kernel(
+__global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
@@ -360,7 +360,7 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
     double *offset_evaluation,
     double *offset_reflected,
     bool save_evaluation_iterate,
-    box_newton_state_t cone,
+    box_newton_state_t state,
     int max_iter,
     double tol)
 {
@@ -370,7 +370,7 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
     __shared__ double s_scale;
     __shared__ int s_converged;
 
-    double scale = *cone.scalar_d;
+    double scale = *state.scalar_d;
     double scale_low = 0.0;
     double scale_high = INFINITY;
     const double step_size = *step_size_d;
@@ -379,12 +379,12 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
 
     for (int iter = 0; iter < max_iter; ++iter)
     {
-        newton_terms_t *partials = cone.newton_partials_d + (iter & 1) * cone.num_blocks_newton;
+        newton_terms_t *partials = state.newton_partials_d + (iter & 1) * state.num_blocks_newton;
 
         double thread_derivative = 0.0, thread_function = 0.0;
         for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-             i < cone.num_elements;
-             i += cone.num_blocks_newton * blockDim.x)
+             i < state.num_elements;
+             i += state.num_blocks_newton * blockDim.x)
         {
             double function_contribution, derivative_contribution;
             // Recompute instead of materializing an n-element intermediate.
@@ -392,8 +392,8 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
             // without fixed-size per-thread register arrays.
             const double unprojected =
                 current_dual[i] - step_size * gradient[i];
-            evaluate_dual_cone_newton_terms(
-                unprojected, cone.lower_bound_d[i], cone.upper_bound_d[i], scale,
+            evaluate_dual_box_cone_newton_terms(
+                unprojected, state.lower_bound_d[i], state.upper_bound_d[i], scale,
                 function_contribution, derivative_contribution);
             thread_derivative += derivative_contribution;
             thread_function += function_contribution;
@@ -412,7 +412,7 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
         if (threadIdx.x < warpSize)
         {
             double total_derivative = 0.0, total_function = 0.0;
-            for (int bk = threadIdx.x; bk < cone.num_blocks_newton; bk += warpSize)
+            for (int bk = threadIdx.x; bk < state.num_blocks_newton; bk += warpSize)
             {
                 total_derivative += partials[bk].derivative;
                 total_function += partials[bk].function_value;
@@ -443,13 +443,13 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
     const int k = base_count + k_offset;
     const double weight = (double)k / (double)(k + 1);
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
-         i < cone.num_elements;
-         i += cone.num_blocks_newton * blockDim.x)
+         i < state.num_elements;
+         i += state.num_blocks_newton * blockDim.x)
     {
         const double current = current_dual[i];
         const double unprojected = current - step_size * gradient[i];
-        const double lower = cone.lower_bound_d[i];
-        const double upper = cone.upper_bound_d[i];
+        const double lower = state.lower_bound_d[i];
+        const double upper = state.upper_bound_d[i];
         const double box_lower = isfinite(lower) ? lower * scale : -INFINITY;
         const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
         const double projected =
@@ -467,7 +467,7 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        *cone.scalar_d = scale;
+        *state.scalar_d = scale;
         const double projected = unprojected_scale + scale;
         if (save_evaluation_iterate)
             *offset_evaluation = projected;
@@ -482,7 +482,7 @@ __global__ void update_hsd_cone_dual_cooperative_kernel(
     }
 }
 
-__global__ void update_hsd_cone_dual_single_block_kernel(
+__global__ void update_dual_box_cone_projection_single_block_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
@@ -498,7 +498,7 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
     double *offset_evaluation,
     double *offset_reflected,
     bool save_evaluation_iterate,
-    box_newton_state_t cone,
+    box_newton_state_t state,
     int max_iter,
     double tol)
 {
@@ -506,7 +506,7 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
     __shared__ double s_scale;
     __shared__ int s_converged;
 
-    double scale = *cone.scalar_d;
+    double scale = *state.scalar_d;
     double scale_low = 0.0;
     double scale_high = INFINITY;
     const double step_size = *step_size_d;
@@ -516,13 +516,13 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
     for (int iter = 0; iter < max_iter; ++iter)
     {
         double thread_derivative = 0.0, thread_function = 0.0;
-        for (int i = threadIdx.x; i < cone.num_elements; i += blockDim.x)
+        for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
         {
             double function_contribution, derivative_contribution;
             const double unprojected =
                 current_dual[i] - step_size * gradient[i];
-            evaluate_dual_cone_newton_terms(
-                unprojected, cone.lower_bound_d[i], cone.upper_bound_d[i], scale,
+            evaluate_dual_box_cone_newton_terms(
+                unprojected, state.lower_bound_d[i], state.upper_bound_d[i], scale,
                 function_contribution, derivative_contribution);
             thread_derivative += derivative_contribution;
             thread_function += function_contribution;
@@ -553,12 +553,12 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
     const int base_count = *base_count_d;
     const int k = base_count + k_offset;
     const double weight = (double)k / (double)(k + 1);
-    for (int i = threadIdx.x; i < cone.num_elements; i += blockDim.x)
+    for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double current = current_dual[i];
         const double unprojected = current - step_size * gradient[i];
-        const double lower = cone.lower_bound_d[i];
-        const double upper = cone.upper_bound_d[i];
+        const double lower = state.lower_bound_d[i];
+        const double upper = state.upper_bound_d[i];
         const double box_lower = isfinite(lower) ? lower * scale : -INFINITY;
         const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
         const double projected =
@@ -576,7 +576,7 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
 
     if (threadIdx.x == 0)
     {
-        *cone.scalar_d = scale;
+        *state.scalar_d = scale;
         const double projected = unprojected_scale + scale;
         if (save_evaluation_iterate)
             *offset_evaluation = projected;
@@ -591,7 +591,7 @@ __global__ void update_hsd_cone_dual_single_block_kernel(
     }
 }
 
-__global__ void primal_box_resolvent_cooperative_kernel(
+__global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
@@ -645,7 +645,7 @@ __global__ void primal_box_resolvent_cooperative_kernel(
             double function_contribution, derivative_contribution;
             const double unprojected =
                 current_primal[i] + primal_step * gradient[i];
-            evaluate_primal_box_newton_terms(
+            evaluate_primal_box_cone_newton_terms(
                 unprojected, objective_d[i],
                 state.lower_bound_d[i], state.upper_bound_d[i],
                 homogeneous_scale, primal_metric, function_contribution, derivative_contribution);
@@ -755,7 +755,7 @@ __global__ void primal_box_resolvent_cooperative_kernel(
     }
 }
 
-__global__ void primal_box_resolvent_single_block_kernel(
+__global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
@@ -803,7 +803,7 @@ __global__ void primal_box_resolvent_single_block_kernel(
             double function_contribution, derivative_contribution;
             const double unprojected =
                 current_primal[i] + primal_step * gradient[i];
-            evaluate_primal_box_newton_terms(
+            evaluate_primal_box_cone_newton_terms(
                 unprojected, objective_d[i],
                 state.lower_bound_d[i], state.upper_bound_d[i],
                 homogeneous_scale, primal_metric, function_contribution, derivative_contribution);
@@ -900,7 +900,7 @@ __device__ __forceinline__ double select_active_dual_bound(
     return b;
 }
 
-__device__ __forceinline__ void evaluate_dual_cone_newton_terms(
+__device__ __forceinline__ void evaluate_dual_box_cone_newton_terms(
     double unprojected_value, double l, double u, double scale,
     double &function_contribution, double &derivative_contribution)
 {
@@ -910,7 +910,7 @@ __device__ __forceinline__ void evaluate_dual_cone_newton_terms(
     function_contribution = bound * vi;
 }
 
-__device__ __forceinline__ void evaluate_primal_box_newton_terms(
+__device__ __forceinline__ void evaluate_primal_box_cone_newton_terms(
     double vi, double ci, double li, double ui,
     double homogeneous_scale, double primal_metric,
     double &function_contribution, double &derivative_contribution)

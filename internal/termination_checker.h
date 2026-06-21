@@ -39,7 +39,7 @@ extern "C"
         double initial_homogeneous_scale;
         double current_homogeneous_scale;
         double pdhg_homogeneous_scale;
-        double pdhg_dual_constraint_offset;
+        double pdhg_dual_scale_offset;
 
         double primal_solution_norm;
         double dual_solution_norm;
