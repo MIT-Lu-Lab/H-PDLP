@@ -434,16 +434,16 @@ __global__ void compute_residual_kernel(
     int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double homogeneous_scale = *primal_scale_pdhg;
-    double inverse_homogeneous_scale =
-        (fabs(homogeneous_scale) > 1e-50)
-            ? 1.0 / homogeneous_scale
+    double primal_scale = *primal_scale_pdhg;
+    double inverse_primal_scale =
+        (fabs(primal_scale) > 1e-50)
+            ? 1.0 / primal_scale
             : 0.0;
 
     if (i < n_cons)
     {
         double ax = primal_prod[i];
-        double ax_hat = ax * inverse_homogeneous_scale;
+        double ax_hat = ax * inverse_primal_scale;
         double clamped = fmax(cons_lb[i], fmin(ax_hat, cons_ub[i]));
         primal_res[i] = (ax_hat - clamped) * cons_rescaling[i];
 
@@ -467,7 +467,7 @@ __global__ void compute_residual_kernel(
         double aty = dual_prod[idx];
         double normalized_reduced_cost =
             (obj_vec[idx] -
-             aty * inverse_homogeneous_scale) *
+             aty * inverse_primal_scale) *
             var_rescaling[idx];
         double dual_cone_violation = 0.0;
         if (!isfinite(var_ub[idx]))
@@ -479,15 +479,15 @@ __global__ void compute_residual_kernel(
         dual_res[idx] = dual_cone_violation;
 
         double reduced_cost =
-            obj_vec[idx] * homogeneous_scale - aty;
+            obj_vec[idx] * primal_scale - aty;
         double scaled_reduced_cost =
             reduced_cost * var_rescaling[idx];
         reduced_cost_out[idx] = reduced_cost;
 
         // For the primal-infeasibility certificate,
-        // A^T y + reduced_cost = c * homogeneous_scale.
+        // A^T y + reduced_cost = c * primal_scale.
         double farkas_stationarity_residual =
-            obj_vec[idx] * homogeneous_scale *
+            obj_vec[idx] * primal_scale *
             var_rescaling[idx];
         double reduced_cost_cone_violation = 0.0;
         if (!isfinite(var_ub[idx]))
@@ -505,7 +505,7 @@ __global__ void compute_residual_kernel(
 
         double x = primal_sol[idx];
 
-        double x_hat = x * inverse_homogeneous_scale;
+        double x_hat = x * inverse_primal_scale;
         double x_box_clamped = fmax(var_lb[idx], fmin(x_hat, var_ub[idx]));
         primal_res[n_cons + idx] = (x_hat - x_box_clamped) / var_rescaling[idx];
 
@@ -576,7 +576,7 @@ __global__ void compute_residual_metrics_kernel(
 {
     double primal_scale = *primal_scale_pdhg;
     double inv_primal_scale = (fabs(primal_scale) > 1e-50) ? 1.0 / primal_scale : 0.0;
-    double pdhg_dual_scale_offset = *dual_scale_pdhg;
+    double pdhg_dual_scale = *dual_scale_pdhg;
     double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;
     double absolute_dual_residual = (*dual_norm) / objective_vector_rescaling;
     double objective_dot_primal_value = *objective_dot_primal;
@@ -601,10 +601,10 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->dual_objective   = dual_objective_value;
     metrics_d->objective_gap    = objective_gap;
     metrics_d->relative_objective_gap = relative_objective_gap;
-    metrics_d->initial_homogeneous_scale   = *primal_scale_initial;
-    metrics_d->current_homogeneous_scale   = *primal_scale_current;
-    metrics_d->pdhg_homogeneous_scale      = primal_scale;
-    metrics_d->pdhg_dual_scale_offset = pdhg_dual_scale_offset;
+    metrics_d->initial_primal_scale   = *primal_scale_initial;
+    metrics_d->current_primal_scale   = *primal_scale_current;
+    metrics_d->pdhg_primal_scale      = primal_scale;
+    metrics_d->pdhg_dual_scale = pdhg_dual_scale;
 
     double yc_norm = *farkas_dual_solution_norm;
     double dual_solution_norm = yc_norm;
@@ -613,18 +613,18 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->dual_solution_norm = dual_solution_norm;
 
     double homogeneous_gap =
-        objective_dot_primal_value + pdhg_dual_scale_offset -
+        objective_dot_primal_value + pdhg_dual_scale -
         (*variable_support);
     double iterate_norm = sqrt(primal_solution_norm * primal_solution_norm
                              + dual_solution_norm * dual_solution_norm
                              + primal_scale * primal_scale
-                             + pdhg_dual_scale_offset * pdhg_dual_scale_offset);
+                             + pdhg_dual_scale * pdhg_dual_scale);
     double inv_iterate_norm = (iterate_norm > 1e-30) ? 1.0 / iterate_norm : 0.0;
 
-    double homogeneous_scale_hat = primal_scale * inv_iterate_norm;
+    double primal_scale_hat = primal_scale * inv_iterate_norm;
     double homogeneous_gap_hat = fmax(-homogeneous_gap, 0.0) * inv_iterate_norm;
-    double ratio_denominator = homogeneous_gap_hat + homogeneous_scale_hat;
-    metrics_d->normalized_homogeneous_scale = homogeneous_scale_hat;
+    double ratio_denominator = homogeneous_gap_hat + primal_scale_hat;
+    metrics_d->normalized_primal_scale = primal_scale_hat;
     metrics_d->normalized_homogeneous_gap   = homogeneous_gap_hat;
     metrics_d->normalized_homogeneous_ratio        = (ratio_denominator > 0.0)
                                             ? homogeneous_gap_hat / ratio_denominator

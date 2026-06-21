@@ -674,10 +674,10 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
 
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
 {
-    state->metrics_h->initial_homogeneous_scale = 1.0;
-    state->metrics_h->current_homogeneous_scale = 1.0;
-    state->metrics_h->pdhg_homogeneous_scale = 1.0;
-    state->metrics_h->pdhg_dual_scale_offset = 1.0;
+    state->metrics_h->initial_primal_scale = 1.0;
+    state->metrics_h->current_primal_scale = 1.0;
+    state->metrics_h->pdhg_primal_scale = 1.0;
+    state->metrics_h->pdhg_dual_scale = 1.0;
 }
 
 static void initialize_power_iteration_buffers(pdhg_solver_state_t *state)

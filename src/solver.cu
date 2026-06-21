@@ -90,7 +90,7 @@ static void hsd_update_dual_solution(
     const pdhg_parameters_t *params,
     const int k_offset,
     bool is_major);
-static void update_hsd_primal_and_homogeneous_scale(
+static void update_hsd_primal_block(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     const int k_offset,
@@ -294,7 +294,7 @@ static void hsd_run_iteration_step(
 {
     double reflection_coefficient = params->reflection_coefficient;
     hsd_update_dual_solution(state, params, k_offset, is_major);
-    update_hsd_primal_and_homogeneous_scale(
+    update_hsd_primal_block(
         state,
         params,
         k_offset,
@@ -346,7 +346,7 @@ static void hsd_update_dual_solution(
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
 }
 
-static void update_hsd_primal_and_homogeneous_scale(
+static void update_hsd_primal_block(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     const int k_offset,
@@ -529,7 +529,7 @@ static void perform_restart(
         state->con_bytes,
         cudaMemcpyDeviceToDevice,
         state->stream_A));
-    state->metrics_h->current_homogeneous_scale = state->metrics_h->pdhg_homogeneous_scale;
+    state->metrics_h->current_primal_scale = state->metrics_h->pdhg_primal_scale;
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_primal_scale_initial_d,             state->hsd_primal_scale_current_d,             state->hsd_primal_scale_pdhg_d,             state->hsd_primal_scale_reflected_d,
@@ -587,18 +587,18 @@ static void update_primal_weight_via_restart_pid(
     double dx2     = restart_scalars_h[0] * restart_scalars_h[0];
     double dy2     = restart_scalars_h[1] * restart_scalars_h[1];
 
-    double homogeneous_scale_delta =
+    double primal_scale_delta =
         hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG] -
         hsd_scalars_h[HSD_PRIMAL_SCALE_INITIAL];
     double d_ac    = hsd_scalars_h[HSD_DUAL_SCALE_PDHG]
                    - hsd_scalars_h[HSD_DUAL_SCALE_INITIAL];
     double base2   = state->step_size_base * state->step_size_base;
     double alpha_p = base2 / step_size_params->step_size_factor;
-    double homogeneous_scale_delta_squared =
-        homogeneous_scale_delta * homogeneous_scale_delta;
+    double primal_scale_delta_squared =
+        primal_scale_delta * primal_scale_delta;
 
     double primal_dist =
-        sqrt(dx2 + alpha_p * homogeneous_scale_delta_squared);
+        sqrt(dx2 + alpha_p * primal_scale_delta_squared);
     double dual_dist   = sqrt(dy2 + d_ac * d_ac);
 
     double scale_reference =
@@ -616,21 +616,21 @@ static void update_primal_weight_via_restart_pid(
 
 static double apply_gauge_control(pdhg_solver_state_t *state)
 {
-    double homogeneous_scale =
-        state->metrics_h->pdhg_homogeneous_scale;
+    double primal_scale =
+        state->metrics_h->pdhg_primal_scale;
     double max_block_norm = fmax(fmax(state->metrics_h->primal_solution_norm,
                                       state->metrics_h->dual_solution_norm),
-                            fmax(fabs(homogeneous_scale),
-                                 fabs(state->metrics_h->pdhg_dual_scale_offset)));
+                            fmax(fabs(primal_scale),
+                                 fabs(state->metrics_h->pdhg_dual_scale)));
 
     double inv_scale;
     if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
         inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
-    else if (homogeneous_scale >= 0.1 &&
-             homogeneous_scale <= 10.0)
+    else if (primal_scale >= 0.1 &&
+             primal_scale <= 10.0)
         return 1.0;
-    else if (homogeneous_scale > 1.0e-3)
-        inv_scale = 1.0 / homogeneous_scale;
+    else if (primal_scale > 1.0e-3)
+        inv_scale = 1.0 / primal_scale;
     else
         inv_scale = 10.0;
 
@@ -653,8 +653,8 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
         state->hsd_primal_scale_pdhg_d,
         state->hsd_dual_scale_pdhg_d,
         inv_scale);
-    state->metrics_h->pdhg_homogeneous_scale      *= inv_scale;
-    state->metrics_h->pdhg_dual_scale_offset *= inv_scale;
+    state->metrics_h->pdhg_primal_scale      *= inv_scale;
+    state->metrics_h->pdhg_dual_scale *= inv_scale;
     return inv_scale;
 }
 
@@ -707,7 +707,7 @@ static cuhsdlp_result_t *create_result_from_state(
     results->termination_reason = state->termination_reason;
 
     results->restart_count = state->restart_count;
-    results->homogeneous_scale = state->metrics_h->pdhg_homogeneous_scale;
+    results->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
     results->final_step_size_primal = state->step_size_primal;
     results->final_step_size_dual = state->step_size_dual;
     results->final_step_size_homogeneous = state->step_size_homogeneous;
@@ -735,7 +735,7 @@ static void rescale_solution(pdhg_solver_state_t *state)
         divisor = farkas_h[FARKAS_ORIGINAL_PRIMAL_NORM];
         break;
     default:
-        divisor = state->metrics_h->pdhg_homogeneous_scale;
+        divisor = state->metrics_h->pdhg_primal_scale;
         break;
     }
 

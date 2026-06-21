@@ -36,10 +36,10 @@ extern "C"
         double objective_gap;
         double relative_objective_gap;
 
-        double initial_homogeneous_scale;
-        double current_homogeneous_scale;
-        double pdhg_homogeneous_scale;
-        double pdhg_dual_scale_offset;
+        double initial_primal_scale;
+        double current_primal_scale;
+        double pdhg_primal_scale;
+        double pdhg_dual_scale;
 
         double primal_solution_norm;
         double dual_solution_norm;
@@ -49,7 +49,7 @@ extern "C"
         double relative_dual_infeasibility_residual;
         double relative_dual_infeasibility_objective;
 
-        double normalized_homogeneous_scale;
+        double normalized_primal_scale;
         double normalized_homogeneous_gap;
         double normalized_homogeneous_ratio;
     } pdhg_metrics_t;

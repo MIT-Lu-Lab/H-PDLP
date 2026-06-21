@@ -226,7 +226,7 @@ void display_iteration_stats(
             state->metrics_h->relative_primal_residual,
             state->metrics_h->relative_dual_residual,
             state->metrics_h->relative_objective_gap,
-            state->metrics_h->current_homogeneous_scale,
+            state->metrics_h->current_primal_scale,
             state->metrics_h->normalized_homogeneous_gap,
             state->metrics_h->normalized_homogeneous_ratio,
             state->step_size_primal,
