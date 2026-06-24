@@ -421,6 +421,21 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
 
             if (threadIdx.x == 0)
             {
+                if (iter == 0)
+                {
+                    const double function_value =
+                        scale * (1.0 + total_derivative) - total_function + unprojected_scale;
+                    const double scale_bound = fmax(0.0, scale - function_value);
+                    if (function_value < 0.0)
+                    {
+                        scale_high = scale_bound;
+                    }
+                    else
+                    {
+                        scale_low = scale_bound;
+                        scale_high = fmax(0.0, scale);
+                    }
+                }
                 const double newton_step =
                     fmax(0.0, (total_function - unprojected_scale) / (1.0 + total_derivative));
                 const bool new_converged = update_newton_bracket(
@@ -533,6 +548,21 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
 
         if (threadIdx.x == 0)
         {
+            if (iter == 0)
+            {
+                const double function_value =
+                    scale * (1.0 + total_derivative) - total_function + unprojected_scale;
+                const double scale_bound = fmax(0.0, scale - function_value);
+                if (function_value < 0.0)
+                {
+                    scale_high = scale_bound;
+                }
+                else
+                {
+                    scale_low = scale_bound;
+                    scale_high = fmax(0.0, scale);
+                }
+            }
             const double newton_step =
                 fmax(0.0, (total_function - unprojected_scale) / (1.0 + total_derivative));
             const bool new_converged = update_newton_bracket(
@@ -684,6 +714,20 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
                     homogeneous_metric *
                         (unprojected_primal_scale -
                          primal_scale);
+                if (iter == 0)
+                {
+                    const double scale_bound =
+                        fmax(0.0, primal_scale + function_value / homogeneous_metric);
+                    if (function_value > 0.0)
+                    {
+                        scale_high = scale_bound;
+                    }
+                    else
+                    {
+                        scale_low = scale_bound;
+                        scale_high = fmax(0.0, primal_scale);
+                    }
+                }
                 const double newton_step =
                     fmax(0.0, primal_scale + function_value / derivative);
                 const bool new_converged = update_newton_bracket(
@@ -822,6 +866,20 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
                 homogeneous_metric *
                     (unprojected_primal_scale -
                      primal_scale);
+            if (iter == 0)
+            {
+                const double scale_bound =
+                    fmax(0.0, primal_scale + function_value / homogeneous_metric);
+                if (function_value > 0.0)
+                {
+                    scale_high = scale_bound;
+                }
+                else
+                {
+                    scale_low = scale_bound;
+                    scale_high = fmax(0.0, primal_scale);
+                }
+            }
             const double newton_step =
                 fmax(0.0, primal_scale + function_value / derivative);
             const bool new_converged = update_newton_bracket(
