@@ -240,12 +240,8 @@ pdhg_solver_state_t *initialize_solver_state(
     state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
     state->constraint_matrix_t = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
 
-    state->constraint_matrix->num_rows = n_cons;
-    state->constraint_matrix->num_cols = n_vars;
     state->constraint_matrix->num_nonzeros = nnz;
 
-    state->constraint_matrix_t->num_rows = n_vars;
-    state->constraint_matrix_t->num_cols = n_cons;
     state->constraint_matrix_t->num_nonzeros = nnz;
 
     state->termination_reason = TERMINATION_REASON_UNSPECIFIED;
@@ -674,7 +670,6 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
 
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
 {
-    state->metrics_h->initial_primal_scale = 1.0;
     state->metrics_h->current_primal_scale = 1.0;
     state->metrics_h->pdhg_primal_scale = 1.0;
     state->metrics_h->pdhg_dual_scale = 1.0;
@@ -760,7 +755,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->dual_box_cone_state.upper_bound_d = state->constraint_upper_bound_d;
     state->dual_box_cone_state.num_elements = state->num_constraints;
 
-    allocate_zeroed_device_buffer((void **)&state->primal_box_cone_state.scalar_d, sizeof(double));
     state->primal_box_cone_state.lower_bound_d = state->variable_lower_bound_d;
     state->primal_box_cone_state.upper_bound_d = state->variable_upper_bound_d;
     state->primal_box_cone_state.num_elements = state->num_variables;
@@ -1035,7 +1029,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.scalar_d);
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.newton_partials_d);
-    FREE_DEVICE_BUFFER(state->primal_box_cone_state.scalar_d);
     FREE_DEVICE_BUFFER(state->primal_box_cone_state.newton_partials_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);

@@ -61,8 +61,6 @@ enum HsdScalarSlot {
 };
 
 typedef struct {
-    int num_rows;
-    int num_cols;
     int num_nonzeros;
     int *row_ptr;
     int *col_ind;

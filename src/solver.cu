@@ -70,7 +70,6 @@ __global__ void restart_hsd_scalars_kernel(
     double *primal_scale_initial,           double *primal_scale_current,           double *primal_scale_pdhg,           double *primal_scale_reflected,
     double *dual_scale_initial, double *dual_scale_current, double *dual_scale_pdhg, double *dual_scale_reflected,
     double *constraint_cone_scale_d,
-    double *variable_cone_scale_d,
     double  cone_warm_start_scale);
 __global__ void scale_hsd_scalars_kernel(
     double *primal_scale_pdhg,
@@ -535,7 +534,6 @@ static void perform_restart(
         state->hsd_primal_scale_initial_d,             state->hsd_primal_scale_current_d,             state->hsd_primal_scale_pdhg_d,             state->hsd_primal_scale_reflected_d,
         state->hsd_dual_scale_initial_d,   state->hsd_dual_scale_current_d,   state->hsd_dual_scale_pdhg_d,   state->hsd_dual_scale_reflected_d,
         state->dual_box_cone_state.scalar_d,
-        state->primal_box_cone_state.scalar_d,
         cone_warm_start_scale);
 
     state->inner_count = 0;
@@ -842,7 +840,6 @@ __global__ void restart_hsd_scalars_kernel(
     double *primal_scale_initial,           double *primal_scale_current,           double *primal_scale_pdhg,           double *primal_scale_reflected,
     double *dual_scale_initial, double *dual_scale_current, double *dual_scale_pdhg, double *dual_scale_reflected,
     double *constraint_cone_scale_d,
-    double *variable_cone_scale_d,
     double  cone_warm_start_scale)
 {
     double s = *primal_scale_pdhg;
@@ -856,7 +853,6 @@ __global__ void restart_hsd_scalars_kernel(
     *dual_scale_reflected = dc;
 
     *constraint_cone_scale_d *= cone_warm_start_scale;
-    *variable_cone_scale_d *= cone_warm_start_scale;
 }
 
 __global__ void scale_hsd_scalars_kernel(

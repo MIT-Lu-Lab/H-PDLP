@@ -738,7 +738,6 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        *state.scalar_d = primal_scale;
         if (save_evaluation_iterate)
             *evaluation_primal_scale = primal_scale;
 
@@ -874,7 +873,6 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
 
     if (threadIdx.x == 0)
     {
-        *state.scalar_d = primal_scale;
         if (save_evaluation_iterate)
             *evaluation_primal_scale = primal_scale;
 

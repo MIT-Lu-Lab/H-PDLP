@@ -68,7 +68,6 @@ __global__ void compute_residual_metrics_kernel(
     const double *farkas_original_dual_norm,
     const double *farkas_original_reduced_cost_norm,
     const double *farkas_original_primal_norm,
-    const double *primal_scale_initial,
     const double *primal_scale_current,
     const double *primal_scale_pdhg,
     const double *dual_scale_pdhg,
@@ -292,7 +291,6 @@ static void update_residual_metrics(pdhg_solver_state_t *state)
         state->farkas_original_dual_norm_d,
         state->farkas_original_reduced_cost_norm_d,
         state->farkas_original_primal_norm_d,
-        state->hsd_primal_scale_initial_d,
         state->hsd_primal_scale_current_d,
         state->hsd_primal_scale_pdhg_d,
         state->hsd_dual_scale_pdhg_d,
@@ -563,7 +561,6 @@ __global__ void compute_residual_metrics_kernel(
     const double *farkas_original_dual_norm,
     const double *farkas_original_reduced_cost_norm,
     const double *farkas_original_primal_norm,
-    const double *primal_scale_initial,
     const double *primal_scale_current,
     const double *primal_scale_pdhg,
     const double *dual_scale_pdhg,
@@ -601,7 +598,6 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->dual_objective   = dual_objective_value;
     metrics_d->objective_gap    = objective_gap;
     metrics_d->relative_objective_gap = relative_objective_gap;
-    metrics_d->initial_primal_scale   = *primal_scale_initial;
     metrics_d->current_primal_scale   = *primal_scale_current;
     metrics_d->pdhg_primal_scale      = primal_scale;
     metrics_d->pdhg_dual_scale = pdhg_dual_scale;
@@ -624,7 +620,6 @@ __global__ void compute_residual_metrics_kernel(
     double primal_scale_hat = primal_scale * inv_iterate_norm;
     double homogeneous_gap_hat = fmax(-homogeneous_gap, 0.0) * inv_iterate_norm;
     double ratio_denominator = homogeneous_gap_hat + primal_scale_hat;
-    metrics_d->normalized_primal_scale = primal_scale_hat;
     metrics_d->normalized_homogeneous_gap   = homogeneous_gap_hat;
     metrics_d->normalized_homogeneous_ratio        = (ratio_denominator > 0.0)
                                             ? homogeneous_gap_hat / ratio_denominator

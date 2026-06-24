@@ -326,10 +326,6 @@ typedef struct
 
 typedef struct
 {
-    gzFile gz_file;
-    FILE *file;
-    bool is_gzipped;
-
     NameMap row_map;
     NameMap col_map;
     NameMap free_row_map;
