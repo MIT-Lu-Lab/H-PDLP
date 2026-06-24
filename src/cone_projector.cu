@@ -139,6 +139,15 @@ __device__ __forceinline__ bool update_newton_bracket(
     double &scale,
     double &scale_low,
     double &scale_high);
+__device__ __forceinline__ bool update_newton_bracket_safeguarded(
+    double newton_step,
+    double function_value,
+    double unprojected_scale,
+    double tol,
+    double &scale,
+    double &scale_low,
+    double &scale_high,
+    double &previous_step);
 
 void update_dual_box_cone_projection(
     const cone_parameters_t *cone_params,
@@ -654,6 +663,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double primal_scale = current_scale;
     double scale_low = 0.0;
     double scale_high = INFINITY;
+    double newton_previous_step = INFINITY;
     const double unprojected_primal_scale =
         current_scale +
         (*step_size_homogeneous_d) * (*homogeneous_dual_gradient);
@@ -730,9 +740,9 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
                 }
                 const double newton_step =
                     fmax(0.0, primal_scale + function_value / derivative);
-                const bool new_converged = update_newton_bracket(
-                    newton_step, unprojected_primal_scale, tol,
-                    primal_scale, scale_low, scale_high);
+                const bool new_converged = update_newton_bracket_safeguarded(
+                    newton_step, function_value, unprojected_primal_scale, tol,
+                    primal_scale, scale_low, scale_high, newton_previous_step);
                 s_scale = primal_scale;
                 s_converged = new_converged ? 1 : 0;
             }
@@ -829,6 +839,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double primal_scale = current_scale;
     double scale_low = 0.0;
     double scale_high = INFINITY;
+    double newton_previous_step = INFINITY;
     const double unprojected_primal_scale =
         current_scale +
         (*step_size_homogeneous_d) * (*homogeneous_dual_gradient);
@@ -882,9 +893,9 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
             }
             const double newton_step =
                 fmax(0.0, primal_scale + function_value / derivative);
-            const bool new_converged = update_newton_bracket(
-                newton_step, unprojected_primal_scale, tol,
-                primal_scale, scale_low, scale_high);
+            const bool new_converged = update_newton_bracket_safeguarded(
+                newton_step, function_value, unprojected_primal_scale, tol,
+                primal_scale, scale_low, scale_high, newton_previous_step);
             s_scale = primal_scale;
             s_converged = new_converged ? 1 : 0;
         }
@@ -1036,6 +1047,43 @@ __device__ __forceinline__ bool update_newton_bracket(
         new_scale = 0.5 * (scale_low + scale_high);
     else
         new_scale = scale_low;
+
+    const bool converged =
+        (fabs(new_scale - scale) < tol * fabs(new_scale) + 1.0e-14 * fabs(unprojected_scale));
+    scale = new_scale;
+    return converged;
+}
+
+__device__ __forceinline__ bool update_newton_bracket_safeguarded(
+    double newton_step,
+    double function_value,
+    double unprojected_scale,
+    double tol,
+    double &scale,
+    double &scale_low,
+    double &scale_high,
+    double &previous_step)
+{
+    if (function_value > 0.0)
+        scale_low = scale;
+    else
+        scale_high = scale;
+
+    const double newton_delta = newton_step - scale;
+    const bool in_bracket =
+        (newton_step >= scale_low) && (newton_step <= scale_high);
+
+    double new_scale;
+    if (isfinite(scale_high) && (!in_bracket || fabs(newton_delta) > 0.5 * fabs(previous_step)))
+    {
+        previous_step = 0.5 * (scale_high - scale_low);
+        new_scale = scale_low + previous_step;
+    }
+    else
+    {
+        previous_step = newton_delta;
+        new_scale = newton_step;
+    }
 
     const bool converged =
         (fabs(new_scale - scale) < tol * fabs(new_scale) + 1.0e-14 * fabs(unprojected_scale));
