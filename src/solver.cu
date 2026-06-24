@@ -250,17 +250,16 @@ static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
                                state->stream_A));
 }
 
-static void compute_step_sizes(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params)
+static void compute_step_sizes(pdhg_solver_state_t *state)
 {
-    double omega = state->primal_weight;
+    double omega  = state->primal_weight;
     double lambda = state->step_size_base;
-    double factor = step_size_params->step_size_factor;
 
     state->step_size_primal = lambda / omega;
-    state->step_size_dual = omega * lambda;
-    state->step_size_homogeneous = factor / state->step_size_dual;
+    state->step_size_dual   = omega * lambda;
+
+    double dual_step = state->step_size_dual;
+    state->step_size_homogeneous = dual_step / (1.0 + 2.0 * dual_step * dual_step);
 }
 
 static void initialize_step_size_and_primal_weight(
@@ -282,7 +281,7 @@ static void initialize_step_size_and_primal_weight(
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
-    compute_step_sizes(state, &params->step_size_params);
+    compute_step_sizes(state);
 }
 
 static void hsd_run_iteration_step(
@@ -500,7 +499,7 @@ static void perform_restart(
 
     update_primal_weight_via_restart_pid(state, step_size_params);
 
-    compute_step_sizes(state, step_size_params);
+    compute_step_sizes(state);
 
     double cone_warm_start_scale = apply_gauge_control(state);
 
@@ -591,21 +590,18 @@ static void update_primal_weight_via_restart_pid(
     double d_ac    = hsd_scalars_h[HSD_DUAL_SCALE_PDHG]
                    - hsd_scalars_h[HSD_DUAL_SCALE_INITIAL];
     double base2   = state->step_size_base * state->step_size_base;
-    double alpha_p = base2 / step_size_params->step_size_factor;
+    double alpha_p = 2.0 * base2;
     double primal_scale_delta_squared =
         primal_scale_delta * primal_scale_delta;
 
-    double primal_dist =
-        sqrt(dx2 + alpha_p * primal_scale_delta_squared);
-    double dual_dist   = sqrt(dy2 + d_ac * d_ac);
+    double primal_dist = sqrt(dx2 + alpha_p * primal_scale_delta_squared);
+    double dual_dist   = sqrt(dy2 + d_ac * d_ac + primal_scale_delta_squared);
 
-    double scale_reference =
-        fmax(hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG], 1e-300);
-    bool dist_ok =
-        primal_dist > 1e-16 * scale_reference &&
-        dual_dist > 1e-16 * scale_reference &&
-        primal_dist < 1e12 * scale_reference &&
-        dual_dist < 1e12 * scale_reference;
+    double scale_reference = fmax(hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG], 1e-300);
+    bool dist_ok = primal_dist > 1e-16 * scale_reference 
+                && dual_dist > 1e-16 * scale_reference
+                && primal_dist < 1e12 * scale_reference
+                && dual_dist < 1e12 * scale_reference;
 
     if (dist_ok)
         apply_pid_step(state, step_size_params, primal_dist, dual_dist);
@@ -623,14 +619,22 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
 
     double inv_scale;
     if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
+    {
         inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
+    }
     else if (primal_scale >= 0.1 &&
              primal_scale <= 10.0)
+    {
         return 1.0;
+    }
     else if (primal_scale > 1.0e-3)
+    {
         inv_scale = 1.0 / primal_scale;
+    }
     else
+    {
         inv_scale = 10.0;
+    }
 
     CUDA_CHECK(cudaMemcpyAsync(
         state->hsd_inverse_scale_d,
