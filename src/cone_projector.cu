@@ -132,11 +132,10 @@ __device__ __forceinline__ void block_sum_newton_terms(
 __device__ inline void warp_reduce_newton_terms(
     double &derivative,
     double &function_value);
-__device__ __forceinline__ bool update_newton_bracket(
-    double newton_step,
-    double unprojected_scale,
-    double tol,
-    double &scale,
+__device__ __forceinline__ void initialize_newton_bracket(
+    double function_value,
+    double scale,
+    double slope_floor,
     double &scale_low,
     double &scale_high);
 __device__ __forceinline__ bool update_newton_bracket_safeguarded(
@@ -148,6 +147,27 @@ __device__ __forceinline__ bool update_newton_bracket_safeguarded(
     double &scale_low,
     double &scale_high,
     double &previous_step);
+__device__ __forceinline__ bool update_primal_scale_newton_step(
+    double total_function,
+    double total_derivative,
+    int iter,
+    double homogeneous_metric,
+    double unprojected_primal_scale,
+    double tol,
+    double &primal_scale,
+    double &scale_low,
+    double &scale_high,
+    double &newton_previous_step);
+__device__ __forceinline__ bool update_dual_scale_newton_step(
+    double total_function,
+    double total_derivative,
+    int iter,
+    double unprojected_scale,
+    double tol,
+    double &scale,
+    double &scale_low,
+    double &scale_high,
+    double &newton_previous_step);
 
 void update_dual_box_cone_projection(
     const cone_parameters_t *cone_params,
@@ -382,6 +402,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double scale = *state.scalar_d;
     double scale_low = 0.0;
     double scale_high = INFINITY;
+    double newton_previous_step = INFINITY;
     const double step_size = *step_size_d;
     const double unprojected_scale =
         *dual_scale_current - step_size * (*primal_scale_current);
@@ -430,25 +451,9 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
 
             if (threadIdx.x == 0)
             {
-                if (iter == 0)
-                {
-                    const double function_value =
-                        scale * (1.0 + total_derivative) - total_function + unprojected_scale;
-                    const double scale_bound = fmax(0.0, scale - function_value);
-                    if (function_value < 0.0)
-                    {
-                        scale_high = scale_bound;
-                    }
-                    else
-                    {
-                        scale_low = scale_bound;
-                        scale_high = fmax(0.0, scale);
-                    }
-                }
-                const double newton_step =
-                    fmax(0.0, (total_function - unprojected_scale) / (1.0 + total_derivative));
-                const bool new_converged = update_newton_bracket(
-                    newton_step, unprojected_scale, tol, scale, scale_low, scale_high);
+                const bool new_converged = update_dual_scale_newton_step(
+                    total_function, total_derivative, iter, unprojected_scale, tol,
+                    scale, scale_low, scale_high, newton_previous_step);
                 s_scale = scale;
                 s_converged = new_converged ? 1 : 0;
             }
@@ -533,6 +538,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     double scale = *state.scalar_d;
     double scale_low = 0.0;
     double scale_high = INFINITY;
+    double newton_previous_step = INFINITY;
     const double step_size = *step_size_d;
     const double unprojected_scale =
         *dual_scale_current - step_size * (*primal_scale_current);
@@ -557,25 +563,9 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
 
         if (threadIdx.x == 0)
         {
-            if (iter == 0)
-            {
-                const double function_value =
-                    scale * (1.0 + total_derivative) - total_function + unprojected_scale;
-                const double scale_bound = fmax(0.0, scale - function_value);
-                if (function_value < 0.0)
-                {
-                    scale_high = scale_bound;
-                }
-                else
-                {
-                    scale_low = scale_bound;
-                    scale_high = fmax(0.0, scale);
-                }
-            }
-            const double newton_step =
-                fmax(0.0, (total_function - unprojected_scale) / (1.0 + total_derivative));
-            const bool new_converged = update_newton_bracket(
-                newton_step, unprojected_scale, tol, scale, scale_low, scale_high);
+            const bool new_converged = update_dual_scale_newton_step(
+                total_function, total_derivative, iter, unprojected_scale, tol,
+                scale, scale_low, scale_high, newton_previous_step);
             s_scale = scale;
             s_converged = new_converged ? 1 : 0;
         }
@@ -717,31 +707,9 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
 
             if (threadIdx.x == 0)
             {
-                const double derivative =
-                    total_derivative + homogeneous_metric;
-                const double function_value =
-                    total_function +
-                    homogeneous_metric *
-                        (unprojected_primal_scale -
-                         primal_scale);
-                if (iter == 0)
-                {
-                    const double scale_bound =
-                        fmax(0.0, primal_scale + function_value / homogeneous_metric);
-                    if (function_value > 0.0)
-                    {
-                        scale_high = scale_bound;
-                    }
-                    else
-                    {
-                        scale_low = scale_bound;
-                        scale_high = fmax(0.0, primal_scale);
-                    }
-                }
-                const double newton_step =
-                    fmax(0.0, primal_scale + function_value / derivative);
-                const bool new_converged = update_newton_bracket_safeguarded(
-                    newton_step, function_value, unprojected_primal_scale, tol,
+                const bool new_converged = update_primal_scale_newton_step(
+                    total_function, total_derivative, iter,
+                    homogeneous_metric, unprojected_primal_scale, tol,
                     primal_scale, scale_low, scale_high, newton_previous_step);
                 s_scale = primal_scale;
                 s_converged = new_converged ? 1 : 0;
@@ -870,31 +838,9 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
 
         if (threadIdx.x == 0)
         {
-            const double derivative =
-                total_derivative + homogeneous_metric;
-            const double function_value =
-                total_function +
-                homogeneous_metric *
-                    (unprojected_primal_scale -
-                     primal_scale);
-            if (iter == 0)
-            {
-                const double scale_bound =
-                    fmax(0.0, primal_scale + function_value / homogeneous_metric);
-                if (function_value > 0.0)
-                {
-                    scale_high = scale_bound;
-                }
-                else
-                {
-                    scale_low = scale_bound;
-                    scale_high = fmax(0.0, primal_scale);
-                }
-            }
-            const double newton_step =
-                fmax(0.0, primal_scale + function_value / derivative);
-            const bool new_converged = update_newton_bracket_safeguarded(
-                newton_step, function_value, unprojected_primal_scale, tol,
+            const bool new_converged = update_primal_scale_newton_step(
+                total_function, total_derivative, iter,
+                homogeneous_metric, unprojected_primal_scale, tol,
                 primal_scale, scale_low, scale_high, newton_previous_step);
             s_scale = primal_scale;
             s_converged = new_converged ? 1 : 0;
@@ -1027,31 +973,23 @@ __device__ inline void warp_reduce_newton_terms(double &derivative, double &func
     }
 }
 
-__device__ __forceinline__ bool update_newton_bracket(
-    double newton_step,
-    double unprojected_scale,
-    double tol,
-    double &scale,
+__device__ __forceinline__ void initialize_newton_bracket(
+    double function_value,
+    double scale,
+    double slope_floor,
     double &scale_low,
     double &scale_high)
 {
-    if (newton_step > scale)
-        scale_low = scale;
+    const double scale_bound = fmax(0.0, scale + function_value / slope_floor);
+    if (function_value > 0.0)
+    {
+        scale_high = scale_bound;
+    }
     else
-        scale_high = scale;
-
-    double new_scale;
-    if (newton_step >= scale_low && newton_step <= scale_high)
-        new_scale = newton_step;
-    else if (isfinite(scale_high))
-        new_scale = 0.5 * (scale_low + scale_high);
-    else
-        new_scale = scale_low;
-
-    const bool converged =
-        (fabs(new_scale - scale) < tol * fabs(new_scale) + 1.0e-14 * fabs(unprojected_scale));
-    scale = new_scale;
-    return converged;
+    {
+        scale_low = scale_bound;
+        scale_high = fmax(0.0, scale);
+    }
 }
 
 __device__ __forceinline__ bool update_newton_bracket_safeguarded(
@@ -1089,4 +1027,50 @@ __device__ __forceinline__ bool update_newton_bracket_safeguarded(
         (fabs(new_scale - scale) < tol * fabs(new_scale) + 1.0e-14 * fabs(unprojected_scale));
     scale = new_scale;
     return converged;
+}
+
+__device__ __forceinline__ bool update_primal_scale_newton_step(
+    double total_function,
+    double total_derivative,
+    int iter,
+    double homogeneous_metric,
+    double unprojected_primal_scale,
+    double tol,
+    double &primal_scale,
+    double &scale_low,
+    double &scale_high,
+    double &newton_previous_step)
+{
+    const double derivative = total_derivative + homogeneous_metric;
+    const double function_value =
+        total_function + homogeneous_metric * (unprojected_primal_scale - primal_scale);
+    if (iter == 0)
+        initialize_newton_bracket(
+            function_value, primal_scale, homogeneous_metric, scale_low, scale_high);
+    const double newton_step = fmax(0.0, primal_scale + function_value / derivative);
+    return update_newton_bracket_safeguarded(
+        newton_step, function_value, unprojected_primal_scale, tol,
+        primal_scale, scale_low, scale_high, newton_previous_step);
+}
+
+__device__ __forceinline__ bool update_dual_scale_newton_step(
+    double total_function,
+    double total_derivative,
+    int iter,
+    double unprojected_scale,
+    double tol,
+    double &scale,
+    double &scale_low,
+    double &scale_high,
+    double &newton_previous_step)
+{
+    const double function_value =
+        total_function - unprojected_scale - scale * (1.0 + total_derivative);
+    if (iter == 0)
+        initialize_newton_bracket(function_value, scale, 1.0, scale_low, scale_high);
+    const double newton_step =
+        fmax(0.0, (total_function - unprojected_scale) / (1.0 + total_derivative));
+    return update_newton_bracket_safeguarded(
+        newton_step, function_value, unprojected_scale, tol,
+        scale, scale_low, scale_high, newton_previous_step);
 }
