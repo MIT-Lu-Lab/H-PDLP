@@ -1066,9 +1066,12 @@ __device__ __forceinline__ bool update_dual_scale_newton_step(
 {
     const double function_value =
         total_function - unprojected_scale - scale * (1.0 + total_derivative);
-    if (iter == 0)
-        initialize_newton_bracket(function_value, scale, 1.0, scale_low, scale_high);
-    const double newton_step =
+    // Dual slope floor is 1, so bare Newton already converges fast;
+    // The primal floor is 1/step_homogeneous
+    // avoid long tails in the Newton bracket
+    // if (iter == 0)
+    //     initialize_newton_bracket(function_value, scale, 1.0, scale_low, scale_high);
+    const double newton_step = 
         fmax(0.0, (total_function - unprojected_scale) / (1.0 + total_derivative));
     return update_newton_bracket_safeguarded(
         newton_step, function_value, unprojected_scale, tol,
