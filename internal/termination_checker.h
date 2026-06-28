@@ -64,6 +64,10 @@ extern "C"
         pdhg_solver_state_t *solver_state,
         const pdhg_parameters_t *params);
 
+    cuhsdlp_result_t *create_result_from_state(
+        pdhg_solver_state_t *state,
+        const lp_problem_t *original_problem);
+
 #ifdef __cplusplus
 }
 #endif
