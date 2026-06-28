@@ -282,6 +282,9 @@ static void initialize_step_size_and_primal_weight(
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
+    state->best_primal_weight = state->primal_weight;
+    state->best_balance = INFINITY;
+
     compute_step_sizes(state, &params->step_size_params);
 }
 
@@ -544,7 +547,8 @@ static void apply_pid_step(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params,
     double primal_dist,
-    double dual_dist)
+    double dual_dist,
+    bool clamp_step)
 {
     double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
     if (!isfinite(error))
@@ -555,8 +559,11 @@ static void apply_pid_step(
     double step = step_size_params->k_p * error +
                   step_size_params->k_i * state->primal_weight_error_sum +
                   step_size_params->k_d * delta_error;
-    const double max_log_step = log(10.0);
-    step = fmin(fmax(step, -max_log_step), max_log_step);
+    if (clamp_step)
+    {
+        const double max_log_step = log(10.0);
+        step = fmin(fmax(step, -max_log_step), max_log_step);
+    }
     state->primal_weight *= exp(step);
     state->primal_weight_last_error = error;
 }
@@ -599,13 +606,15 @@ static void update_primal_weight_via_restart_pid(
     double dual_dist   = sqrt(dy2 + d_ac * d_ac);
 
     double scale_reference = fmax(hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG], 1e-300);
-    bool dist_ok = primal_dist > 1e-16 * scale_reference 
+    bool dist_ok = primal_dist > 1e-16 * scale_reference
                 && dual_dist > 1e-16 * scale_reference
                 && primal_dist < 1e12 * scale_reference
                 && dual_dist < 1e12 * scale_reference;
 
     if (dist_ok)
-        apply_pid_step(state, step_size_params, primal_dist, dual_dist);
+        apply_pid_step(state, step_size_params, primal_dist, dual_dist, false);
+    else
+        apply_pid_step(state, step_size_params, primal_dist, dual_dist, true);
 }
 
 
