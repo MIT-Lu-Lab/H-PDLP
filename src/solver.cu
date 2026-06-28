@@ -18,6 +18,7 @@ limitations under the License.
 #include "cuhsdlp.h"
 #include "display.h"
 #include "internal_types.h"
+#include "pid_controller.h"
 #include "presolver.h"
 #include "setup.h"
 #include "solver.h"
@@ -282,9 +283,7 @@ static void initialize_step_size_and_primal_weight(
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
-    state->best_primal_weight = state->primal_weight;
-    state->reversal_streak = 0;
-    state->last_step_sign = 0;
+    initialize_pid_state(&state->pid, state->primal_weight);
 
     compute_step_sizes(state, &params->step_size_params);
 }
@@ -544,31 +543,6 @@ static void perform_restart(
     state->last_trial_fixed_point_error = INFINITY;
 }
 
-static void apply_pid_step(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params,
-    double primal_dist,
-    double dual_dist,
-    bool clamp_step)
-{
-    double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
-    if (!isfinite(error))
-        return;
-    state->primal_weight_error_sum *= step_size_params->i_smooth;
-    state->primal_weight_error_sum += error;
-    double delta_error = error - state->primal_weight_last_error;
-    double step = step_size_params->k_p * error +
-                  step_size_params->k_i * state->primal_weight_error_sum +
-                  step_size_params->k_d * delta_error;
-    if (clamp_step)
-    {
-        const double max_log_step = log(10.0);
-        step = fmin(fmax(step, -max_log_step), max_log_step);
-    }
-    state->primal_weight *= exp(step);
-    state->primal_weight_last_error = error;
-}
-
 static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params)
@@ -616,37 +590,8 @@ static void update_primal_weight_via_restart_pid(
                  / state->metrics_h->relative_primal_residual;
     bool ratio_ok = ratio > 1e-8 && ratio < 1e8;
 
-    double error = log(dual_dist) - log(primal_dist) - log(state->primal_weight);
-    int step_sign = (error > 1e-12) ? 1 : (error < -1e-12 ? -1 : 0);
-    if (step_sign != 0)
-    {
-        if (state->last_step_sign != 0 && step_sign != state->last_step_sign)
-            state->reversal_streak++;
-        else if (step_sign == state->last_step_sign)
-        {
-            state->reversal_streak = 0;
-            state->best_primal_weight = state->primal_weight;
-        }
-        state->last_step_sign = step_sign;
-    }
-
-    const int oscillation_streak_threshold = 8;
-    bool oscillating = state->reversal_streak >= oscillation_streak_threshold;
-
-    if (oscillating)
-    {
-        state->primal_weight = state->best_primal_weight;
-        state->primal_weight_error_sum = 0.0;
-        state->primal_weight_last_error = 0.0;
-    }
-    else if (dist_ok && ratio_ok)
-    {
-        apply_pid_step(state, step_size_params, primal_dist, dual_dist, false);
-    }
-    else
-    {
-        apply_pid_step(state, step_size_params, primal_dist, dual_dist, true);
-    }
+    apply_restart_pid(&state->pid, &state->primal_weight, step_size_params,
+                      primal_dist, dual_dist, dist_ok, ratio_ok);
 }
 
 

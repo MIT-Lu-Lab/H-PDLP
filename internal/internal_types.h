@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "cone_projector.h"
 #include "cuhsdlp_types.h"
+#include "pid_controller.h"
 #include <cublas_v2.h>
 #include <curand.h>
 #include <cusparse.h>
@@ -196,11 +197,7 @@ typedef struct {
     double *step_size_homogeneous_d;
 
     double primal_weight;
-    double primal_weight_error_sum;
-    double primal_weight_last_error;
-    double best_primal_weight;
-    int    reversal_streak;
-    int    last_step_sign;
+    pid_state_t pid;
 
     double *fixed_point_error_mp;
     double  initial_fixed_point_error;
