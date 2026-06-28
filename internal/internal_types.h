@@ -198,6 +198,9 @@ typedef struct {
     double primal_weight;
     double primal_weight_error_sum;
     double primal_weight_last_error;
+    double best_primal_weight;
+    int    reversal_streak;
+    int    last_step_sign;
 
     double *fixed_point_error_mp;
     double  initial_fixed_point_error;
