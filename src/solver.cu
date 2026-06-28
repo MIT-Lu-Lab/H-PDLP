@@ -282,9 +282,6 @@ static void initialize_step_size_and_primal_weight(
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
-    state->best_primal_weight = state->primal_weight;
-    state->best_balance = INFINITY;
-
     compute_step_sizes(state, &params->step_size_params);
 }
 
