@@ -246,7 +246,7 @@ static void compute_step_sizes(
 
     state->step_size_primal = lambda / omega;
     state->step_size_dual   = omega * lambda;
-    state->step_size_homogeneous = factor / state->step_size_dual;
+    state->step_size_homogeneous = 0.95 * factor / state->step_size_dual;
 }
 
 static void initialize_step_size_and_primal_weight(
