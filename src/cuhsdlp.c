@@ -37,26 +37,30 @@ lp_problem_t *create_lp_problem(
     const double *var_lb, const double *var_ub,
     const double *objective_constant)
 {
-    lp_problem_t *prob = (lp_problem_t *)safe_malloc(sizeof(lp_problem_t));
-    prob->primal_start = NULL;
-    prob->dual_start = NULL;
-
-    prob->num_variables = A_desc->n;
-    prob->num_constraints = A_desc->m;
-
+    int *row_ptr = NULL;
+    int *col_ind = NULL;
+    double *vals = NULL;
+    int nnz = 0;
     matrix_format_status_t matrix_status = matrix_desc_to_csr(
         A_desc,
-        &prob->constraint_matrix_row_pointers,
-        &prob->constraint_matrix_col_indices,
-        &prob->constraint_matrix_values,
-        &prob->constraint_matrix_num_nonzeros);
+        &row_ptr,
+        &col_ind,
+        &vals,
+        &nnz);
     if (matrix_status != MATRIX_FORMAT_OK)
     {
         fprintf(stderr, "invalid input matrix: %s.\n",
                 matrix_format_status_message(matrix_status));
-        free(prob);
         return NULL;
     }
+
+    lp_problem_t *prob = (lp_problem_t *)safe_calloc(1, sizeof(lp_problem_t));
+    prob->num_variables = A_desc->n;
+    prob->num_constraints = A_desc->m;
+    prob->constraint_matrix_row_pointers = row_ptr;
+    prob->constraint_matrix_col_indices = col_ind;
+    prob->constraint_matrix_values = vals;
+    prob->constraint_matrix_num_nonzeros = nnz;
 
     prob->objective_constant = objective_constant ? *objective_constant : 0.0;
     prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;

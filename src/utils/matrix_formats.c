@@ -52,6 +52,12 @@ static void canonicalize_sorted_rows_csr(int m,
                                          const double *input_vals,
                                          int **row_ptr, int **col_ind,
                                          double **vals, int *nnz_out);
+static matrix_format_status_t validate_conversion_args(
+    const matrix_desc_t *desc,
+    int **row_ptr,
+    int **col_ind,
+    double **vals,
+    int *nnz_out);
 static void init_empty_csr(int m, int **row_ptr, int **col_ind,
                            double **vals, int *nnz_out);
 
@@ -67,6 +73,8 @@ const char *matrix_format_status_message(matrix_format_status_t status)
         return "invalid COO row index";
     case MATRIX_FORMAT_INVALID_COO_COL:
         return "invalid COO column index";
+    case MATRIX_FORMAT_INVALID_COO_DATA:
+        return "invalid COO matrix data";
     case MATRIX_FORMAT_INVALID_CSR_DATA:
         return "invalid CSR matrix data";
     case MATRIX_FORMAT_INVALID_CSR_ROW_PTR:
@@ -79,6 +87,8 @@ const char *matrix_format_status_message(matrix_format_status_t status)
         return "invalid CSC matrix data";
     case MATRIX_FORMAT_INVALID_DENSE_DATA:
         return "invalid dense matrix data";
+    case MATRIX_FORMAT_INVALID_DESCRIPTOR:
+        return "invalid matrix descriptor";
     default:
         return "unknown matrix format error";
     }
@@ -90,6 +100,11 @@ matrix_format_status_t matrix_desc_to_csr(const matrix_desc_t *desc,
                                           double **vals,
                                           int *nnz_out)
 {
+    matrix_format_status_t status =
+        validate_conversion_args(desc, row_ptr, col_ind, vals, nnz_out);
+    if (status != MATRIX_FORMAT_OK)
+        return status;
+
     switch (desc->fmt)
     {
     case matrix_dense:
@@ -105,9 +120,29 @@ matrix_format_status_t matrix_desc_to_csr(const matrix_desc_t *desc,
     }
 }
 
+static matrix_format_status_t validate_conversion_args(
+    const matrix_desc_t *desc,
+    int **row_ptr,
+    int **col_ind,
+    double **vals,
+    int *nnz_out)
+{
+    if (!desc || !row_ptr || !col_ind || !vals || !nnz_out)
+    {
+        return MATRIX_FORMAT_INVALID_DESCRIPTOR;
+    }
+
+    return MATRIX_FORMAT_OK;
+}
+
 matrix_format_status_t dense_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
                                     double **vals, int *nnz_out)
 {
+    matrix_format_status_t status =
+        validate_conversion_args(desc, row_ptr, col_ind, vals, nnz_out);
+    if (status != MATRIX_FORMAT_OK)
+        return status;
+
     const int m = desc->m;
     const int n = desc->n;
 
@@ -154,6 +189,11 @@ matrix_format_status_t dense_to_csr(const matrix_desc_t *desc, int **row_ptr, in
 matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
                                   double **vals, int *nnz_out)
 {
+    matrix_format_status_t status =
+        validate_conversion_args(desc, row_ptr, col_ind, vals, nnz_out);
+    if (status != MATRIX_FORMAT_OK)
+        return status;
+
     const int m = desc->m;
     const int n = desc->n;
     const int nnz_in = desc->data.csc.nnz;
@@ -161,8 +201,9 @@ matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
     const int *row_ind = desc->data.csc.row_ind;
     const double *csc_vals = desc->data.csc.vals;
 
-    if (m < 0 || n < 0 || nnz_in < 0 || col_ptr == NULL || row_ind == NULL ||
-        csc_vals == NULL || col_ptr[0] != 0 || col_ptr[n] != nnz_in)
+    if (m < 0 || n < 0 || nnz_in < 0 || col_ptr == NULL ||
+        (nnz_in > 0 && (row_ind == NULL || csc_vals == NULL)) ||
+        col_ptr[0] != 0 || col_ptr[n] != nnz_in)
     {
         return MATRIX_FORMAT_INVALID_CSC_DATA;
     }
@@ -228,6 +269,11 @@ matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
 matrix_format_status_t coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
                                   double **vals, int *nnz_out)
 {
+    matrix_format_status_t status =
+        validate_conversion_args(desc, row_ptr, col_ind, vals, nnz_out);
+    if (status != MATRIX_FORMAT_OK)
+        return status;
+
     const int m = desc->m;
     const int n = desc->n;
     const int nnz_in = desc->data.coo.nnz;
@@ -235,9 +281,16 @@ matrix_format_status_t coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
     const int *coo_col_ind = desc->data.coo.col_ind;
     const double *coo_vals = desc->data.coo.vals;
 
+    if (m < 0 || n < 0 || nnz_in < 0 ||
+        (nnz_in > 0 &&
+         (coo_row_ind == NULL || coo_col_ind == NULL || coo_vals == NULL)))
+    {
+        return MATRIX_FORMAT_INVALID_COO_DATA;
+    }
+
     CooEntry *entries = NULL;
     int entry_count = 0;
-    matrix_format_status_t status = MATRIX_FORMAT_OK;
+    status = MATRIX_FORMAT_OK;
     if (build_coo_entries(m, n, nnz_in, coo_row_ind, coo_col_ind,
                           coo_vals, &entries, &entry_count, &status) != 0)
     {
@@ -258,6 +311,11 @@ matrix_format_status_t coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
 matrix_format_status_t canonicalize_csr(const matrix_desc_t *desc, int **row_ptr, int **col_ind,
                                         double **vals, int *nnz_out)
 {
+    matrix_format_status_t status =
+        validate_conversion_args(desc, row_ptr, col_ind, vals, nnz_out);
+    if (status != MATRIX_FORMAT_OK)
+        return status;
+
     const int m = desc->m;
     const int n = desc->n;
     const int nnz_in = desc->data.csr.nnz;
@@ -266,14 +324,15 @@ matrix_format_status_t canonicalize_csr(const matrix_desc_t *desc, int **row_ptr
     const double *csr_vals = desc->data.csr.vals;
 
     if (m < 0 || n < 0 || nnz_in < 0 || csr_row_ptr == NULL ||
-        csr_col_ind == NULL || csr_vals == NULL || csr_row_ptr[0] != 0)
+        (nnz_in > 0 && (csr_col_ind == NULL || csr_vals == NULL)) ||
+        csr_row_ptr[0] != 0)
     {
         return MATRIX_FORMAT_INVALID_CSR_DATA;
     }
 
     CooEntry *entries = NULL;
     int entry_count = 0;
-    matrix_format_status_t status = MATRIX_FORMAT_OK;
+    status = MATRIX_FORMAT_OK;
     if (build_csr_entries(m, n, nnz_in, csr_row_ptr, csr_col_ind,
                           csr_vals, &entries, &entry_count, &status) != 0)
     {
