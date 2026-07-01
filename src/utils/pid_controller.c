@@ -97,7 +97,7 @@ static void apply_pid_update(pid_state_t *pid,
     double step = params->k_p * error +
                   params->k_i * pid->error_sum +
                   params->k_d * delta_error;
-    if (clamp_step)
+    if (clamp_step && step * error < 0.0)
     {
         const double max_log_step = log(10.0);
         step = fmin(fmax(step, -max_log_step), max_log_step);
