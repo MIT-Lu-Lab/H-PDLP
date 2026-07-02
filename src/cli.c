@@ -192,6 +192,8 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
     fprintf(stderr, "\n  Output:\n");
     fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: false).\n");
+    fprintf(stderr, "      --no_tau_trace                    Disable the per-iteration tau trace CSV (default: enabled,\n");
+    fprintf(stderr, "                                        written to <output_dir>/<instance>_tau_trace.csv).\n");
 }
 
 int main(int argc, char *argv[])
@@ -220,9 +222,11 @@ int main(int argc, char *argv[])
         {"eps_farkas_displacement", required_argument, 0, 1017},
         {"eval_freq", required_argument, 0, 1018},
         {"opt_norm", required_argument, 0, 1019},
+        {"no_tau_trace", no_argument, 0, 1020},
         {"verbose", no_argument, 0, 'v'},
         {0, 0, 0, 0}};
 
+    bool tau_trace_enabled = true;
     int opt;
     while ((opt = getopt_long(argc, argv, "hv", long_options, NULL)) != -1)
     {
@@ -330,6 +334,9 @@ int main(int argc, char *argv[])
             }
         }
         break;
+        case 1020:
+            tau_trace_enabled = false;
+            break;
         case '?':
             return 1;
         }
@@ -349,12 +356,20 @@ int main(int argc, char *argv[])
     if (instance_name == NULL)
         return 1;
 
+    char *tau_trace_path = NULL;
+    if (tau_trace_enabled)
+    {
+        tau_trace_path = get_output_path(output_dir, instance_name, "_tau_trace.csv");
+        params.tau_trace_path = tau_trace_path;
+    }
+
     lp_problem_t *problem = read_mps_file(filename);
 
     if (problem == NULL)
     {
         fprintf(stderr, "Failed to read or parse the file.\n");
         free(instance_name);
+        free(tau_trace_path);
         return 1;
     }
 
@@ -380,6 +395,7 @@ int main(int argc, char *argv[])
 
     lp_problem_free(problem);
     free(instance_name);
+    free(tau_trace_path);
 
     return exit_code;
 }

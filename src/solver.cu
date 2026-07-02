@@ -147,6 +147,7 @@ cuhsdlp_result_t *optimize(
         presolve_info ? presolve_info->reduced_problem : &working_problem,
         original_problem,
         params);
+    tau_trace_t *tau_trace = tau_trace_open(params->tau_trace_path);
     display_iteration_stats(state, params->verbose, false);
 
     initialize_step_size_and_primal_weight(state, params);
@@ -206,6 +207,7 @@ cuhsdlp_result_t *optimize(
 
         if (should_revert_active_set_boost(state, params))
         {
+            tau_trace_write_row(tau_trace, state, "revert");
             perform_active_set_boost_revert(state, params);
             restarted = true;
             continue;
@@ -214,17 +216,20 @@ cuhsdlp_result_t *optimize(
         if (terminated)
         {
             display_iteration_stats(state, params->verbose, false);
+            tau_trace_write_row(tau_trace, state, "final");
             break;
         }
 
         if (should_do_adaptive_restart(state, params))
         {
+            tau_trace_write_row(tau_trace, state, "restart");
             perform_restart(state, params);
             restarted = true;
             continue;
         }
 
         display_iteration_stats(state, params->verbose, false);
+        tau_trace_write_row(tau_trace, state, "iter");
     }
 
     if (state->control.termination_reason == TERMINATION_REASON_UNSPECIFIED)
@@ -232,7 +237,9 @@ cuhsdlp_result_t *optimize(
         state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_termination_metrics(state, params);
         display_iteration_stats(state, params->verbose, false);
+        tau_trace_write_row(tau_trace, state, "final");
     }
+    tau_trace_close(tau_trace);
 
     cuhsdlp_result_t *result = create_result_from_state(state, &working_problem);
 

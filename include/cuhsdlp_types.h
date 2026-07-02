@@ -146,6 +146,8 @@ extern "C"
         termination_criteria_t termination_criteria;
         restart_parameters_t restart_params;
         active_set_parameters_t active_set_params;
+
+        const char *tau_trace_path;
     } pdhg_parameters_t;
 
     typedef struct

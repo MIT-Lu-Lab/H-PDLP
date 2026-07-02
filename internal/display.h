@@ -49,6 +49,16 @@ extern "C"
 
     int get_print_frequency(int iter);
 
+    typedef struct tau_trace_t tau_trace_t;
+
+    tau_trace_t *tau_trace_open(const char *path);
+
+    void tau_trace_write_row(tau_trace_t *trace,
+                             const pdhg_solver_state_t *state,
+                             const char *event);
+
+    void tau_trace_close(tau_trace_t *trace);
+
 #ifdef __cplusplus
 }
 #endif

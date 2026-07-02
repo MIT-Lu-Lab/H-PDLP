@@ -219,6 +219,8 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->active_set_params.divergence_ceiling_ratio = 0.7;
     params->active_set_params.divergence_margin = 0.05;
     params->active_set_params.max_reverts = 2;
+
+    params->tau_trace_path = NULL;
 }
 
 cuhsdlp_result_t *solve_lp_problem(

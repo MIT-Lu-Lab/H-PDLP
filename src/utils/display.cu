@@ -22,6 +22,7 @@ limitations under the License.
 #include "utils.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #define PRINT_DIFF_INT(name, current, default_val) \
     do { \
@@ -340,4 +341,97 @@ void pdhg_final_log(
             printf("  Farkas residual        : %.3e\n", result->farkas_residual);
         }
     }
+}
+
+struct tau_trace_t
+{
+    FILE *fp;
+};
+
+static void tau_trace_write_header(FILE *fp)
+{
+    fprintf(fp,
+            "iter,time_sec,event,restarts,"
+            "step_size_homogeneous,step_size_primal,step_size_dual,"
+            "rel_primal_res,rel_dual_res,rel_gap,"
+            "primal_inf_homog_margin,primal_inf_homog_res,"
+            "dual_inf_homog_margin,dual_inf_homog_res,"
+            "primal_inf_displ_margin,primal_inf_displ_res,"
+            "dual_inf_displ_margin,dual_inf_displ_res,"
+            "tau,alpha,kappa,primal_norm,dual_norm,omega\n");
+}
+
+tau_trace_t *tau_trace_open(const char *path)
+{
+    if (path == NULL)
+        return NULL;
+
+    FILE *fp = fopen(path, "w");
+    if (fp == NULL)
+    {
+        perror("Error opening tau trace file");
+        return NULL;
+    }
+
+    tau_trace_t *trace = (tau_trace_t *)malloc(sizeof(tau_trace_t));
+    if (trace == NULL)
+    {
+        fclose(fp);
+        return NULL;
+    }
+
+    trace->fp = fp;
+    tau_trace_write_header(fp);
+    return trace;
+}
+
+void tau_trace_write_row(tau_trace_t *trace,
+                         const pdhg_solver_state_t *state,
+                         const char *event)
+{
+    if (trace == NULL)
+        return;
+
+    const pdhg_metrics_t *m = state->metrics_h;
+    fprintf(trace->fp,
+            "%d,%.9e,%s,%d,"
+            "%.9e,%.9e,%.9e,"
+            "%.9e,%.9e,%.9e,"
+            "%.9e,%.9e,"
+            "%.9e,%.9e,"
+            "%.9e,%.9e,"
+            "%.9e,%.9e,"
+            "%.17g,%.17g,%.17g,%.9e,%.9e,%.9e\n",
+            state->control.total_count,
+            state->control.cumulative_time_sec,
+            event,
+            state->control.restart_count,
+            state->control.step_size_homogeneous,
+            state->control.step_size_primal,
+            state->control.step_size_dual,
+            m->relative_primal_residual,
+            m->relative_dual_residual,
+            m->relative_objective_gap,
+            m->primal_infeasibility_homogeneous_margin,
+            m->primal_infeasibility_homogeneous_residual,
+            m->dual_infeasibility_homogeneous_margin,
+            m->dual_infeasibility_homogeneous_residual,
+            m->primal_infeasibility_displacement_margin,
+            m->primal_infeasibility_displacement_residual,
+            m->dual_infeasibility_displacement_margin,
+            m->dual_infeasibility_displacement_residual,
+            m->pdhg_primal_scale,
+            m->pdhg_dual_scale,
+            m->homogeneous_gap,
+            m->primal_solution_norm,
+            m->dual_solution_norm,
+            state->control.primal_weight);
+}
+
+void tau_trace_close(tau_trace_t *trace)
+{
+    if (trace == NULL)
+        return;
+    fclose(trace->fp);
+    free(trace);
 }

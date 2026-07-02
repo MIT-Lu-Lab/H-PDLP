@@ -52,6 +52,7 @@ extern "C"
         double dual_infeasibility_displacement_margin;
         double dual_infeasibility_displacement_residual;
 
+        double homogeneous_gap;
         double normalized_homogeneous_gap;
         double normalized_homogeneous_ratio;
     } pdhg_metrics_t;
