@@ -53,6 +53,8 @@ dkms.conf
 
 build/*
 test/*
-/result
+# Ignore bulky raw benchmark output under result/, but keep generated figures.
+/result/*
+!/result/figures/
 /docs
 /infeas

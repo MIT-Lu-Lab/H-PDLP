@@ -1,10 +1,11 @@
-import csv, math, os
+import csv, math, os, sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+DATE = sys.argv[1] if len(sys.argv) > 1 else "20260712"
 RESULT = os.path.join(os.path.dirname(__file__), "..", "result")
-RUN = os.path.join(RESULT, "mittelmann_20260629")
+RUN = os.path.join(RESULT, f"mittelmann_{DATE}")
 INSTANCES = ["ns1688926", "Dual2_5000", "Linf_520c"]
 
 def load(inst):
@@ -15,13 +16,9 @@ def load(inst):
             rows.append(row)
     return rows
 
-def omega(row):
-    sp = float(row["step_size_primal"]); sd = float(row["step_size_dual"])
-    return math.sqrt(sd / sp) if sp > 0 and sd > 0 else float("nan")
-
 METRICS = [
     ("tau",   lambda r: float(r["tau"]),               "tau",        False),
-    ("omega", omega,                                    "omega",      True),
+    ("omega", lambda r: float(r["omega"]),             "omega",      True),
     ("rel_p", lambda r: float(r["rel_primal_res"]),     "rel primal res", True),
     ("gap",   lambda r: float(r["rel_gap"]),            "rel gap",    True),
 ]
@@ -63,6 +60,6 @@ for j, inst in enumerate(INSTANCES):
 fig.suptitle("Outlier diagnostics: tau / omega / rel_primal_res / rel_gap  (red dashed = restart)",
              fontsize=14, fontweight="bold")
 fig.tight_layout(rect=[0, 0, 1, 0.98])
-out = os.path.join(RESULT, "figures", "outlier_diagnostics_20260629.png")
+out = os.path.join(RESULT, "figures", f"outlier_diagnostics_{DATE}.png")
 fig.savefig(out, dpi=130)
 print("wrote", out)

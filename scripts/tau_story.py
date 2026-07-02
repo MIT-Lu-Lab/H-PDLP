@@ -59,15 +59,15 @@ INFEAS_DATE = (sys.argv[2] if len(sys.argv) > 2
 FIG_DIR = PROJ / "result" / "figures"                  # shared global figures
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 
-# Panels, in display order: (key, result-subdir, title).  The MIPLIB-infeas
-# (1e-8) panel is the eps-sweep infeasibility experiment.  Panels whose result
-# dir holds no trace are dropped, so a date with only some suites present still
+# Panels, in display order: (key, result-subdir, title).  The infeasible panels
+# source from the netlib_infeas / miplib_infeas sweeps.  Panels whose result dir
+# holds no trace are dropped, so a date with only some suites present still
 # renders (e.g. the main suites on one date, the infeas sweep on another).
 BENCH_PANELS = [
-    ("miplib",            f"miplib_{DATE}",                   "MIPLIB"),
-    ("mittelmann",        f"mittelmann_{DATE}",               "Mittelmann"),
-    ("netlib_infeas",     f"netlib_infeas_{DATE}",                   "Netlib (infeasible)"),
-    ("miplib_infeas_1e8", f"miplib_infeas_pbb_eps1e8_{INFEAS_DATE}", "MIPLIB-infeas (1e-8)"),
+    ("miplib",        f"miplib_{DATE}",            "MIPLIB"),
+    ("mittelmann",    f"mittelmann_{DATE}",        "Mittelmann"),
+    ("netlib_infeas", f"netlib_infeas_{INFEAS_DATE}", "Netlib (infeasible)"),
+    ("miplib_infeas", f"miplib_infeas_{INFEAS_DATE}", "MIPLIB (infeasible)"),
 ]
 BENCH_PANELS = [p for p in BENCH_PANELS
                 if any((PROJ / "result" / p[1]).glob("*_tau_trace.csv"))]
@@ -137,10 +137,11 @@ def stream_trace(inst, bench_dir, n_keep=5000):
         r = csv.DictReader(h)
         for row in r:
             try:
-                all_iters.append(float(row["iter"]))
-                all_taus .append(float(row["pdhg_tau"]))
-            except (ValueError, KeyError):
+                it  = float(row["iter"])
+                tau = float(row["tau"])
+            except (ValueError, KeyError, TypeError):
                 continue
+            all_iters.append(it); all_taus.append(tau)
     if not all_iters: return None, None, None, None
     its_arr  = np.asarray(all_iters)
     taus_arr = np.asarray(all_taus)
@@ -168,7 +169,7 @@ def stream_trace(inst, bench_dir, n_keep=5000):
     return its_arr[keep_sorted], taus_arr[keep_sorted], iter_at_max, max_tau
 
 def stream_omega_trace(inst, bench_dir, n_keep=5000):
-    """Load full ω = sqrt(step_d/step_p) trajectory from a tau_trace CSV.
+    """Load the full restart-weight ω trajectory from a tau_trace CSV.
     Same downsampling rule as stream_trace; force max-row inclusion."""
     f = PROJ / "result" / bench_dir / f"{inst}_tau_trace.csv"
     if not f.exists(): return None, None, None, None
@@ -177,13 +178,12 @@ def stream_omega_trace(inst, bench_dir, n_keep=5000):
         r = csv.DictReader(h)
         for row in r:
             try:
-                sp = float(row["step_size_primal"])
-                sd = float(row["step_size_dual"])
-                if sp > 0 and sd > 0:
-                    iters.append(float(row["iter"]))
-                    omegas.append(math.sqrt(sd / sp))
+                om = float(row["omega"])
+                it = float(row["iter"])
             except (ValueError, KeyError, TypeError):
                 continue
+            if om > 0:
+                iters.append(it); omegas.append(om)
     if not iters: return None, None, None, None
     its  = np.asarray(iters)
     oms  = np.asarray(omegas)
@@ -317,7 +317,7 @@ for i, (_key, dir_, title) in enumerate(BENCH_PANELS):
 fig.suptitle(r"$\omega$-trajectory by benchmark suite",
              fontsize=16, fontweight="bold", y=0.985)
 fig.text(0.5, 0.005,
-         f"cuHSDLP experiment {DATE_LABEL}  ·  default solver parameters  ·  $\\omega = \\sqrt{{\\sigma_d / \\eta}}$ recovered per row",
+         f"cuHSDLP experiment {DATE_LABEL}  ·  default solver parameters  ·  $\\omega$ = restart primal weight, as traced",
          ha="center", fontsize=9.5, color="grey")
 for ext in ("pdf", "png"):
     fig.savefig(FIG_DIR / f"omega_regime_triptych_{DATE}.{ext}", bbox_inches="tight")
