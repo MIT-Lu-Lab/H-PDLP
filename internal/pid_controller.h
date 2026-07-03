@@ -24,6 +24,7 @@ typedef struct
     double error_sum;
     double last_error;
     double best_primal_weight;
+    double best_balance;
     int    reversal_streak;
     int    last_step_sign;
 } pid_state_t;
@@ -39,7 +40,8 @@ void apply_restart_pid(pid_state_t *pid,
                        double primal_dist,
                        double dual_dist,
                        bool dist_ok,
-                       bool ratio_ok);
+                       bool ratio_ok,
+                       double gap_to_primal_ratio);
 
 void initialize_pid_state(pid_state_t *pid, double primal_weight);
 

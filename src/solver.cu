@@ -608,7 +608,7 @@ static void update_primal_weight_via_restart_pid(
     bool ratio_ok = ratio > 1e-8 && ratio < 1e8;
 
     apply_restart_pid(&state->control.pid, &state->control.primal_weight, step_size_params,
-                      primal_dist, dual_dist, dist_ok, ratio_ok);
+                      primal_dist, dual_dist, dist_ok, ratio_ok, ratio);
 }
 
 
