@@ -27,6 +27,7 @@ typedef struct
     double best_balance;
     int    reversal_streak;
     int    last_step_sign;
+    int    stall_streak;
 } pid_state_t;
 
 #ifdef __cplusplus

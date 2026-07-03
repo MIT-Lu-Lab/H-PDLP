@@ -21,13 +21,13 @@ static void update_reversal_streak(pid_state_t *pid,
                                    double primal_weight,
                                    double primal_dist,
                                    double dual_dist);
+static void reset_pid_integrator(pid_state_t *pid);
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
                              const step_size_parameters_t *params,
                              double primal_dist,
                              double dual_dist,
                              bool clamp_step);
-static void reset_pid_integrator(pid_state_t *pid);
 
 void apply_restart_pid(pid_state_t *pid,
                        double *primal_weight,
@@ -39,6 +39,10 @@ void apply_restart_pid(pid_state_t *pid,
                        double gap_to_primal_ratio)
 {
     const int oscillation_streak_threshold = 8;
+    const int stall_streak_threshold = 8;
+
+    bool gate_ok = dist_ok && ratio_ok;
+    pid->stall_streak = gate_ok ? 0 : pid->stall_streak + 1;
 
     update_reversal_streak(pid, *primal_weight, primal_dist, dual_dist);
 
@@ -47,7 +51,7 @@ void apply_restart_pid(pid_state_t *pid,
         *primal_weight = pid->best_primal_weight;
         reset_pid_integrator(pid);
     }
-    else if (dist_ok && ratio_ok)
+    else if (gate_ok)
     {
         apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist, false);
         double balance = fabs(log10(gap_to_primal_ratio));
@@ -56,6 +60,10 @@ void apply_restart_pid(pid_state_t *pid,
             pid->best_balance = balance;
             pid->best_primal_weight = *primal_weight;
         }
+    }
+    else if (pid->stall_streak >= stall_streak_threshold)
+    {
+        apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist, true);
     }
     else if (!isinf(pid->best_balance))
     {
@@ -76,6 +84,7 @@ void initialize_pid_state(pid_state_t *pid, double primal_weight)
     pid->best_balance = INFINITY;
     pid->reversal_streak = 0;
     pid->last_step_sign = 0;
+    pid->stall_streak = 0;
 }
 
 static void update_reversal_streak(pid_state_t *pid,
@@ -92,6 +101,12 @@ static void update_reversal_streak(pid_state_t *pid,
     else if (step_sign == pid->last_step_sign)
         pid->reversal_streak = 0;
     pid->last_step_sign = step_sign;
+}
+
+static void reset_pid_integrator(pid_state_t *pid)
+{
+    pid->error_sum = 0.0;
+    pid->last_error = 0.0;
 }
 
 static void apply_pid_update(pid_state_t *pid,
@@ -117,10 +132,4 @@ static void apply_pid_update(pid_state_t *pid,
     }
     *primal_weight *= exp(step);
     pid->last_error = error;
-}
-
-static void reset_pid_integrator(pid_state_t *pid)
-{
-    pid->error_sum = 0.0;
-    pid->last_error = 0.0;
 }
