@@ -605,7 +605,7 @@ static void update_primal_weight_via_restart_pid(
 
     double ratio = state->metrics_h->relative_objective_gap
                  / state->metrics_h->relative_primal_residual;
-    bool ratio_ok = ratio > 1e-8 && ratio < 1e8;
+    bool ratio_ok = ratio > 1e-7 && ratio < 1e7;
 
     apply_restart_pid(&state->control.pid, &state->control.primal_weight, step_size_params,
                       primal_dist, dual_dist, dist_ok, ratio_ok, ratio);
