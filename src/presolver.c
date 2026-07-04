@@ -171,6 +171,7 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
         result->dual_objective_value = -INFINITY;
         result->objective_gap = INFINITY;
         result->relative_objective_gap = INFINITY;
+        return result;
     }
     else if (info->presolve_status & INFEASIBLE)
     {
@@ -183,6 +184,7 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
         result->dual_objective_value = -INFINITY;
         result->objective_gap = INFINITY;
         result->relative_objective_gap = INFINITY;
+        return result;
     }
     else if (info->presolver->reduced_prob->n == 0)
     {
@@ -190,20 +192,7 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
         pslp_postsolve(info, result, original_prob);
         return result;
     }
-    else
-    {
-        result->termination_reason = TERMINATION_REASON_UNSPECIFIED;
-    }
-
-    if (result->num_variables > 0)
-    {
-        result->primal_solution = (double *)safe_calloc(result->num_variables, sizeof(double));
-        result->reduced_cost = (double *)safe_calloc(result->num_variables, sizeof(double));
-    }
-    if (result->num_constraints > 0)
-    {
-        result->dual_solution = (double *)safe_calloc(result->num_constraints, sizeof(double));
-    }
+    result->termination_reason = TERMINATION_REASON_UNSPECIFIED;
     return result;
 }
 

@@ -358,10 +358,12 @@ int main(int argc, char *argv[])
     else
     {
         save_solver_summary(result, output_dir, instance_name);
-        save_solution(result->primal_solution, problem->num_variables, output_dir,
-                      instance_name, "_primal_solution.txt");
-        save_solution(result->dual_solution, problem->num_constraints, output_dir,
-                      instance_name, "_dual_solution.txt");
+        if (result->primal_solution)
+            save_solution(result->primal_solution, problem->num_variables, output_dir,
+                          instance_name, "_primal_solution.txt");
+        if (result->dual_solution)
+            save_solution(result->dual_solution, problem->num_constraints, output_dir,
+                          instance_name, "_dual_solution.txt");
         cuhsdlp_result_free(result);
     }
 

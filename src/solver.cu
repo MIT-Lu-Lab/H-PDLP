@@ -189,7 +189,10 @@ cuhsdlp_result_t *optimize(
 
     if (params->presolve && presolve_info)
     {
-        pslp_postsolve(presolve_info, result, original_problem);
+        if (termination_has_solution(result->termination_reason))
+        {
+            pslp_postsolve(presolve_info, result, original_problem);
+        }
         cuhsdlp_presolve_info_free(presolve_info);
     }
 

@@ -721,6 +721,13 @@ bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
     return do_restart;
 }
 
+bool termination_has_solution(termination_reason_t reason)
+{
+    return reason == TERMINATION_REASON_OPTIMAL ||
+           reason == TERMINATION_REASON_TIME_LIMIT ||
+           reason == TERMINATION_REASON_ITERATION_LIMIT;
+}
+
 cuhsdlp_result_t *create_result_from_state(
     pdhg_solver_state_t *state,
     const lp_problem_t *original_problem)
@@ -729,29 +736,32 @@ cuhsdlp_result_t *create_result_from_state(
 
     rescale_solution(state);
 
-    results->primal_solution = (double *)safe_malloc(state->var_bytes);
-    results->dual_solution = (double *)safe_malloc(state->con_bytes);
-    results->reduced_cost = (double *)safe_malloc(state->var_bytes);
+    if (termination_has_solution(state->termination_reason))
+    {
+        results->primal_solution = (double *)safe_malloc(state->var_bytes);
+        results->dual_solution = (double *)safe_malloc(state->con_bytes);
+        results->reduced_cost = (double *)safe_malloc(state->var_bytes);
 
-    CUDA_CHECK(cudaMemcpyAsync(
-        results->primal_solution,
-        state->pdhg_primal_solution_d,
-        state->var_bytes,
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(
-        results->dual_solution,
-        state->pdhg_dual_solution_d,
-        state->con_bytes,
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(
-        results->reduced_cost,
-        state->pdhg_reduced_cost_d,
-        state->var_bytes,
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+        CUDA_CHECK(cudaMemcpyAsync(
+            results->primal_solution,
+            state->pdhg_primal_solution_d,
+            state->var_bytes,
+            cudaMemcpyDeviceToHost,
+            state->stream_A));
+        CUDA_CHECK(cudaMemcpyAsync(
+            results->dual_solution,
+            state->pdhg_dual_solution_d,
+            state->con_bytes,
+            cudaMemcpyDeviceToHost,
+            state->stream_A));
+        CUDA_CHECK(cudaMemcpyAsync(
+            results->reduced_cost,
+            state->pdhg_reduced_cost_d,
+            state->var_bytes,
+            cudaMemcpyDeviceToHost,
+            state->stream_A));
+        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    }
 
     results->num_variables = original_problem->num_variables;
     results->num_constraints = original_problem->num_constraints;

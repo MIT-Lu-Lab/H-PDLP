@@ -68,6 +68,8 @@ extern "C"
         pdhg_solver_state_t *solver_state,
         const pdhg_parameters_t *params);
 
+    bool termination_has_solution(termination_reason_t reason);
+
     cuhsdlp_result_t *create_result_from_state(
         pdhg_solver_state_t *state,
         const lp_problem_t *original_problem);
