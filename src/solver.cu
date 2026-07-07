@@ -266,7 +266,7 @@ static void initialize_step_size_and_primal_weight(
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
-    initialize_pid_state(&state->control.pid, state->control.primal_weight);
+    initialize_pid_state(&state->control.pid);
 
     compute_step_sizes(state, &params->step_size_params);
 }
@@ -605,10 +605,8 @@ static void update_primal_weight_via_restart_pid(
 
     double ratio = state->metrics_h->relative_objective_gap
                  / state->metrics_h->relative_primal_residual;
-    bool ratio_ok = ratio > 1e-7 && ratio < 1e7;
-
     apply_restart_pid(&state->control.pid, &state->control.primal_weight, step_size_params,
-                      primal_dist, dual_dist, dist_ok, ratio_ok, ratio);
+                      primal_dist, dual_dist, dist_ok, ratio);
 }
 
 
