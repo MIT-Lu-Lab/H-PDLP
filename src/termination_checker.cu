@@ -334,7 +334,7 @@ void check_termination_criteria(
             return;
         }
     }
-    else if (ratio > 0.99)
+    else if (ratio > 0.9)
     {
         if (primal_infeasibility_criteria_met(solver_state, criteria))
         {
