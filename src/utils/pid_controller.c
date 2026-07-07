@@ -18,6 +18,10 @@ limitations under the License.
 #include <math.h>
 
 static void reset_pid_integrator(pid_state_t *pid);
+static void align_pid_last_error(pid_state_t *pid,
+                                 double primal_weight,
+                                 double primal_dist,
+                                 double dual_dist);
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
                              const step_size_parameters_t *params,
@@ -43,6 +47,8 @@ void apply_restart_pid(pid_state_t *pid,
     {
         *primal_weight /= 10.0;
         reset_pid_integrator(pid);
+        if (dist_ok)
+            align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
         return;
     }
 
@@ -51,6 +57,8 @@ void apply_restart_pid(pid_state_t *pid,
     {
         *primal_weight *= 10.0;
         reset_pid_integrator(pid);
+        if (dist_ok)
+            align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
         return;
     }
 
@@ -67,16 +75,19 @@ void apply_restart_pid(pid_state_t *pid,
     }
 }
 
-void initialize_pid_state(pid_state_t *pid)
-{
-    pid->error_sum = 0.0;
-    pid->last_error = 0.0;
-}
-
 static void reset_pid_integrator(pid_state_t *pid)
 {
     pid->error_sum = 0.0;
-    pid->last_error = 0.0;
+}
+
+static void align_pid_last_error(pid_state_t *pid,
+                                 double primal_weight,
+                                 double primal_dist,
+                                 double dual_dist)
+{
+    double error = log(dual_dist) - log(primal_dist) - log(primal_weight);
+    if (isfinite(error))
+        pid->last_error = error;
 }
 
 static void apply_pid_update(pid_state_t *pid,
@@ -102,4 +113,10 @@ static void apply_pid_update(pid_state_t *pid,
     }
     *primal_weight *= exp(step);
     pid->last_error = error;
+}
+
+void initialize_pid_state(pid_state_t *pid)
+{
+    pid->error_sum = 0.0;
+    pid->last_error = 0.0;
 }
