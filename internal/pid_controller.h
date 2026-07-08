@@ -35,8 +35,9 @@ void apply_restart_pid(pid_state_t *pid,
                        const step_size_parameters_t *params,
                        double primal_dist,
                        double dual_dist,
-                       bool dist_ok,
-                       double gap_to_primal_ratio);
+                       double relative_objective_gap,
+                       double relative_primal_residual,
+                       double homogeneous_scale);
 
 void initialize_pid_state(pid_state_t *pid);
 

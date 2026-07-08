@@ -34,16 +34,22 @@ void apply_restart_pid(pid_state_t *pid,
                        const step_size_parameters_t *params,
                        double primal_dist,
                        double dual_dist,
-                       bool dist_ok,
-                       double gap_to_primal_ratio)
+                       double relative_objective_gap,
+                       double relative_primal_residual,
+                       double homogeneous_scale)
 {
-    const double ratio_lower_bound = 1e-7;
-    const double ratio_upper_bound = 1e7;
-    bool ratio_ok = gap_to_primal_ratio > ratio_lower_bound &&
-                    gap_to_primal_ratio < ratio_upper_bound;
+    double gap_to_primal_ratio = relative_objective_gap / relative_primal_residual;
+    double scale_reference = fmax(homogeneous_scale, 1e-300);
+    bool dist_ok = primal_dist > 1e-16 * scale_reference &&
+                   dual_dist > 1e-16 * scale_reference &&
+                   primal_dist < 1e12 * scale_reference &&
+                   dual_dist < 1e12 * scale_reference;
+    bool ratio_high = gap_to_primal_ratio >= 1e7 ||
+                      isinf(gap_to_primal_ratio);
+    bool ratio_low = gap_to_primal_ratio <= 1e-7 &&
+                     homogeneous_scale >= 1e-2;
 
-    if (gap_to_primal_ratio >= ratio_upper_bound ||
-        isinf(gap_to_primal_ratio))
+    if (ratio_high)
     {
         *primal_weight /= 10.0;
         reset_pid_integrator(pid);
@@ -52,8 +58,7 @@ void apply_restart_pid(pid_state_t *pid,
         return;
     }
 
-    if (gap_to_primal_ratio <= ratio_lower_bound &&
-        gap_to_primal_ratio >= 0.0)
+    if (ratio_low)
     {
         *primal_weight *= 10.0;
         reset_pid_integrator(pid);
@@ -61,9 +66,6 @@ void apply_restart_pid(pid_state_t *pid,
             align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
         return;
     }
-
-    if (!ratio_ok)
-        return;
 
     if (dist_ok)
     {
