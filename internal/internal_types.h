@@ -37,16 +37,21 @@ enum PdhgReduction {
 };
 
 enum FarkasReduction {
-    FARKAS_DUAL_SOLUTION_NORM    = 0,
-    FARKAS_HOMOGENEOUS_DUAL_NORM = 1,
-    FARKAS_CONSTRAINT_RECESSION  = 2,
-    FARKAS_VARIABLE_RECESSION    = 3,
-    FARKAS_SUPPORT_CONSTRAINT    = 4,
-    FARKAS_SUPPORT_VARIABLE      = 5,
-    FARKAS_ORIGINAL_DUAL_NORM         = 6,
-    FARKAS_ORIGINAL_REDUCED_COST_NORM = 7,
-    FARKAS_ORIGINAL_PRIMAL_NORM       = 8,
-    FARKAS_COUNT                 = 9,
+    FARKAS_DUAL_SOLUTION_NORM              = 0,
+    FARKAS_HOMOGENEOUS_DUAL_NORM           = 1,
+    FARKAS_CONSTRAINT_RECESSION            = 2,
+    FARKAS_VARIABLE_RECESSION              = 3,
+    FARKAS_SUPPORT_CONSTRAINT              = 4,
+    FARKAS_SUPPORT_VARIABLE                = 5,
+    FARKAS_ORIGINAL_DUAL_NORM              = 6,
+    FARKAS_ORIGINAL_REDUCED_COST_NORM      = 7,
+    FARKAS_ORIGINAL_PRIMAL_NORM            = 8,
+    FARKAS_RAY_PRIMAL_LINEAR_OBJECTIVE     = 9,
+    FARKAS_RAY_DUAL_CONSTRAINT_SUPPORT     = 10,
+    FARKAS_RAY_DUAL_VARIABLE_SUPPORT       = 11,
+    FARKAS_RAY_MAX_PRIMAL_INFEASIBILITY    = 12,
+    FARKAS_RAY_MAX_DUAL_INFEASIBILITY      = 13,
+    FARKAS_COUNT                           = 14,
 };
 
 enum HsdScalarSlot {
@@ -108,6 +113,7 @@ typedef struct {
     cusparseDnVecDescr_t spmv_reflected_dual_solution;
     cusparseDnVecDescr_t spmv_pdhg_primal_solution;
     cusparseDnVecDescr_t spmv_pdhg_dual_solution;
+    cusparseDnVecDescr_t spmv_delta_primal_solution;
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
@@ -219,6 +225,11 @@ typedef struct {
     double *farkas_original_dual_norm_d;
     double *farkas_original_reduced_cost_norm_d;
     double *farkas_original_primal_norm_d;
+    double *primal_ray_linear_objective_d;
+    double *dual_ray_constraint_support_d;
+    double *dual_ray_variable_support_d;
+    double *max_primal_ray_infeasibility_d;
+    double *max_dual_ray_infeasibility_d;
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;

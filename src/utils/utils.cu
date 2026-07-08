@@ -243,6 +243,28 @@ void compute_lp_problem_norms_device(
     *out_bound_norm = *state->bound_norm_workspace_mp;
 }
 
+__global__ void compute_delta_kernel(
+    const double *__restrict__ initial_primal,
+    const double *__restrict__ pdhg_primal,
+    double *__restrict__ delta_primal,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ pdhg_dual,
+    double *__restrict__ delta_dual,
+    int n_vars,
+    int n_cons)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_vars)
+    {
+        delta_primal[i] = pdhg_primal[i] - initial_primal[i];
+    }
+    else if (i < n_vars + n_cons)
+    {
+        int idx = i - n_vars;
+        delta_dual[idx] = pdhg_dual[idx] - initial_dual[idx];
+    }
+}
+
 static __global__ void compute_objective_norm_entries_kernel(
     const double *__restrict__ obj_vec,
     double *__restrict__ entries,

@@ -35,15 +35,6 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
-__global__ void compute_delta_kernel(
-    const double *__restrict__ initial_primal,
-    const double *__restrict__ pdhg_primal,
-    double *__restrict__ delta_primal,
-    const double *__restrict__ initial_dual,
-    const double *__restrict__ pdhg_dual,
-    double *__restrict__ delta_dual,
-    int n_vars,
-    int n_cons);
 __global__ void compute_fixed_point_error_kernel(
     double *fixed_point_error_d,
     const double *primal_norm,
@@ -163,7 +154,7 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
         compute_fixed_point_error(state);
-        compute_termination_metrics(state, params->optimality_norm);
+        compute_termination_metrics(state, params);
         state->inner_count += params->termination_evaluation_frequency;
         state->total_count += params->termination_evaluation_frequency;
 
@@ -190,7 +181,7 @@ cuhsdlp_result_t *optimize(
     if (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
         state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
-        compute_termination_metrics(state, params->optimality_norm);
+        compute_termination_metrics(state, params);
         display_iteration_stats(state, params->verbose, false);
     }
 
@@ -630,28 +621,6 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
     state->metrics_h->pdhg_primal_scale      *= inv_scale;
     state->metrics_h->pdhg_dual_scale *= inv_scale;
     return inv_scale;
-}
-
-__global__ void compute_delta_kernel(
-    const double *__restrict__ initial_primal,
-    const double *__restrict__ pdhg_primal,
-    double *__restrict__ delta_primal,
-    const double *__restrict__ initial_dual,
-    const double *__restrict__ pdhg_dual,
-    double *__restrict__ delta_dual,
-    int n_vars,
-    int n_cons)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_vars)
-    {
-        delta_primal[i] = pdhg_primal[i] - initial_primal[i];
-    }
-    else if (i < n_vars + n_cons)
-    {
-        int idx = i - n_vars;
-        delta_dual[idx] = pdhg_dual[idx] - initial_dual[idx];
-    }
 }
 
 __global__ void compute_fixed_point_error_kernel(

@@ -109,6 +109,8 @@ void print_initial_info(
            params->termination_criteria.eps_infeas_residual);
     printf("  eps_infeas_obj     : %.1e\n",
            params->termination_criteria.eps_infeas_objective);
+    printf("  eps_infeas_ray     : %.1e\n",
+           params->termination_criteria.eps_infeas_ray);
     if (params->optimality_norm != default_params.optimality_norm)
     {
         printf("  optimality_norm    : %s\n",
@@ -259,5 +261,17 @@ void pdhg_final_log(
         printf("  Objective gap          : %.3e\n", result->relative_objective_gap);
         printf("  Primal infeas          : %.3e\n", result->relative_primal_residual);
         printf("  Dual infeas            : %.3e\n", result->relative_dual_residual);
+        if (params->termination_criteria.enable_ray_infeas &&
+            result->termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
+        {
+            printf("  Dual ray objective     : %.3e\n", result->dual_ray_objective);
+            printf("  Dual ray infeas        : %.3e\n", result->max_dual_ray_infeasibility);
+        }
+        if (params->termination_criteria.enable_ray_infeas &&
+            result->termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
+        {
+            printf("  Primal ray objective   : %.3e\n", result->primal_ray_linear_objective);
+            printf("  Primal ray infeas      : %.3e\n", result->max_primal_ray_infeasibility);
+        }
     }
 }

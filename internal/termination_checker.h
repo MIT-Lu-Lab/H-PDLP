@@ -47,6 +47,10 @@ extern "C"
         double relative_primal_infeasibility_objective;
         double relative_dual_infeasibility_residual;
         double relative_dual_infeasibility_objective;
+        double max_primal_ray_infeasibility;
+        double max_dual_ray_infeasibility;
+        double primal_ray_linear_objective;
+        double dual_ray_objective;
 
         double normalized_homogeneous_gap;
         double normalized_homogeneous_ratio;
@@ -54,7 +58,7 @@ extern "C"
 
     void compute_termination_metrics(
         pdhg_solver_state_t *state,
-        norm_type_t optimality_norm);
+        const pdhg_parameters_t *params);
 
     void check_termination_criteria(
         pdhg_solver_state_t *solver_state,

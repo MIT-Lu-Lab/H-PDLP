@@ -189,6 +189,12 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("eps_infeas_objective must be finite and > 0",
                     params->termination_criteria.eps_infeas_objective);
     }
+    if (!(params->termination_criteria.eps_infeas_ray > 0.0 &&
+          isfinite(params->termination_criteria.eps_infeas_ray)))
+    {
+        param_error("eps_infeas_ray must be finite and > 0",
+                    params->termination_criteria.eps_infeas_ray);
+    }
     if (!(params->termination_criteria.time_sec_limit > 0.0))
     {
         param_error("time_limit must be > 0",
@@ -441,6 +447,10 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         &state->spmv_pdhg_dual_solution,
         state->num_constraints,
         state->pdhg_dual_solution_d);
+    create_dense_vector_descriptor(
+        &state->spmv_delta_primal_solution,
+        state->num_variables,
+        state->delta_primal_solution_d);
     create_dense_vector_descriptor(
         &state->spmv_delta_dual_solution,
         state->num_constraints,
@@ -742,6 +752,16 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
         state->farkas_reduce_d + FARKAS_ORIGINAL_REDUCED_COST_NORM;
     state->farkas_original_primal_norm_d =
         state->farkas_reduce_d + FARKAS_ORIGINAL_PRIMAL_NORM;
+    state->primal_ray_linear_objective_d =
+        state->farkas_reduce_d + FARKAS_RAY_PRIMAL_LINEAR_OBJECTIVE;
+    state->dual_ray_constraint_support_d =
+        state->farkas_reduce_d + FARKAS_RAY_DUAL_CONSTRAINT_SUPPORT;
+    state->dual_ray_variable_support_d =
+        state->farkas_reduce_d + FARKAS_RAY_DUAL_VARIABLE_SUPPORT;
+    state->max_primal_ray_infeasibility_d =
+        state->farkas_reduce_d + FARKAS_RAY_MAX_PRIMAL_INFEASIBILITY;
+    state->max_dual_ray_infeasibility_d =
+        state->farkas_reduce_d + FARKAS_RAY_MAX_DUAL_INFEASIBILITY;
 
     CUDA_CHECK(cudaMalloc(&state->metrics_d, sizeof(pdhg_metrics_t)));
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
@@ -977,6 +997,8 @@ static void free_sparse_resources(pdhg_solver_state_t *state)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_pdhg_primal_solution));
     if (state->spmv_pdhg_dual_solution)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_pdhg_dual_solution));
+    if (state->spmv_delta_primal_solution)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_delta_primal_solution));
     if (state->spmv_delta_dual_solution)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_delta_dual_solution));
     if (state->spmv_primal_product)

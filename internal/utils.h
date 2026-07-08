@@ -21,6 +21,18 @@ limitations under the License.
 #include <stdbool.h>
 #include <stdlib.h>
 
+#ifdef __CUDACC__
+__global__ void compute_delta_kernel(
+    const double *__restrict__ initial_primal,
+    const double *__restrict__ pdhg_primal,
+    double *__restrict__ delta_primal,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ pdhg_dual,
+    double *__restrict__ delta_dual,
+    int n_vars,
+    int n_cons);
+#endif
+
 #ifdef __cplusplus
 struct absolute_value_transform_t
 {
