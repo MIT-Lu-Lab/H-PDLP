@@ -43,10 +43,8 @@ extern "C"
         double primal_solution_norm;
         double dual_solution_norm;
 
-        double relative_primal_infeasibility_residual;
-        double relative_primal_infeasibility_objective;
-        double relative_dual_infeasibility_residual;
-        double relative_dual_infeasibility_objective;
+        double primal_infeasibility_ratio;
+        double dual_infeasibility_ratio;
         double max_primal_ray_infeasibility;
         double max_dual_ray_infeasibility;
         double primal_ray_linear_objective;

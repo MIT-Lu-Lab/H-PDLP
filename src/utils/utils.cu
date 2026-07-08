@@ -146,12 +146,10 @@ void compute_lp_problem_norms(
     const lp_problem_t *problem,
     norm_type_t optimality_norm,
     double *out_objective_norm,
-    double *out_bound_norm,
-    double *out_constraint_frobenius_norm)
+    double *out_bound_norm)
 {
     const int n_vars = problem->num_variables;
     const int n_cons = problem->num_constraints;
-    const int nnz    = problem->constraint_matrix_num_nonzeros;
     const bool use_linf = (optimality_norm == NORM_TYPE_L_INF);
 
     double obj_acc = 0.0;
@@ -181,16 +179,8 @@ void compute_lp_problem_norms(
     }
     if (!use_linf) bnd_acc = sqrt(bnd_acc);
 
-    double frob_acc = 0.0;
-    for (int i = 0; i < nnz; ++i)
-    {
-        double v = problem->constraint_matrix_values[i];
-        frob_acc += v * v;
-    }
-
-    *out_objective_norm            = obj_acc;
-    *out_bound_norm                = bnd_acc;
-    *out_constraint_frobenius_norm = sqrt(frob_acc);
+    *out_objective_norm = obj_acc;
+    *out_bound_norm     = bnd_acc;
 }
 
 void compute_lp_problem_norms_device(

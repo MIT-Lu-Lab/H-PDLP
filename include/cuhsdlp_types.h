@@ -113,7 +113,6 @@ extern "C"
         double eps_optimal_relative;
         double eps_feasible_relative;
         double eps_infeas_residual;
-        double eps_infeas_objective;
         double eps_infeas_ray;
         bool enable_ray_infeas;
         double time_sec_limit;

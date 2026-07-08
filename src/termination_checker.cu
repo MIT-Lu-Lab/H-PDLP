@@ -128,7 +128,6 @@ __global__ void compute_residual_metrics_kernel(
     double objective_vector_rescaling,
     double original_bound_norm,
     double original_objective_norm,
-    double original_constraint_norm,
     double objective_constant);
 __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
@@ -386,7 +385,6 @@ static void update_residual_metrics(pdhg_solver_state_t *state)
         state->objective_vector_rescaling,
         state->original_bound_norm,
         state->original_objective_norm,
-        state->original_constraint_norm,
         state->objective_constant);
 
 }
@@ -541,7 +539,7 @@ void check_termination_criteria(
     solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
 
     double ratio = solver_state->metrics_h->normalized_homogeneous_ratio;
-    if (ratio < 0.01)
+    if (ratio < 0.5)
     {
         if (optimality_criteria_met(solver_state, criteria))
         {
@@ -604,16 +602,14 @@ static bool primal_infeasibility_criteria_met(
     const pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    return state->metrics_h->relative_primal_infeasibility_residual  <  criteria->eps_infeas_residual &&
-           state->metrics_h->relative_primal_infeasibility_objective >  criteria->eps_infeas_objective;
+    return state->metrics_h->primal_infeasibility_ratio < criteria->eps_infeas_residual;
 }
 
 static bool dual_infeasibility_criteria_met(
     const pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    return state->metrics_h->relative_dual_infeasibility_residual  <  criteria->eps_infeas_residual &&
-           state->metrics_h->relative_dual_infeasibility_objective < -criteria->eps_infeas_objective;
+    return state->metrics_h->dual_infeasibility_ratio < criteria->eps_infeas_residual;
 }
 
 static bool primal_infeasibility_ray_criteria_met(
@@ -1093,13 +1089,10 @@ __global__ void compute_ray_metrics_kernel(
 {
     double scale = constraint_bound_rescaling * objective_vector_rescaling;
     metrics_d->primal_ray_linear_objective = *primal_ray_linear_objective / scale;
-    metrics_d->max_primal_ray_infeasibility =
-        *primal_ray_infeasibility / constraint_bound_rescaling;
+    metrics_d->max_primal_ray_infeasibility = *primal_ray_infeasibility / constraint_bound_rescaling;
 
-    metrics_d->max_dual_ray_infeasibility =
-        *dual_ray_infeasibility / objective_vector_rescaling;
-    metrics_d->dual_ray_objective =
-        ((*constraint_support) + (*variable_support)) / scale;
+    metrics_d->max_dual_ray_infeasibility = *dual_ray_infeasibility / objective_vector_rescaling;
+    metrics_d->dual_ray_objective = ((*constraint_support) + (*variable_support)) / scale;
 }
 
 __global__ void compute_residual_metrics_kernel(
@@ -1123,7 +1116,6 @@ __global__ void compute_residual_metrics_kernel(
     double objective_vector_rescaling,
     double original_bound_norm,
     double original_objective_norm,
-    double original_constraint_norm,
     double objective_constant)
 {
     double primal_scale = *primal_scale_pdhg;
@@ -1186,31 +1178,24 @@ __global__ void compute_residual_metrics_kernel(
     double inv_orig_dual_norm = (original_dual_ray_norm > 1.0e-30)
                               ? 1.0 / original_dual_ray_norm
                               : 0.0;
-    double abs_p_infeas_residual = homogeneous_dual_norm * inv_orig_dual_norm;
-    double rel_p_infeas_residual = abs_p_infeas_residual / (1.0 + original_constraint_norm);
-    metrics_d->relative_primal_infeasibility_residual = rel_p_infeas_residual;
-
+    double primal_infeas_residual_ray_normalized = homogeneous_dual_norm * inv_orig_dual_norm;
     double support_total = ((*constraint_support) + (*variable_support)) / constraint_bound_rescaling;
-    double support_normalized = support_total * inv_orig_dual_norm;
-    double rel_p_infeas_objective = support_normalized / (1.0 + original_bound_norm);
-    metrics_d->relative_primal_infeasibility_objective = rel_p_infeas_objective;
+    double support_ray_normalized = support_total * inv_orig_dual_norm;
+    metrics_d->primal_infeasibility_ratio = (support_ray_normalized > 0.0)
+                                          ? primal_infeas_residual_ray_normalized / support_ray_normalized
+                                          : INFINITY;
 
     double orig_primal_ray_norm = *farkas_original_primal_norm;
-    double inv_orig_primal_norm = (orig_primal_ray_norm > 1.0e-30) 
-                                ? 1.0 / orig_primal_ray_norm 
+    double inv_orig_primal_norm = (orig_primal_ray_norm > 1.0e-30)
+                                ? 1.0 / orig_primal_ray_norm
                                 : 0.0;
-    double relative_constraint_recession_residual = ((*farkas_constraint_recession) * inv_orig_primal_norm)
-                                                  / (1.0 + original_bound_norm);
-    double relative_variable_recession_residual = ((*farkas_variable_recession) * inv_orig_primal_norm) 
-                                                / (1.0 + original_bound_norm);
-    double rel_d_infeas_residual = fmax(relative_constraint_recession_residual,
-                                        relative_variable_recession_residual);
-    metrics_d->relative_dual_infeasibility_residual = rel_d_infeas_residual;
-
+    double recession_residual_ray_normalized = fmax((*farkas_constraint_recession) * inv_orig_primal_norm,
+                                                    (*farkas_variable_recession) * inv_orig_primal_norm);
     double c_dot_x = *objective_dot_primal;
-    double rel_d_infeas_objective = (c_dot_x * inv_orig_primal_norm)
-                                  / ((1.0 + original_objective_norm) * objective_vector_rescaling);
-    metrics_d->relative_dual_infeasibility_objective = rel_d_infeas_objective;
+    double objective_margin_ray_normalized = -(c_dot_x * inv_orig_primal_norm) / objective_vector_rescaling;
+    metrics_d->dual_infeasibility_ratio = (objective_margin_ray_normalized > 0.0)
+                                        ? recession_residual_ray_normalized / objective_margin_ray_normalized
+                                        : INFINITY;
 }
 
 __global__ void rescale_solution_kernel(

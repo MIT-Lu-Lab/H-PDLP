@@ -183,12 +183,6 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("eps_infeas_residual must be finite and > 0",
                     params->termination_criteria.eps_infeas_residual);
     }
-    if (!(params->termination_criteria.eps_infeas_objective > 0.0 &&
-          isfinite(params->termination_criteria.eps_infeas_objective)))
-    {
-        param_error("eps_infeas_objective must be finite and > 0",
-                    params->termination_criteria.eps_infeas_objective);
-    }
     if (!(params->termination_criteria.eps_infeas_ray > 0.0 &&
           isfinite(params->termination_criteria.eps_infeas_ray)))
     {
@@ -310,8 +304,7 @@ pdhg_solver_state_t *initialize_solver_state(
     compute_lp_problem_norms(
         original_problem, params->optimality_norm,
         &state->original_objective_norm,
-        &state->original_bound_norm,
-        &state->original_constraint_norm);
+        &state->original_bound_norm);
 
     rescale_problem(params, state);
 

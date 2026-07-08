@@ -125,7 +125,6 @@ typedef struct {
 
     double  original_objective_norm;
     double  original_bound_norm;
-    double  original_constraint_norm;
     double  rescaled_objective_norm;
     double  rescaled_bound_norm;
     double  rescaled_constraint_norm;

@@ -78,8 +78,7 @@ extern "C"
         const lp_problem_t *problem,
         norm_type_t optimality_norm,
         double *out_objective_norm,
-        double *out_bound_norm,
-        double *out_constraint_frobenius_norm);
+        double *out_bound_norm);
 
     void compute_lp_problem_norms_device(
         pdhg_solver_state_t *state,

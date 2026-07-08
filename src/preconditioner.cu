@@ -428,8 +428,6 @@ void rescale_problem(
     if (verbose)
     {
         printf("  %-20s %15s %15s\n", "", "original", "rescaled");
-        printf("  %-20s %15.6e %15s\n", "||A||_F",
-               state->original_constraint_norm, "-");
         printf("  %-20s %15s %15.6e\n", "||A||",
                "-", state->rescaled_constraint_norm);
         printf("  %-20s %15.6e %15.6e\n", "||c||",
