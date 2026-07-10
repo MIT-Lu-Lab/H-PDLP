@@ -112,9 +112,8 @@ extern "C"
     {
         double eps_optimal_relative;
         double eps_feasible_relative;
-        double eps_infeas_residual;
-        double eps_infeas_ray;
-        bool enable_ray_infeas;
+        double eps_farkas_homogeneous;
+        double eps_farkas_displacement;
         double time_sec_limit;
         int iteration_limit;
     } termination_criteria_t;
@@ -163,10 +162,8 @@ extern "C"
         double dual_objective_value;
         double objective_gap;
         double relative_objective_gap;
-        double max_primal_ray_infeasibility;
-        double max_dual_ray_infeasibility;
-        double primal_ray_linear_objective;
-        double dual_ray_objective;
+        double farkas_margin;
+        double farkas_residual;
         termination_reason_t termination_reason;
 
         int restart_count;

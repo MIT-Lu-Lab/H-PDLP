@@ -199,9 +199,8 @@ void set_default_parameters(pdhg_parameters_t *params)
 
     params->termination_criteria.eps_optimal_relative = 1e-4;
     params->termination_criteria.eps_feasible_relative = 1e-4;
-    params->termination_criteria.eps_infeas_residual = 1e-12;
-    params->termination_criteria.eps_infeas_ray = 1e-10;
-    params->termination_criteria.enable_ray_infeas = true;
+    params->termination_criteria.eps_farkas_homogeneous = 1e-7;
+    params->termination_criteria.eps_farkas_displacement = 1e-10;
     params->termination_criteria.time_sec_limit = 3600.0;
     params->termination_criteria.iteration_limit = INT32_MAX;
 

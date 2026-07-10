@@ -20,6 +20,7 @@ limitations under the License.
 #include "internal_types.h"
 #include "pid_controller.h"
 #include "presolver.h"
+#include "result.h"
 #include "setup.h"
 #include "solver.h"
 #include "termination_checker.h"
@@ -78,6 +79,9 @@ static void update_hsd_primal_block(
     bool is_major);
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
+static bool should_do_adaptive_restart(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params);
 static void perform_restart(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
@@ -447,6 +451,40 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
+}
+
+static bool should_do_adaptive_restart(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params)
+{
+    const restart_parameters_t *restart_params = &params->restart_params;
+    int termination_evaluation_frequency = params->termination_evaluation_frequency;
+
+    bool do_restart = false;
+    if (state->total_count == termination_evaluation_frequency)
+    {
+        do_restart = true;
+    }
+    else if (state->total_count > termination_evaluation_frequency)
+    {
+        if (*state->fixed_point_error_mp <= restart_params->sufficient_reduction_for_restart * state->initial_fixed_point_error)
+        {
+            do_restart = true;
+        }
+        if (*state->fixed_point_error_mp <= restart_params->necessary_reduction_for_restart * state->initial_fixed_point_error)
+        {
+            if (*state->fixed_point_error_mp > state->last_trial_fixed_point_error)
+            {
+                do_restart = true;
+            }
+        }
+        if (state->inner_count >= restart_params->artificial_restart_threshold * state->total_count)
+        {
+            do_restart = true;
+        }
+    }
+    state->last_trial_fixed_point_error = *state->fixed_point_error_mp;
+    return do_restart;
 }
 
 static void perform_restart(

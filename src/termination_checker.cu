@@ -21,7 +21,6 @@ limitations under the License.
 #include <cuda_runtime.h>
 #include <cusparse.h>
 #include <math.h>
-#include <stdbool.h>
 #include <time.h>
 
 __global__ void compute_residual_kernel(
@@ -55,7 +54,7 @@ __global__ void compute_box_support_contribution_kernel(
     const double *__restrict__ ub,
     double direction_sign,
     int n);
-__global__ void compute_projected_ray_delta_kernel(
+__global__ void compute_projected_displacement_kernel(
     const double *__restrict__ initial_primal,
     const double *__restrict__ pdhg_primal,
     double *__restrict__ delta_primal,
@@ -69,125 +68,117 @@ __global__ void compute_projected_ray_delta_kernel(
     int n_vars,
     int n_cons);
 __global__ void compute_ray_infeasibility_kernel(
-    const double *__restrict__ primal_product,
-    const double *__restrict__ dual_product,
+    const double *__restrict__ primal_prod,
+    const double *__restrict__ dual_prod,
     const double *__restrict__ cons_lb,
     const double *__restrict__ cons_ub,
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
-    double *__restrict__ primal_infeasibility,
-    double *__restrict__ dual_infeasibility,
+    double *__restrict__ primal_infeas,
+    double *__restrict__ dual_infeas,
     const double *__restrict__ cons_rescaling,
     const double *__restrict__ var_rescaling,
     int n_vars,
     int n_cons);
-__global__ void install_primal_infeasibility_ray_kernel(
-    double *__restrict__ dual_solution,
-    double *__restrict__ reduced_cost,
-    double *__restrict__ original_dual_ray,
-    double *__restrict__ original_reduced_cost_ray,
-    const double *__restrict__ delta_dual,
-    const double *__restrict__ dual_product,
-    const double *__restrict__ cons_rescaling,
-    const double *__restrict__ var_rescaling,
-    int n_cons,
-    int n_vars);
-__global__ void install_dual_infeasibility_ray_kernel(
-    double *__restrict__ primal_solution,
-    double *__restrict__ original_primal_ray,
-    const double *__restrict__ delta_primal,
-    const double *__restrict__ var_rescaling,
-    int n_vars);
-__global__ void compute_ray_metrics_kernel(
+__global__ void compute_termination_metrics_kernel(
     pdhg_metrics_t *metrics_d,
-    const double *__restrict__ primal_ray_linear_objective,
-    const double *__restrict__ constraint_support,
-    const double *__restrict__ variable_support,
-    const double *__restrict__ primal_ray_infeasibility,
-    const double *__restrict__ dual_ray_infeasibility,
-    double constraint_bound_rescaling,
-    double objective_vector_rescaling);
-__global__ void compute_residual_metrics_kernel(
-    pdhg_metrics_t *metrics_d,
-    const double *primal_norm,
-    const double *dual_norm,
-    const double *objective_dot_primal,
-    const double *farkas_dual_solution_norm,
-    const double *farkas_homogeneous_dual_norm,
-    const double *farkas_constraint_recession,
-    const double *farkas_variable_recession,
-    const double *constraint_support,
-    const double *variable_support,
-    const double *farkas_original_dual_norm,
-    const double *farkas_original_reduced_cost_norm,
-    const double *farkas_original_primal_norm,
-    const double *primal_scale_current,
-    const double *primal_scale_pdhg,
-    const double *dual_scale_pdhg,
+    const double *__restrict__ primal_norm,
+    const double *__restrict__ dual_norm,
+    const double *__restrict__ objective_dot_primal,
+    const termination_reductions_t *__restrict__ reductions,
+    const double *__restrict__ primal_scale_current,
+    const double *__restrict__ primal_scale_pdhg,
+    const double *__restrict__ dual_scale_pdhg,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
     double original_objective_norm,
     double objective_constant);
-__global__ void rescale_solution_kernel(
-    double *__restrict__ primal_sol,
+__global__ void install_primal_infeasibility_ray_kernel(
     double *__restrict__ dual_sol,
     double *__restrict__ reduced_cost,
-    const double *__restrict__ var_rescaling,
+    double *__restrict__ original_dual_ray,
+    double *__restrict__ original_reduced_cost_ray,
+    const double *__restrict__ delta_dual,
+    const double *__restrict__ dual_prod,
     const double *__restrict__ cons_rescaling,
-    const double obj_vec_rescaling,
-    const double cons_bound_rescaling,
-    double divisor,
-    int n_vars,
-    int n_cons);
-static void compute_residual_products(pdhg_solver_state_t *state);
+    const double *__restrict__ var_rescaling,
+    int n_cons,
+    int n_vars);
+__global__ void install_dual_infeasibility_ray_kernel(
+    double *__restrict__ primal_sol,
+    double *__restrict__ original_primal_ray,
+    const double *__restrict__ delta_primal,
+    const double *__restrict__ var_rescaling,
+    int n_vars);
+static void compute_matrix_products(
+    pdhg_solver_state_t *state,
+    cusparseDnVecDescr_t primal_vector,
+    cusparseDnVecDescr_t dual_vector);
 static void compute_residual_vectors(pdhg_solver_state_t *state);
-static void compute_linf_residual_norms(pdhg_solver_state_t *state);
-static void compute_l2_residual_norms(pdhg_solver_state_t *state);
-static void compute_objective_and_support_terms(pdhg_solver_state_t *state);
-static void update_residual_metrics(pdhg_solver_state_t *state);
+static void compute_residual_norms(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params);
+static void compute_objective_and_support_terms(
+    pdhg_solver_state_t *state,
+    const double *primal_direction_d,
+    const double *dual_direction_d,
+    const double *variable_direction_d,
+    double variable_direction_sign,
+    double *objective_dot_d,
+    double *constraint_support_d,
+    double *variable_support_d);
 static void compute_ray_infeasibility(pdhg_solver_state_t *state);
-static void compute_projected_ray_delta(pdhg_solver_state_t *state);
-static void compute_ray_products(pdhg_solver_state_t *state);
-static void compute_ray_objectives(pdhg_solver_state_t *state);
+static void compute_projected_displacement(pdhg_solver_state_t *state);
 static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state);
-static bool optimality_criteria_met(
-    const pdhg_solver_state_t *state,
+static bool certify_optimality(
+    pdhg_solver_state_t *state,
     const termination_criteria_t *criteria);
-static bool primal_infeasibility_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria);
-static bool dual_infeasibility_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria);
-static bool primal_infeasibility_ray_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria);
-static bool dual_infeasibility_ray_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria);
+static bool certify_infeasibility(
+    pdhg_solver_state_t *state,
+    double margin,
+    double residual,
+    double eps,
+    termination_reason_t reason);
 static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state);
 static void prepare_dual_infeasibility_ray_result(pdhg_solver_state_t *state);
-static void rescale_solution(pdhg_solver_state_t *state);
 
 void compute_termination_metrics(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
-    compute_residual_products(state);
+    termination_reductions_t *reductions_d = state->termination_reductions_d;
+
+    compute_matrix_products(state,
+                            state->spmv_pdhg_primal_solution,
+                            state->spmv_pdhg_dual_solution);
     compute_residual_vectors(state);
+    compute_residual_norms(state, params);
+    compute_objective_and_support_terms(
+        state,
+        state->pdhg_primal_solution_d,
+        state->pdhg_dual_solution_d,
+        state->pdhg_reduced_cost_d,
+        1.0,
+        state->objective_dot_primal_d,
+        &reductions_d->constraint_support,
+        &reductions_d->variable_support);
+    compute_ray_infeasibility(state);
 
-    if (params->optimality_norm == NORM_TYPE_L_INF)
-        compute_linf_residual_norms(state);
-    else
-        compute_l2_residual_norms(state);
-
-    compute_objective_and_support_terms(state);
-    update_residual_metrics(state);
-    if (params->termination_criteria.enable_ray_infeas)
-    {
-        compute_ray_infeasibility(state);
-    }
+    compute_termination_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
+        state->metrics_d,
+        state->pdhg_primal_norm_d,
+        state->pdhg_dual_norm_d,
+        state->objective_dot_primal_d,
+        reductions_d,
+        state->hsd_primal_scale_current_d,
+        state->hsd_primal_scale_pdhg_d,
+        state->hsd_dual_scale_pdhg_d,
+        state->constraint_bound_rescaling,
+        state->objective_vector_rescaling,
+        state->original_bound_norm,
+        state->original_objective_norm,
+        state->objective_constant);
     CUDA_CHECK(cudaMemcpyAsync(state->metrics_h, state->metrics_d,
                                sizeof(pdhg_metrics_t),
                                cudaMemcpyDeviceToHost,
@@ -195,14 +186,19 @@ void compute_termination_metrics(
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
-static void compute_residual_products(pdhg_solver_state_t *state)
+static void compute_matrix_products(
+    pdhg_solver_state_t *state,
+    cusparseDnVecDescr_t primal_vector,
+    cusparseDnVecDescr_t dual_vector)
 {
+    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
+    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
     CUSPARSE_CHECK(cusparseSpMV(
         state->sparse_handle_A,
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &HOST_ONE,
         state->matA,
-        state->spmv_pdhg_primal_solution,
+        primal_vector,
         &HOST_ZERO,
         state->spmv_primal_product,
         CUDA_R_64F,
@@ -214,13 +210,12 @@ static void compute_residual_products(pdhg_solver_state_t *state)
         CUSPARSE_OPERATION_NON_TRANSPOSE,
         &HOST_ONE,
         state->matAt,
-        state->spmv_pdhg_dual_solution,
+        dual_vector,
         &HOST_ZERO,
         state->spmv_dual_product,
         CUDA_R_64F,
         CUSPARSE_SPMV_CSR_ALG2,
         state->matAt_spmv_workspace_d));
-
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 }
@@ -254,87 +249,93 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaGetLastError());
 }
 
-static void compute_linf_residual_norms(pdhg_solver_state_t *state)
+static void compute_residual_norms(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params)
 {
-    reduce_device_abs_max(state, state->primal_residual_d, state->num_constraints + state->num_variables,
-                          state->pdhg_primal_norm_d);
-    reduce_device_abs_max(state, state->dual_residual_d, state->num_variables,
-                          state->pdhg_dual_norm_d);
-    reduce_device_abs_max(state, state->homogeneous_dual_residual_d, state->num_variables,
-                          state->farkas_homogeneous_dual_norm_d);
-    reduce_device_abs_max(state, state->constraint_recession_residual_d, state->num_constraints,
-                          state->farkas_constraint_recession_d);
-    reduce_device_abs_max(state, state->variable_recession_residual_d, state->num_variables,
-                          state->farkas_variable_recession_d);
-    reduce_device_abs_max(state, state->pdhg_primal_solution_d, state->num_variables,
-                          &state->metrics_d->primal_solution_norm);
-    reduce_device_abs_max(state, state->pdhg_dual_solution_d, state->num_constraints,
-                          state->farkas_dual_solution_norm_d);
-    reduce_device_abs_max(state, state->dual_ray_d, state->num_constraints,
-                          state->farkas_original_dual_norm_d);
-    reduce_device_abs_max(state, state->reduced_cost_ray_d, state->num_variables,
-                          state->farkas_original_reduced_cost_norm_d);
-    reduce_device_abs_max(state, state->primal_ray_d, state->num_variables,
-                          state->farkas_original_primal_norm_d);
-}
+    termination_reductions_t *reductions_d = state->termination_reductions_d;
 
-static void compute_l2_residual_norms(pdhg_solver_state_t *state)
-{
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_constraints + state->num_variables,
-        state->primal_residual_d, 1,
-        state->pdhg_primal_norm_d));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        state->dual_residual_d, 1,
-        state->pdhg_dual_norm_d));
+    if (params->optimality_norm == NORM_TYPE_L_INF)
+    {
+        reduce_device_abs_max(state, state->primal_residual_d, state->num_constraints + state->num_variables,
+                              state->pdhg_primal_norm_d);
+        reduce_device_abs_max(state, state->dual_residual_d, state->num_variables,
+                              state->pdhg_dual_norm_d);
+        reduce_device_abs_max(state, state->pdhg_primal_solution_d, state->num_variables,
+                              &state->metrics_d->primal_solution_norm);
+        reduce_device_abs_max(state, state->pdhg_dual_solution_d, state->num_constraints,
+                              &reductions_d->dual_solution_norm);
+    }
+    else
+    {
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A, state->num_constraints + state->num_variables,
+            state->primal_residual_d, 1,
+            state->pdhg_primal_norm_d));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A, state->num_variables,
+            state->dual_residual_d, 1,
+            state->pdhg_dual_norm_d));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A, state->num_variables,
+            state->pdhg_primal_solution_d, 1,
+            &state->metrics_d->primal_solution_norm));
+        CUBLAS_CHECK(cublasDnrm2_v2_64(
+            state->blas_handle_A, state->num_constraints,
+            state->pdhg_dual_solution_d, 1,
+            &reductions_d->dual_solution_norm));
+    }
+
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
         state->homogeneous_dual_residual_d, 1,
-        state->farkas_homogeneous_dual_norm_d));
+        &reductions_d->homogeneous_dual_residual_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_constraints,
         state->constraint_recession_residual_d, 1,
-        state->farkas_constraint_recession_d));
+        &reductions_d->constraint_recession_residual_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
         state->variable_recession_residual_d, 1,
-        state->farkas_variable_recession_d));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        state->pdhg_primal_solution_d, 1,
-        &state->metrics_d->primal_solution_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_constraints,
-        state->pdhg_dual_solution_d, 1,
-        state->farkas_dual_solution_norm_d));
+        &reductions_d->variable_recession_residual_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_constraints,
         state->dual_ray_d, 1,
-        state->farkas_original_dual_norm_d));
+        &reductions_d->original_dual_ray_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
         state->reduced_cost_ray_d, 1,
-        state->farkas_original_reduced_cost_norm_d));
+        &reductions_d->original_reduced_cost_ray_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
         state->primal_ray_d, 1,
-        state->farkas_original_primal_norm_d));
+        &reductions_d->original_primal_ray_norm));
 }
 
-static void compute_objective_and_support_terms(pdhg_solver_state_t *state)
+static void compute_objective_and_support_terms(
+    pdhg_solver_state_t *state,
+    const double *primal_direction_d,
+    const double *dual_direction_d,
+    const double *variable_direction_d,
+    double variable_direction_sign,
+    double *objective_dot_d,
+    double *constraint_support_d,
+    double *variable_support_d)
 {
+    double *constraint_support_entries_d = state->constraint_reduction_entries_d;
+    double *variable_support_entries_d = state->variable_reduction_entries_d;
+
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,
         state->num_variables,
         state->objective_vector_d, 1,
-        state->pdhg_primal_solution_d, 1,
-        state->objective_dot_primal_d));
+        primal_direction_d, 1,
+        objective_dot_d));
 
     compute_box_support_contribution_kernel<<<
         state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->constraint_reduction_entries_d,
-        state->pdhg_dual_solution_d,
+        constraint_support_entries_d,
+        dual_direction_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
         1.0,
@@ -342,74 +343,49 @@ static void compute_objective_and_support_terms(pdhg_solver_state_t *state)
     CUDA_CHECK(cub::DeviceReduce::Sum(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
-        state->constraint_reduction_entries_d,
-        state->constraint_support_value_d,
+        constraint_support_entries_d,
+        constraint_support_d,
         state->num_constraints, state->stream_A));
 
     compute_box_support_contribution_kernel<<<
         state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->variable_reduction_entries_d,
-        state->pdhg_reduced_cost_d,
+        variable_support_entries_d,
+        variable_direction_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        1.0,
+        variable_direction_sign,
         state->num_variables);
     CUDA_CHECK(cub::DeviceReduce::Sum(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
-        state->variable_reduction_entries_d,
-        state->variable_support_value_d,
+        variable_support_entries_d,
+        variable_support_d,
         state->num_variables, state->stream_A));
-}
-
-static void update_residual_metrics(pdhg_solver_state_t *state)
-{
-    compute_residual_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->metrics_d,
-        state->pdhg_primal_norm_d,
-        state->pdhg_dual_norm_d,
-        state->objective_dot_primal_d,
-        state->farkas_dual_solution_norm_d,
-        state->farkas_homogeneous_dual_norm_d,
-        state->farkas_constraint_recession_d,
-        state->farkas_variable_recession_d,
-        state->constraint_support_value_d,
-        state->variable_support_value_d,
-        state->farkas_original_dual_norm_d,
-        state->farkas_original_reduced_cost_norm_d,
-        state->farkas_original_primal_norm_d,
-        state->hsd_primal_scale_current_d,
-        state->hsd_primal_scale_pdhg_d,
-        state->hsd_dual_scale_pdhg_d,
-        state->constraint_bound_rescaling,
-        state->objective_vector_rescaling,
-        state->original_bound_norm,
-        state->original_objective_norm,
-        state->objective_constant);
-
 }
 
 static void compute_ray_infeasibility(pdhg_solver_state_t *state)
 {
-    compute_projected_ray_delta(state);
-    compute_ray_products(state);
-    compute_ray_objectives(state);
-    compute_ray_infeasibility_norms(state);
+    termination_reductions_t *reductions_d = state->termination_reductions_d;
 
-    compute_ray_metrics_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->metrics_d,
-        state->primal_ray_linear_objective_d,
-        state->dual_ray_constraint_support_d,
-        state->dual_ray_variable_support_d,
-        state->max_primal_ray_infeasibility_d,
-        state->max_dual_ray_infeasibility_d,
-        state->constraint_bound_rescaling,
-        state->objective_vector_rescaling);
+    compute_projected_displacement(state);
+    compute_matrix_products(state,
+                            state->spmv_delta_primal_solution,
+                            state->spmv_delta_dual_solution);
+    compute_objective_and_support_terms(
+        state,
+        state->delta_primal_solution_d,
+        state->delta_dual_solution_d,
+        state->dual_product_d,
+        -1.0,
+        &reductions_d->dual_infeasibility_objective,
+        &reductions_d->primal_infeasibility_constraint_support,
+        &reductions_d->primal_infeasibility_variable_support);
+    compute_ray_infeasibility_norms(state);
 }
 
-static void compute_projected_ray_delta(pdhg_solver_state_t *state)
+static void compute_projected_displacement(pdhg_solver_state_t *state)
 {
-    compute_projected_ray_delta_kernel<<<
+    compute_projected_displacement_kernel<<<
         state->num_blocks_primal_dual,
         THREADS_PER_BLOCK,
         0,
@@ -429,82 +405,9 @@ static void compute_projected_ray_delta(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaGetLastError());
 }
 
-static void compute_ray_products(pdhg_solver_state_t *state)
-{
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
-    CUSPARSE_CHECK(cusparseSpMV(
-        state->sparse_handle_A,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matA,
-        state->spmv_delta_primal_solution,
-        &HOST_ZERO,
-        state->spmv_primal_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matA_spmv_workspace_d));
-
-    CUSPARSE_CHECK(cusparseSpMV(
-        state->sparse_handle_At,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matAt,
-        state->spmv_delta_dual_solution,
-        &HOST_ZERO,
-        state->spmv_dual_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matAt_spmv_workspace_d));
-    CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
-}
-
-static void compute_ray_objectives(pdhg_solver_state_t *state)
-{
-    double *constraint_support_entries_d = state->constraint_reduction_entries_d;
-    double *variable_support_entries_d = state->variable_reduction_entries_d;
-
-    CUBLAS_CHECK(cublasDdot(
-        state->blas_handle_A,
-        state->num_variables,
-        state->objective_vector_d, 1,
-        state->delta_primal_solution_d, 1,
-        state->primal_ray_linear_objective_d));
-
-    compute_box_support_contribution_kernel<<<
-        state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        constraint_support_entries_d,
-        state->delta_dual_solution_d,
-        state->constraint_lower_bound_d,
-        state->constraint_upper_bound_d,
-        1.0,
-        state->num_constraints);
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        constraint_support_entries_d,
-        state->dual_ray_constraint_support_d,
-        state->num_constraints, state->stream_A));
-
-    compute_box_support_contribution_kernel<<<
-        state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        variable_support_entries_d,
-        state->dual_product_d,
-        state->variable_lower_bound_d,
-        state->variable_upper_bound_d,
-        -1.0,
-        state->num_variables);
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        variable_support_entries_d,
-        state->dual_ray_variable_support_d,
-        state->num_variables, state->stream_A));
-}
-
 static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
 {
+    termination_reductions_t *reductions_d = state->termination_reductions_d;
     double *primal_ray_infeasibility_entries_d = state->constraint_reduction_entries_d;
     double *dual_ray_infeasibility_entries_d = state->variable_reduction_entries_d;
 
@@ -526,10 +429,10 @@ static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
 
     reduce_device_abs_max(state, primal_ray_infeasibility_entries_d,
                           state->num_constraints,
-                          state->max_primal_ray_infeasibility_d);
+                          &reductions_d->dual_infeasibility_residual);
     reduce_device_abs_max(state, dual_ray_infeasibility_entries_d,
                           state->num_variables,
-                          state->max_dual_ray_infeasibility_d);
+                          &reductions_d->primal_infeasibility_residual);
 }
 
 void check_termination_criteria(
@@ -538,43 +441,59 @@ void check_termination_criteria(
 {
     solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
 
+    if (!isfinite(solver_state->metrics_h->primal_solution_norm) ||
+        !isfinite(solver_state->metrics_h->dual_solution_norm) ||
+        !isfinite(solver_state->metrics_h->pdhg_primal_scale))
+    {
+        solver_state->termination_reason = TERMINATION_REASON_NUMERICAL_FAILURE;
+        return;
+    }
+
     double ratio = solver_state->metrics_h->normalized_homogeneous_ratio;
     if (ratio < 0.5)
     {
-        if (optimality_criteria_met(solver_state, criteria))
+        if (certify_optimality(solver_state, criteria))
         {
-            solver_state->termination_reason = TERMINATION_REASON_OPTIMAL;
             return;
         }
     }
     else if (ratio > 0.9)
     {
-        if (primal_infeasibility_criteria_met(solver_state, criteria))
+        if (certify_infeasibility(solver_state,
+                                  solver_state->metrics_h->primal_infeasibility_homogeneous_margin,
+                                  solver_state->metrics_h->primal_infeasibility_homogeneous_residual,
+                                  criteria->eps_farkas_homogeneous,
+                                  TERMINATION_REASON_PRIMAL_INFEASIBLE))
         {
-            solver_state->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
             return;
         }
-        if (dual_infeasibility_criteria_met(solver_state, criteria))
+        if (certify_infeasibility(solver_state,
+                                  solver_state->metrics_h->dual_infeasibility_homogeneous_margin,
+                                  solver_state->metrics_h->dual_infeasibility_homogeneous_residual,
+                                  criteria->eps_farkas_homogeneous,
+                                  TERMINATION_REASON_DUAL_INFEASIBLE))
         {
-            solver_state->termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
             return;
         }
     }
 
-    if (criteria->enable_ray_infeas)
+    if (certify_infeasibility(solver_state,
+                              solver_state->metrics_h->primal_infeasibility_displacement_margin,
+                              solver_state->metrics_h->primal_infeasibility_displacement_residual,
+                              criteria->eps_farkas_displacement,
+                              TERMINATION_REASON_PRIMAL_INFEASIBLE))
     {
-        if (primal_infeasibility_ray_criteria_met(solver_state, criteria))
-        {
-            prepare_primal_infeasibility_ray_result(solver_state);
-            solver_state->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
-            return;
-        }
-        if (dual_infeasibility_ray_criteria_met(solver_state, criteria))
-        {
-            prepare_dual_infeasibility_ray_result(solver_state);
-            solver_state->termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
-            return;
-        }
+        prepare_primal_infeasibility_ray_result(solver_state);
+        return;
+    }
+    if (certify_infeasibility(solver_state,
+                              solver_state->metrics_h->dual_infeasibility_displacement_margin,
+                              solver_state->metrics_h->dual_infeasibility_displacement_residual,
+                              criteria->eps_farkas_displacement,
+                              TERMINATION_REASON_DUAL_INFEASIBLE))
+    {
+        prepare_dual_infeasibility_ray_result(solver_state);
+        return;
     }
 
     if (solver_state->total_count >= criteria->iteration_limit)
@@ -589,57 +508,41 @@ void check_termination_criteria(
     }
 }
 
-static bool optimality_criteria_met(
-    const pdhg_solver_state_t *state,
+static bool certify_optimality(
+    pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    return state->metrics_h->relative_primal_residual < criteria->eps_feasible_relative &&
-           state->metrics_h->relative_dual_residual   < criteria->eps_feasible_relative &&
-           state->metrics_h->relative_objective_gap   < criteria->eps_optimal_relative;
-}
-
-static bool primal_infeasibility_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria)
-{
-    return state->metrics_h->primal_infeasibility_ratio < criteria->eps_infeas_residual;
-}
-
-static bool dual_infeasibility_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria)
-{
-    return state->metrics_h->dual_infeasibility_ratio < criteria->eps_infeas_residual;
-}
-
-static bool primal_infeasibility_ray_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria)
-{
-    if (state->metrics_h->dual_ray_objective <= 0.0)
+    if (state->metrics_h->relative_primal_residual < criteria->eps_feasible_relative &&
+        state->metrics_h->relative_dual_residual   < criteria->eps_feasible_relative &&
+        state->metrics_h->relative_objective_gap   < criteria->eps_optimal_relative)
     {
-        return false;
+        state->termination_reason = TERMINATION_REASON_OPTIMAL;
+        return true;
     }
-    return state->metrics_h->max_dual_ray_infeasibility /
-           state->metrics_h->dual_ray_objective <=
-           criteria->eps_infeas_ray;
+    return false;
 }
 
-static bool dual_infeasibility_ray_criteria_met(
-    const pdhg_solver_state_t *state,
-    const termination_criteria_t *criteria)
+static bool certify_infeasibility(
+    pdhg_solver_state_t *state,
+    double margin,
+    double residual,
+    double eps,
+    termination_reason_t reason)
 {
-    if (state->metrics_h->primal_ray_linear_objective >= 0.0)
+    if (margin > 0.0 && residual < eps * margin)
     {
-        return false;
+        state->certificate_margin = margin;
+        state->certificate_residual = residual;
+        state->termination_reason = reason;
+        return true;
     }
-    return state->metrics_h->max_primal_ray_infeasibility /
-           (-state->metrics_h->primal_ray_linear_objective) <=
-           criteria->eps_infeas_ray;
+    return false;
 }
 
 static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state)
 {
+    termination_reductions_t *reductions_d = state->termination_reductions_d;
+
     install_primal_infeasibility_ray_kernel<<<
         state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->pdhg_dual_solution_d,
@@ -658,16 +561,18 @@ static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state)
         state->blas_handle_A,
         state->num_constraints,
         state->dual_ray_d, 1,
-        state->farkas_original_dual_norm_d));
+        &reductions_d->original_dual_ray_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_variables,
         state->reduced_cost_ray_d, 1,
-        state->farkas_original_reduced_cost_norm_d));
+        &reductions_d->original_reduced_cost_ray_norm));
 }
 
 static void prepare_dual_infeasibility_ray_result(pdhg_solver_state_t *state)
 {
+    termination_reductions_t *reductions_d = state->termination_reductions_d;
+
     install_dual_infeasibility_ray_kernel<<<
         state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->pdhg_primal_solution_d,
@@ -681,152 +586,7 @@ static void prepare_dual_infeasibility_ray_result(pdhg_solver_state_t *state)
         state->blas_handle_A,
         state->num_variables,
         state->primal_ray_d, 1,
-        state->farkas_original_primal_norm_d));
-}
-
-bool should_do_adaptive_restart(pdhg_solver_state_t *solver_state,
-                                const pdhg_parameters_t *params)
-{
-    const restart_parameters_t *restart_params = &params->restart_params;
-    int termination_evaluation_frequency = params->termination_evaluation_frequency;
-
-    bool do_restart = false;
-    if (solver_state->total_count == termination_evaluation_frequency)
-    {
-        do_restart = true;
-    }
-    else if (solver_state->total_count > termination_evaluation_frequency)
-    {
-        if (*solver_state->fixed_point_error_mp <= restart_params->sufficient_reduction_for_restart * solver_state->initial_fixed_point_error)
-        {
-            do_restart = true;
-        }
-        if (*solver_state->fixed_point_error_mp <= restart_params->necessary_reduction_for_restart * solver_state->initial_fixed_point_error)
-        {
-            if (*solver_state->fixed_point_error_mp > solver_state->last_trial_fixed_point_error)
-            {
-                do_restart = true;
-            }
-        }
-        if (solver_state->inner_count >= restart_params->artificial_restart_threshold * solver_state->total_count)
-        {
-            do_restart = true;
-        }
-    }
-    solver_state->last_trial_fixed_point_error = *solver_state->fixed_point_error_mp;
-    return do_restart;
-}
-
-bool termination_has_solution(termination_reason_t reason)
-{
-    return reason == TERMINATION_REASON_OPTIMAL ||
-           reason == TERMINATION_REASON_TIME_LIMIT ||
-           reason == TERMINATION_REASON_ITERATION_LIMIT;
-}
-
-cuhsdlp_result_t *create_result_from_state(
-    pdhg_solver_state_t *state,
-    const lp_problem_t *original_problem)
-{
-    cuhsdlp_result_t *results = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
-
-    rescale_solution(state);
-
-    if (termination_has_solution(state->termination_reason))
-    {
-        results->primal_solution = (double *)safe_malloc(state->var_bytes);
-        results->dual_solution = (double *)safe_malloc(state->con_bytes);
-        results->reduced_cost = (double *)safe_malloc(state->var_bytes);
-
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->primal_solution,
-            state->pdhg_primal_solution_d,
-            state->var_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->dual_solution,
-            state->pdhg_dual_solution_d,
-            state->con_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->reduced_cost,
-            state->pdhg_reduced_cost_d,
-            state->var_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    }
-
-    results->num_variables = original_problem->num_variables;
-    results->num_constraints = original_problem->num_constraints;
-    results->num_nonzeros = original_problem->constraint_matrix_num_nonzeros;
-    results->total_count = state->total_count;
-    results->rescaling_time_sec = state->rescaling_time_sec;
-    results->cumulative_time_sec = state->cumulative_time_sec;
-    results->absolute_primal_residual = state->metrics_h->absolute_primal_residual;
-    results->relative_primal_residual = state->metrics_h->relative_primal_residual;
-    results->absolute_dual_residual = state->metrics_h->absolute_dual_residual;
-    results->relative_dual_residual = state->metrics_h->relative_dual_residual;
-    results->primal_objective_value = state->objective_sign * state->metrics_h->primal_objective;
-    results->dual_objective_value = state->objective_sign * state->metrics_h->dual_objective;
-    results->objective_gap = state->metrics_h->objective_gap;
-    results->relative_objective_gap = state->metrics_h->relative_objective_gap;
-    results->max_primal_ray_infeasibility = state->metrics_h->max_primal_ray_infeasibility;
-    results->max_dual_ray_infeasibility = state->metrics_h->max_dual_ray_infeasibility;
-    results->primal_ray_linear_objective = state->metrics_h->primal_ray_linear_objective;
-    results->dual_ray_objective = state->metrics_h->dual_ray_objective;
-    results->termination_reason = state->termination_reason;
-
-    results->restart_count = state->restart_count;
-    results->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
-    results->final_step_size_primal = state->step_size_primal;
-    results->final_step_size_dual = state->step_size_dual;
-    results->final_step_size_homogeneous = state->step_size_homogeneous;
-
-    return results;
-}
-
-static void rescale_solution(pdhg_solver_state_t *state)
-{
-    double farkas_h[FARKAS_COUNT];
-    CUDA_CHECK(cudaMemcpy(farkas_h, state->farkas_reduce_d,
-                          FARKAS_COUNT * sizeof(double), cudaMemcpyDeviceToHost));
-
-    double divisor;
-    switch (state->termination_reason)
-    {
-    case TERMINATION_REASON_PRIMAL_INFEASIBLE:
-        divisor = sqrt(
-            farkas_h[FARKAS_ORIGINAL_DUAL_NORM] *
-                farkas_h[FARKAS_ORIGINAL_DUAL_NORM] +
-            farkas_h[FARKAS_ORIGINAL_REDUCED_COST_NORM] *
-                farkas_h[FARKAS_ORIGINAL_REDUCED_COST_NORM]);
-        break;
-    case TERMINATION_REASON_DUAL_INFEASIBLE:
-        divisor = farkas_h[FARKAS_ORIGINAL_PRIMAL_NORM];
-        break;
-    default:
-        divisor = state->metrics_h->pdhg_primal_scale;
-        break;
-    }
-
-    rescale_solution_kernel<<<
-        state->num_blocks_rescale,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->pdhg_primal_solution_d,
-        state->pdhg_dual_solution_d,
-        state->pdhg_reduced_cost_d,
-        state->variable_rescaling_d,
-        state->constraint_rescaling_d,
-        state->objective_vector_rescaling,
-        state->constraint_bound_rescaling,
-        divisor,
-        state->num_variables,
-        state->num_constraints);
+        &reductions_d->original_primal_ray_norm));
 }
 
 __global__ void compute_residual_kernel(
@@ -953,7 +713,7 @@ __global__ void compute_box_support_contribution_kernel(
     contrib[i] = c;
 }
 
-__global__ void compute_projected_ray_delta_kernel(
+__global__ void compute_projected_displacement_kernel(
     const double *__restrict__ initial_primal,
     const double *__restrict__ pdhg_primal,
     double *__restrict__ delta_primal,
@@ -971,42 +731,42 @@ __global__ void compute_projected_ray_delta_kernel(
 
     if (i < n_vars)
     {
-        double ray_value = pdhg_primal[i] - initial_primal[i];
+        double displacement = pdhg_primal[i] - initial_primal[i];
         if (isfinite(var_lb[i]))
         {
-            ray_value = fmax(ray_value, 0.0);
+            displacement = fmax(displacement, 0.0);
         }
         if (isfinite(var_ub[i]))
         {
-            ray_value = fmin(ray_value, 0.0);
+            displacement = fmin(displacement, 0.0);
         }
-        delta_primal[i] = ray_value;
+        delta_primal[i] = displacement;
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        double ray_value = pdhg_dual[idx] - initial_dual[idx];
+        double displacement = pdhg_dual[idx] - initial_dual[idx];
         if (!isfinite(cons_lb[idx]))
         {
-            ray_value = fmin(ray_value, 0.0);
+            displacement = fmin(displacement, 0.0);
         }
         if (!isfinite(cons_ub[idx]))
         {
-            ray_value = fmax(ray_value, 0.0);
+            displacement = fmax(displacement, 0.0);
         }
-        delta_dual[idx] = ray_value;
+        delta_dual[idx] = displacement;
     }
 }
 
 __global__ void compute_ray_infeasibility_kernel(
-    const double *__restrict__ primal_product,
-    const double *__restrict__ dual_product,
+    const double *__restrict__ primal_prod,
+    const double *__restrict__ dual_prod,
     const double *__restrict__ cons_lb,
     const double *__restrict__ cons_ub,
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
-    double *__restrict__ primal_infeasibility,
-    double *__restrict__ dual_infeasibility,
+    double *__restrict__ primal_infeas,
+    double *__restrict__ dual_infeas,
     const double *__restrict__ cons_rescaling,
     const double *__restrict__ var_rescaling,
     int n_vars,
@@ -1016,102 +776,32 @@ __global__ void compute_ray_infeasibility_kernel(
 
     if (i < n_cons)
     {
-        double v = primal_product[i];
+        double v = primal_prod[i];
         double lower_bound = isfinite(cons_lb[i]) ? 0.0 : -INFINITY;
         double upper_bound = isfinite(cons_ub[i]) ? 0.0 : INFINITY;
         double projected_value = fmax(lower_bound, fmin(v, upper_bound));
-        primal_infeasibility[i] = (v - projected_value) * cons_rescaling[i];
+        primal_infeas[i] = (v - projected_value) * cons_rescaling[i];
     }
     else if (i < n_cons + n_vars)
     {
         int idx = i - n_cons;
-        double v = -dual_product[idx];
+        double v = -dual_prod[idx];
         double lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
         double upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
         double projected_value = fmax(lower_bound, fmin(v, upper_bound));
-        dual_infeasibility[idx] = (v - projected_value) * var_rescaling[idx];
+        dual_infeas[idx] = (v - projected_value) * var_rescaling[idx];
     }
 }
 
-__global__ void install_primal_infeasibility_ray_kernel(
-    double *__restrict__ dual_solution,
-    double *__restrict__ reduced_cost,
-    double *__restrict__ original_dual_ray,
-    double *__restrict__ original_reduced_cost_ray,
-    const double *__restrict__ delta_dual,
-    const double *__restrict__ dual_product,
-    const double *__restrict__ cons_rescaling,
-    const double *__restrict__ var_rescaling,
-    int n_cons,
-    int n_vars)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_cons)
-    {
-        double ray_value = delta_dual[i];
-        dual_solution[i] = ray_value;
-        original_dual_ray[i] = ray_value / cons_rescaling[i];
-    }
-    else if (i < n_cons + n_vars)
-    {
-        int idx = i - n_cons;
-        double reduced_cost_value = -dual_product[idx];
-        reduced_cost[idx] = reduced_cost_value;
-        original_reduced_cost_ray[idx] =
-            reduced_cost_value * var_rescaling[idx];
-    }
-}
-
-__global__ void install_dual_infeasibility_ray_kernel(
-    double *__restrict__ primal_solution,
-    double *__restrict__ original_primal_ray,
-    const double *__restrict__ delta_primal,
-    const double *__restrict__ var_rescaling,
-    int n_vars)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_vars) return;
-
-    double ray_value = delta_primal[i];
-    primal_solution[i] = ray_value;
-    original_primal_ray[i] = ray_value / var_rescaling[i];
-}
-
-__global__ void compute_ray_metrics_kernel(
+__global__ void compute_termination_metrics_kernel(
     pdhg_metrics_t *metrics_d,
-    const double *__restrict__ primal_ray_linear_objective,
-    const double *__restrict__ constraint_support,
-    const double *__restrict__ variable_support,
-    const double *__restrict__ primal_ray_infeasibility,
-    const double *__restrict__ dual_ray_infeasibility,
-    double constraint_bound_rescaling,
-    double objective_vector_rescaling)
-{
-    double scale = constraint_bound_rescaling * objective_vector_rescaling;
-    metrics_d->primal_ray_linear_objective = *primal_ray_linear_objective / scale;
-    metrics_d->max_primal_ray_infeasibility = *primal_ray_infeasibility / constraint_bound_rescaling;
-
-    metrics_d->max_dual_ray_infeasibility = *dual_ray_infeasibility / objective_vector_rescaling;
-    metrics_d->dual_ray_objective = ((*constraint_support) + (*variable_support)) / scale;
-}
-
-__global__ void compute_residual_metrics_kernel(
-    pdhg_metrics_t *metrics_d,
-    const double *primal_norm,
-    const double *dual_norm,
-    const double *objective_dot_primal,
-    const double *farkas_dual_solution_norm,
-    const double *farkas_homogeneous_dual_norm,
-    const double *farkas_constraint_recession,
-    const double *farkas_variable_recession,
-    const double *constraint_support,
-    const double *variable_support,
-    const double *farkas_original_dual_norm,
-    const double *farkas_original_reduced_cost_norm,
-    const double *farkas_original_primal_norm,
-    const double *primal_scale_current,
-    const double *primal_scale_pdhg,
-    const double *dual_scale_pdhg,
+    const double *__restrict__ primal_norm,
+    const double *__restrict__ dual_norm,
+    const double *__restrict__ objective_dot_primal,
+    const termination_reductions_t *__restrict__ reductions,
+    const double *__restrict__ primal_scale_current,
+    const double *__restrict__ primal_scale_pdhg,
+    const double *__restrict__ dual_scale_pdhg,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
@@ -1124,7 +814,8 @@ __global__ void compute_residual_metrics_kernel(
     double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;
     double absolute_dual_residual = (*dual_norm) / objective_vector_rescaling;
     double objective_dot_primal_value = *objective_dot_primal;
-    double support_dual_objective = (*constraint_support) + (*variable_support);
+    double support_dual_objective = reductions->constraint_support
+                                  + reductions->variable_support;
 
     double primal_objective_value = objective_dot_primal_value * inv_primal_scale
                                   / (constraint_bound_rescaling * objective_vector_rescaling)
@@ -1149,13 +840,13 @@ __global__ void compute_residual_metrics_kernel(
     metrics_d->pdhg_primal_scale      = primal_scale;
     metrics_d->pdhg_dual_scale = pdhg_dual_scale;
 
-    double yc_norm = *farkas_dual_solution_norm;
-    double dual_solution_norm = yc_norm;
+    double dual_solution_norm = reductions->dual_solution_norm;
     double primal_solution_norm = metrics_d->primal_solution_norm;
 
     metrics_d->dual_solution_norm = dual_solution_norm;
 
-    double homogeneous_gap = objective_dot_primal_value + pdhg_dual_scale - (*variable_support);
+    double homogeneous_gap = objective_dot_primal_value + pdhg_dual_scale
+                           - reductions->variable_support;
     double iterate_norm = sqrt(primal_solution_norm * primal_solution_norm
                              + dual_solution_norm * dual_solution_norm
                              + primal_scale * primal_scale
@@ -1170,60 +861,90 @@ __global__ void compute_residual_metrics_kernel(
                                             ? homogeneous_gap_hat / ratio_denominator
                                             : 0.0;
 
-    double homogeneous_dual_norm = *farkas_homogeneous_dual_norm;
-    double original_dual_norm = *farkas_original_dual_norm;
-    double original_reduced_cost_norm = *farkas_original_reduced_cost_norm;
-    double original_dual_ray_norm = sqrt(original_dual_norm * original_dual_norm + original_reduced_cost_norm 
-                                       * original_reduced_cost_norm);
-    double inv_orig_dual_norm = (original_dual_ray_norm > 1.0e-30)
-                              ? 1.0 / original_dual_ray_norm
-                              : 0.0;
-    double primal_infeas_residual_ray_normalized = homogeneous_dual_norm * inv_orig_dual_norm;
-    double support_total = ((*constraint_support) + (*variable_support)) / constraint_bound_rescaling;
-    double support_ray_normalized = support_total * inv_orig_dual_norm;
-    metrics_d->primal_infeasibility_ratio = (support_ray_normalized > 0.0)
-                                          ? primal_infeas_residual_ray_normalized / support_ray_normalized
-                                          : INFINITY;
+    double homogeneous_dual_norm = reductions->homogeneous_dual_residual_norm;
+    double original_dual_norm = reductions->original_dual_ray_norm;
+    double original_reduced_cost_norm = reductions->original_reduced_cost_ray_norm;
+    double original_dual_ray_norm = sqrt(original_dual_norm * original_dual_norm
+                                       + original_reduced_cost_norm * original_reduced_cost_norm);
+    double inv_original_dual_ray_norm = (original_dual_ray_norm > 1e-30)
+                                      ? 1.0 / original_dual_ray_norm
+                                      : 0.0;
+    double support_total = (reductions->constraint_support
+                          + reductions->variable_support)
+                         / constraint_bound_rescaling;
+    metrics_d->primal_infeasibility_homogeneous_margin =
+        support_total * inv_original_dual_ray_norm;
+    metrics_d->primal_infeasibility_homogeneous_residual =
+        homogeneous_dual_norm * inv_original_dual_ray_norm;
 
-    double orig_primal_ray_norm = *farkas_original_primal_norm;
-    double inv_orig_primal_norm = (orig_primal_ray_norm > 1.0e-30)
-                                ? 1.0 / orig_primal_ray_norm
-                                : 0.0;
-    double recession_residual_ray_normalized = fmax((*farkas_constraint_recession) * inv_orig_primal_norm,
-                                                    (*farkas_variable_recession) * inv_orig_primal_norm);
-    double c_dot_x = *objective_dot_primal;
-    double objective_margin_ray_normalized = -(c_dot_x * inv_orig_primal_norm) / objective_vector_rescaling;
-    metrics_d->dual_infeasibility_ratio = (objective_margin_ray_normalized > 0.0)
-                                        ? recession_residual_ray_normalized / objective_margin_ray_normalized
-                                        : INFINITY;
+    double original_primal_ray_norm = reductions->original_primal_ray_norm;
+    double inv_original_primal_ray_norm = (original_primal_ray_norm > 1e-30)
+                                        ? 1.0 / original_primal_ray_norm
+                                        : 0.0;
+    metrics_d->dual_infeasibility_homogeneous_margin =
+        -(objective_dot_primal_value * inv_original_primal_ray_norm)
+        / objective_vector_rescaling;
+    metrics_d->dual_infeasibility_homogeneous_residual =
+        fmax(reductions->constraint_recession_residual_norm
+                 * inv_original_primal_ray_norm,
+             reductions->variable_recession_residual_norm
+                 * inv_original_primal_ray_norm);
+
+    double ray_scale = constraint_bound_rescaling * objective_vector_rescaling;
+    metrics_d->primal_infeasibility_displacement_margin =
+        (reductions->primal_infeasibility_constraint_support
+         + reductions->primal_infeasibility_variable_support)
+        / ray_scale;
+    metrics_d->primal_infeasibility_displacement_residual =
+        reductions->primal_infeasibility_residual
+        / objective_vector_rescaling;
+    metrics_d->dual_infeasibility_displacement_margin =
+        -reductions->dual_infeasibility_objective / ray_scale;
+    metrics_d->dual_infeasibility_displacement_residual =
+        reductions->dual_infeasibility_residual
+        / constraint_bound_rescaling;
 }
 
-__global__ void rescale_solution_kernel(
-    double *__restrict__ primal_sol,
+__global__ void install_primal_infeasibility_ray_kernel(
     double *__restrict__ dual_sol,
     double *__restrict__ reduced_cost,
-    const double *__restrict__ var_rescaling,
+    double *__restrict__ original_dual_ray,
+    double *__restrict__ original_reduced_cost_ray,
+    const double *__restrict__ delta_dual,
+    const double *__restrict__ dual_prod,
     const double *__restrict__ cons_rescaling,
-    const double obj_vec_rescaling,
-    const double cons_bound_rescaling,
-    double divisor,
-    int n_vars,
-    int n_cons)
+    const double *__restrict__ var_rescaling,
+    int n_cons,
+    int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double inv_divisor = (fabs(divisor) > 1e-50) ? 1.0 / divisor : 0.0;
-    if (i < n_vars)
+    if (i < n_cons)
     {
-        primal_sol[i] = primal_sol[i] * inv_divisor / var_rescaling[i] / cons_bound_rescaling;
+        double ray_value = delta_dual[i];
+        dual_sol[i] = ray_value;
+        original_dual_ray[i] = ray_value / cons_rescaling[i];
     }
-    else if (i < n_vars + n_cons)
+    else if (i < n_cons + n_vars)
     {
-        int idx = i - n_vars;
-        dual_sol[idx] = dual_sol[idx] * inv_divisor / cons_rescaling[idx] / obj_vec_rescaling;
+        int idx = i - n_cons;
+        double reduced_cost_value = -dual_prod[idx];
+        reduced_cost[idx] = reduced_cost_value;
+        original_reduced_cost_ray[idx] =
+            reduced_cost_value * var_rescaling[idx];
     }
-    else if (i < 2 * n_vars + n_cons)
-    {
-        int idx = i - n_vars - n_cons;
-        reduced_cost[idx] = reduced_cost[idx] * inv_divisor * var_rescaling[idx] / obj_vec_rescaling;
-    }
+}
+
+__global__ void install_dual_infeasibility_ray_kernel(
+    double *__restrict__ primal_sol,
+    double *__restrict__ original_primal_ray,
+    const double *__restrict__ delta_primal,
+    const double *__restrict__ var_rescaling,
+    int n_vars)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_vars) return;
+
+    double ray_value = delta_primal[i];
+    primal_sol[i] = ray_value;
+    original_primal_ray[i] = ray_value / var_rescaling[i];
 }

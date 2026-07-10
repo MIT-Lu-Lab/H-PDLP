@@ -177,17 +177,17 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("eps_feas must be finite and > 0",
                     params->termination_criteria.eps_feasible_relative);
     }
-    if (!(params->termination_criteria.eps_infeas_residual > 0.0 &&
-          isfinite(params->termination_criteria.eps_infeas_residual)))
+    if (!(params->termination_criteria.eps_farkas_homogeneous > 0.0 &&
+          isfinite(params->termination_criteria.eps_farkas_homogeneous)))
     {
-        param_error("eps_infeas_residual must be finite and > 0",
-                    params->termination_criteria.eps_infeas_residual);
+        param_error("eps_farkas_homogeneous must be finite and > 0",
+                    params->termination_criteria.eps_farkas_homogeneous);
     }
-    if (!(params->termination_criteria.eps_infeas_ray > 0.0 &&
-          isfinite(params->termination_criteria.eps_infeas_ray)))
+    if (!(params->termination_criteria.eps_farkas_displacement > 0.0 &&
+          isfinite(params->termination_criteria.eps_farkas_displacement)))
     {
-        param_error("eps_infeas_ray must be finite and > 0",
-                    params->termination_criteria.eps_infeas_ray);
+        param_error("eps_farkas_displacement must be finite and > 0",
+                    params->termination_criteria.eps_farkas_displacement);
     }
     if (!(params->termination_criteria.time_sec_limit > 0.0))
     {
@@ -732,29 +732,10 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->fixed_point_operator_cross_d =
         state->pdhg_reduce_d + PDHG_OPERATOR_CROSS_TERM;
 
-    CUDA_CHECK(cudaMalloc(&state->farkas_reduce_d, FARKAS_COUNT * sizeof(double)));
-    state->farkas_dual_solution_norm_d    = state->farkas_reduce_d + FARKAS_DUAL_SOLUTION_NORM;
-    state->farkas_homogeneous_dual_norm_d = state->farkas_reduce_d + FARKAS_HOMOGENEOUS_DUAL_NORM;
-    state->farkas_constraint_recession_d  = state->farkas_reduce_d + FARKAS_CONSTRAINT_RECESSION;
-    state->farkas_variable_recession_d    = state->farkas_reduce_d + FARKAS_VARIABLE_RECESSION;
-    state->constraint_support_value_d    = state->farkas_reduce_d + FARKAS_SUPPORT_CONSTRAINT;
-    state->variable_support_value_d      = state->farkas_reduce_d + FARKAS_SUPPORT_VARIABLE;
-    state->farkas_original_dual_norm_d =
-        state->farkas_reduce_d + FARKAS_ORIGINAL_DUAL_NORM;
-    state->farkas_original_reduced_cost_norm_d =
-        state->farkas_reduce_d + FARKAS_ORIGINAL_REDUCED_COST_NORM;
-    state->farkas_original_primal_norm_d =
-        state->farkas_reduce_d + FARKAS_ORIGINAL_PRIMAL_NORM;
-    state->primal_ray_linear_objective_d =
-        state->farkas_reduce_d + FARKAS_RAY_PRIMAL_LINEAR_OBJECTIVE;
-    state->dual_ray_constraint_support_d =
-        state->farkas_reduce_d + FARKAS_RAY_DUAL_CONSTRAINT_SUPPORT;
-    state->dual_ray_variable_support_d =
-        state->farkas_reduce_d + FARKAS_RAY_DUAL_VARIABLE_SUPPORT;
-    state->max_primal_ray_infeasibility_d =
-        state->farkas_reduce_d + FARKAS_RAY_MAX_PRIMAL_INFEASIBILITY;
-    state->max_dual_ray_infeasibility_d =
-        state->farkas_reduce_d + FARKAS_RAY_MAX_DUAL_INFEASIBILITY;
+    CUDA_CHECK(cudaMalloc(&state->termination_reductions_d,
+                          sizeof(termination_reductions_t)));
+    CUDA_CHECK(cudaMemset(state->termination_reductions_d, 0,
+                          sizeof(termination_reductions_t)));
 
     CUDA_CHECK(cudaMalloc(&state->metrics_d, sizeof(pdhg_metrics_t)));
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
@@ -1093,7 +1074,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->step_size_dual_d);
     FREE_DEVICE_BUFFER(state->step_size_homogeneous_d);
     FREE_DEVICE_BUFFER(state->pdhg_reduce_d);
-    FREE_DEVICE_BUFFER(state->farkas_reduce_d);
+    FREE_DEVICE_BUFFER(state->termination_reductions_d);
     FREE_DEVICE_BUFFER(state->metrics_d);
 
 #undef FREE_DEVICE_BUFFER

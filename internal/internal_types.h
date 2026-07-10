@@ -36,23 +36,22 @@ enum PdhgReduction {
     PDHG_COUNT               = 4,
 };
 
-enum FarkasReduction {
-    FARKAS_DUAL_SOLUTION_NORM              = 0,
-    FARKAS_HOMOGENEOUS_DUAL_NORM           = 1,
-    FARKAS_CONSTRAINT_RECESSION            = 2,
-    FARKAS_VARIABLE_RECESSION              = 3,
-    FARKAS_SUPPORT_CONSTRAINT              = 4,
-    FARKAS_SUPPORT_VARIABLE                = 5,
-    FARKAS_ORIGINAL_DUAL_NORM              = 6,
-    FARKAS_ORIGINAL_REDUCED_COST_NORM      = 7,
-    FARKAS_ORIGINAL_PRIMAL_NORM            = 8,
-    FARKAS_RAY_PRIMAL_LINEAR_OBJECTIVE     = 9,
-    FARKAS_RAY_DUAL_CONSTRAINT_SUPPORT     = 10,
-    FARKAS_RAY_DUAL_VARIABLE_SUPPORT       = 11,
-    FARKAS_RAY_MAX_PRIMAL_INFEASIBILITY    = 12,
-    FARKAS_RAY_MAX_DUAL_INFEASIBILITY      = 13,
-    FARKAS_COUNT                           = 14,
-};
+typedef struct {
+    double dual_solution_norm;
+    double homogeneous_dual_residual_norm;
+    double constraint_recession_residual_norm;
+    double variable_recession_residual_norm;
+    double constraint_support;
+    double variable_support;
+    double original_dual_ray_norm;
+    double original_reduced_cost_ray_norm;
+    double original_primal_ray_norm;
+    double dual_infeasibility_objective;
+    double primal_infeasibility_constraint_support;
+    double primal_infeasibility_variable_support;
+    double dual_infeasibility_residual;
+    double primal_infeasibility_residual;
+} termination_reductions_t;
 
 enum HsdScalarSlot {
     HSD_PRIMAL_SCALE_INITIAL             = 0,
@@ -195,6 +194,8 @@ typedef struct {
     clock_t start_time;
     double  cumulative_time_sec;
     termination_reason_t termination_reason;
+    double certificate_margin;
+    double certificate_residual;
 
     int    *inner_count_d;
     double *step_size_primal_d;
@@ -214,21 +215,7 @@ typedef struct {
     double *objective_dot_primal_d;
     double *fixed_point_operator_cross_d;
 
-    double *farkas_reduce_d;
-    double *farkas_dual_solution_norm_d;
-    double *farkas_homogeneous_dual_norm_d;
-    double *farkas_constraint_recession_d;
-    double *farkas_variable_recession_d;
-    double *constraint_support_value_d;
-    double *variable_support_value_d;
-    double *farkas_original_dual_norm_d;
-    double *farkas_original_reduced_cost_norm_d;
-    double *farkas_original_primal_norm_d;
-    double *primal_ray_linear_objective_d;
-    double *dual_ray_constraint_support_d;
-    double *dual_ray_variable_support_d;
-    double *max_primal_ray_infeasibility_d;
-    double *max_dual_ray_infeasibility_d;
+    termination_reductions_t *termination_reductions_d;
 
     pdhg_metrics_t *metrics_d;
     pdhg_metrics_t *metrics_h;

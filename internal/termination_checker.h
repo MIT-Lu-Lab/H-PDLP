@@ -43,12 +43,14 @@ extern "C"
         double primal_solution_norm;
         double dual_solution_norm;
 
-        double primal_infeasibility_ratio;
-        double dual_infeasibility_ratio;
-        double max_primal_ray_infeasibility;
-        double max_dual_ray_infeasibility;
-        double primal_ray_linear_objective;
-        double dual_ray_objective;
+        double primal_infeasibility_homogeneous_margin;
+        double primal_infeasibility_homogeneous_residual;
+        double dual_infeasibility_homogeneous_margin;
+        double dual_infeasibility_homogeneous_residual;
+        double primal_infeasibility_displacement_margin;
+        double primal_infeasibility_displacement_residual;
+        double dual_infeasibility_displacement_margin;
+        double dual_infeasibility_displacement_residual;
 
         double normalized_homogeneous_gap;
         double normalized_homogeneous_ratio;
@@ -61,16 +63,6 @@ extern "C"
     void check_termination_criteria(
         pdhg_solver_state_t *solver_state,
         const termination_criteria_t *criteria);
-
-    bool should_do_adaptive_restart(
-        pdhg_solver_state_t *solver_state,
-        const pdhg_parameters_t *params);
-
-    bool termination_has_solution(termination_reason_t reason);
-
-    cuhsdlp_result_t *create_result_from_state(
-        pdhg_solver_state_t *state,
-        const lp_problem_t *original_problem);
 
 #ifdef __cplusplus
 }
