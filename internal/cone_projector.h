@@ -58,7 +58,7 @@ void update_dual_box_cone_projection(
     double *dual_scale_current,
     double *dual_scale_evaluation,
     double *dual_scale_reflected,
-    bool save_evaluation_iterate,
+    bool is_major,
     cudaStream_t stream);
 
 void update_primal_box_cone_resolvent(
@@ -80,7 +80,7 @@ void update_primal_box_cone_resolvent(
     double *current_primal_scale,
     double *evaluation_primal_scale,
     double *reflected_primal_scale,
-    bool save_evaluation_iterate,
+    bool is_major,
     cudaStream_t stream);
 
 int compute_max_cooperative_dual_box_cone_blocks();

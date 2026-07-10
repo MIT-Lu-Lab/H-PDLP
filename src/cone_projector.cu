@@ -49,7 +49,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *dual_scale_current,
     double *dual_scale_evaluation,
     double *dual_scale_reflected,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -68,7 +68,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     double *dual_scale_current,
     double *dual_scale_evaluation,
     double *dual_scale_reflected,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -89,7 +89,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *current_primal_scale,
     double *evaluation_primal_scale,
     double *reflected_primal_scale,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -110,7 +110,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *current_primal_scale,
     double *evaluation_primal_scale,
     double *reflected_primal_scale,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -188,7 +188,7 @@ void update_dual_box_cone_projection(
     double *dual_scale_current,
     double *dual_scale_evaluation,
     double *dual_scale_reflected,
-    bool save_evaluation_iterate,
+    bool is_major,
     cudaStream_t stream)
 {
     const box_newton_state_t state = *dual_state;
@@ -211,7 +211,7 @@ void update_dual_box_cone_projection(
             dual_scale_current,
             dual_scale_evaluation,
             dual_scale_reflected,
-            save_evaluation_iterate,
+            is_major,
             state,
             cone_params->max_iter,
             cone_params->tol);
@@ -248,7 +248,7 @@ void update_dual_box_cone_projection(
         dual_scale_current,
         dual_scale_evaluation,
         dual_scale_reflected,
-        save_evaluation_iterate,
+        is_major,
         state,
         cone_params->max_iter,
         cone_params->tol));
@@ -273,7 +273,7 @@ void update_primal_box_cone_resolvent(
     double *current_primal_scale,
     double *evaluation_primal_scale,
     double *reflected_primal_scale,
-    bool save_evaluation_iterate,
+    bool is_major,
     cudaStream_t stream)
 {
     const box_newton_state_t state = *primal_state;
@@ -298,7 +298,7 @@ void update_primal_box_cone_resolvent(
             current_primal_scale,
             evaluation_primal_scale,
             reflected_primal_scale,
-            save_evaluation_iterate,
+            is_major,
             state,
             cone_params->max_iter,
             cone_params->tol);
@@ -337,7 +337,7 @@ void update_primal_box_cone_resolvent(
         current_primal_scale,
         evaluation_primal_scale,
         reflected_primal_scale,
-        save_evaluation_iterate,
+        is_major,
         state,
         cone_params->max_iter,
         cone_params->tol));
@@ -390,7 +390,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *dual_scale_current,
     double *dual_scale_evaluation,
     double *dual_scale_reflected,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol)
@@ -399,6 +399,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
 
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
+    __shared__ double s_weight;
     __shared__ int s_converged;
 
     double scale = *state.scalar_d;
@@ -481,9 +482,13 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         }
     }
 
-    const int base_count = *base_count_d;
-    const int k = base_count + k_offset;
-    const double weight = (double)k / (double)(k + 1);
+    if (threadIdx.x == 0)
+    {
+        const int k = *base_count_d + k_offset;
+        s_weight = (double)k / (double)(k + 1);
+    }
+    __syncthreads();
+    const double weight = s_weight;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -496,7 +501,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
         const double projected =
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
-        if (save_evaluation_iterate)
+        if (is_major)
             evaluation_dual[i] = projected;
         const double reflected = 2.0 * projected - current;
         reflected_dual[i] = reflected;
@@ -511,7 +516,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     {
         *state.scalar_d = scale;
         const double projected = unprojected_scale + scale;
-        if (save_evaluation_iterate)
+        if (is_major)
             *dual_scale_evaluation = projected;
         const double current = *dual_scale_current;
         const double reflected = 2.0 * projected - current;
@@ -539,13 +544,14 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     double *dual_scale_current,
     double *dual_scale_evaluation,
     double *dual_scale_reflected,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
+    __shared__ double s_weight;
     __shared__ int s_converged;
 
     double scale = *state.scalar_d;
@@ -605,9 +611,13 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         }
     }
 
-    const int base_count = *base_count_d;
-    const int k = base_count + k_offset;
-    const double weight = (double)k / (double)(k + 1);
+    if (threadIdx.x == 0)
+    {
+        const int k = *base_count_d + k_offset;
+        s_weight = (double)k / (double)(k + 1);
+    }
+    __syncthreads();
+    const double weight = s_weight;
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double current = current_dual[i];
@@ -618,7 +628,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
         const double projected =
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
-        if (save_evaluation_iterate)
+        if (is_major)
             evaluation_dual[i] = projected;
         const double reflected = 2.0 * projected - current;
         reflected_dual[i] = reflected;
@@ -633,7 +643,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     {
         *state.scalar_d = scale;
         const double projected = unprojected_scale + scale;
-        if (save_evaluation_iterate)
+        if (is_major)
             *dual_scale_evaluation = projected;
         const double current = *dual_scale_current;
         const double reflected = 2.0 * projected - current;
@@ -663,7 +673,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *current_primal_scale,
     double *evaluation_primal_scale,
     double *reflected_primal_scale,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol)
@@ -672,6 +682,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
 
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
+    __shared__ double s_weight;
     __shared__ int s_converged;
 
     const double primal_step = *step_size_d;
@@ -762,9 +773,13 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         }
     }
 
-    const int base_count = *base_count_d;
-    const int k = base_count + k_offset;
-    const double weight = (double)k / (double)(k + 1);
+    if (threadIdx.x == 0)
+    {
+        const int k = *base_count_d + k_offset;
+        s_weight = (double)k / (double)(k + 1);
+    }
+    __syncthreads();
+    const double weight = s_weight;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -783,11 +798,12 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
                 : INFINITY;
         const double projected = fmin(fmax(shifted, lower), upper);
 
-        if (save_evaluation_iterate)
-            evaluation_primal[i] = projected;
-
         const double reflected = 2.0 * projected - current_primal[i];
-        reflected_primal[i] = reflected;
+        if (is_major)
+        {
+            evaluation_primal[i] = projected;
+            reflected_primal[i] = reflected;
+        }
         const double relaxed =
             reflection_coefficient * reflected +
             (1.0 - reflection_coefficient) * current_primal[i];
@@ -797,11 +813,14 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        if (save_evaluation_iterate)
-            *evaluation_primal_scale = primal_scale;
-
         const double reflected_scale =
             2.0 * primal_scale - (*current_primal_scale);
+        if (is_major)
+        {
+            *evaluation_primal_scale = primal_scale;
+            *reflected_primal_scale = reflected_scale;
+        }
+
         const double relaxed_scale =
             reflection_coefficient * reflected_scale +
             (1.0 - reflection_coefficient) *
@@ -809,7 +828,6 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         *current_primal_scale =
             weight * relaxed_scale +
             (1.0 - weight) * (*initial_primal_scale);
-        *reflected_primal_scale = reflected_scale;
     }
 }
 
@@ -830,13 +848,14 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *current_primal_scale,
     double *evaluation_primal_scale,
     double *reflected_primal_scale,
-    bool save_evaluation_iterate,
+    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
+    __shared__ double s_weight;
     __shared__ int s_converged;
 
     const double primal_step = *step_size_d;
@@ -902,9 +921,13 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         }
     }
 
-    const int base_count = *base_count_d;
-    const int k = base_count + k_offset;
-    const double weight = (double)k / (double)(k + 1);
+    if (threadIdx.x == 0)
+    {
+        const int k = *base_count_d + k_offset;
+        s_weight = (double)k / (double)(k + 1);
+    }
+    __syncthreads();
+    const double weight = s_weight;
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double unprojected =
@@ -921,11 +944,12 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
                 : INFINITY;
         const double projected = fmin(fmax(shifted, lower), upper);
 
-        if (save_evaluation_iterate)
-            evaluation_primal[i] = projected;
-
         const double reflected = 2.0 * projected - current_primal[i];
-        reflected_primal[i] = reflected;
+        if (is_major)
+        {
+            evaluation_primal[i] = projected;
+            reflected_primal[i] = reflected;
+        }
         const double relaxed =
             reflection_coefficient * reflected +
             (1.0 - reflection_coefficient) * current_primal[i];
@@ -935,11 +959,14 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
 
     if (threadIdx.x == 0)
     {
-        if (save_evaluation_iterate)
-            *evaluation_primal_scale = primal_scale;
-
         const double reflected_scale =
             2.0 * primal_scale - (*current_primal_scale);
+        if (is_major)
+        {
+            *evaluation_primal_scale = primal_scale;
+            *reflected_primal_scale = reflected_scale;
+        }
+
         const double relaxed_scale =
             reflection_coefficient * reflected_scale +
             (1.0 - reflection_coefficient) *
@@ -947,7 +974,6 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         *current_primal_scale =
             weight * relaxed_scale +
             (1.0 - weight) * (*initial_primal_scale);
-        *reflected_primal_scale = reflected_scale;
     }
 }
 
