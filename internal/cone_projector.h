@@ -35,6 +35,7 @@ typedef struct {
     const double *lower_bound_d;
     const double *upper_bound_d;
     int num_elements;
+    bool newton_terms_are_zero;
     int num_blocks_newton;
     double *scalar_d;
     newton_terms_t *newton_partials_d;

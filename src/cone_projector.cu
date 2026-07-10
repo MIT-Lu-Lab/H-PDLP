@@ -408,8 +408,12 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     const double step_size = *step_size_d;
     const double unprojected_scale =
         *dual_scale_current - step_size * (*primal_scale_current);
+    const int newton_max_iter =
+        state.newton_terms_are_zero ? 0 : max_iter;
+    if (state.newton_terms_are_zero)
+        scale = fmax(0.0, -unprojected_scale);
 
-    for (int iter = 0; iter < max_iter; ++iter)
+    for (int iter = 0; iter < newton_max_iter; ++iter)
     {
         newton_terms_t *partials = state.newton_partials_d + (iter & 1) * state.num_blocks_newton;
 
@@ -551,8 +555,12 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     const double step_size = *step_size_d;
     const double unprojected_scale =
         *dual_scale_current - step_size * (*primal_scale_current);
+    const int newton_max_iter =
+        state.newton_terms_are_zero ? 0 : max_iter;
+    if (state.newton_terms_are_zero)
+        scale = fmax(0.0, -unprojected_scale);
 
-    for (int iter = 0; iter < max_iter; ++iter)
+    for (int iter = 0; iter < newton_max_iter; ++iter)
     {
         double thread_negative_derivative = 0.0, thread_function = 0.0;
         for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
@@ -678,8 +686,12 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     const double inv_primal_step = 1.0 / primal_step;
     const double inv_homogeneous_step =
         1.0 / (*step_size_homogeneous_d);
+    const int newton_max_iter =
+        state.newton_terms_are_zero ? 0 : max_iter;
+    if (state.newton_terms_are_zero)
+        primal_scale = fmax(0.0, unprojected_primal_scale);
 
-    for (int iter = 0; iter < max_iter; ++iter)
+    for (int iter = 0; iter < newton_max_iter; ++iter)
     {
         newton_terms_t *partials =
             state.newton_partials_d +
@@ -839,8 +851,12 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     const double inv_primal_step = 1.0 / primal_step;
     const double inv_homogeneous_step =
         1.0 / (*step_size_homogeneous_d);
+    const int newton_max_iter =
+        state.newton_terms_are_zero ? 0 : max_iter;
+    if (state.newton_terms_are_zero)
+        primal_scale = fmax(0.0, unprojected_primal_scale);
 
-    for (int iter = 0; iter < max_iter; ++iter)
+    for (int iter = 0; iter < newton_max_iter; ++iter)
     {
         double thread_negative_derivative = 0.0, thread_function = 0.0;
         for (int i = threadIdx.x;

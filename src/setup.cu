@@ -76,6 +76,9 @@ static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
+static void initialize_newton_structure(
+    pdhg_solver_state_t *state,
+    const lp_problem_t *working_problem);
 static void initialize_newton_workspaces(pdhg_solver_state_t *state);
 static void release_preprocessing_resources(pdhg_solver_state_t *state);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
@@ -282,6 +285,7 @@ pdhg_solver_state_t *initialize_solver_state(
     initialize_homogeneous_scalars(state);
     initialize_power_iteration_buffers(state);
     allocate_device_scalars(state);
+    initialize_newton_structure(state, working_problem);
     initialize_newton_workspaces(state);
     apply_warm_starts(state, working_problem);
 
@@ -777,6 +781,43 @@ static void apply_warm_starts(
                               working_problem->dual_start,
                               state->con_bytes,
                               cudaMemcpyHostToDevice));
+    }
+}
+
+static bool bound_is_zero_or_infinite(double bound)
+{
+    return bound == 0.0 || isinf(bound);
+}
+
+static void initialize_newton_structure(
+    pdhg_solver_state_t *state,
+    const lp_problem_t *working_problem)
+{
+    state->dual_box_cone_state.newton_terms_are_zero = true;
+    for (int i = 0; i < state->num_constraints; ++i)
+    {
+        if (!bound_is_zero_or_infinite(
+                working_problem->constraint_lower_bound[i]) ||
+            !bound_is_zero_or_infinite(
+                working_problem->constraint_upper_bound[i]))
+        {
+            state->dual_box_cone_state.newton_terms_are_zero = false;
+            break;
+        }
+    }
+
+    state->primal_box_cone_state.newton_terms_are_zero = true;
+    for (int i = 0; i < state->num_variables; ++i)
+    {
+        if (working_problem->objective_vector[i] != 0.0 ||
+            !bound_is_zero_or_infinite(
+                working_problem->variable_lower_bound[i]) ||
+            !bound_is_zero_or_infinite(
+                working_problem->variable_upper_bound[i]))
+        {
+            state->primal_box_cone_state.newton_terms_are_zero = false;
+            break;
+        }
     }
 }
 
