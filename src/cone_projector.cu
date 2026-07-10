@@ -967,14 +967,12 @@ __device__ __forceinline__ void evaluate_primal_box_cone_newton_terms(
 
     if (xhat > box_upper)
     {
-        const double n_i = inv_primal_step * (vi - box_upper) - ci * primal_scale;
-        function_contribution = ci * box_upper + ui * n_i;
+        function_contribution = inv_primal_step * ui * (vi - box_upper);
         negative_derivative_contribution = inv_primal_step * ui * ui;
     }
     else if (xhat < box_lower)
     {
-        const double n_i = inv_primal_step * (vi - box_lower) - ci * primal_scale;
-        function_contribution = ci * box_lower + li * n_i;
+        function_contribution = inv_primal_step * li * (vi - box_lower);
         negative_derivative_contribution = inv_primal_step * li * li;
     }
     else
