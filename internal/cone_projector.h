@@ -27,7 +27,7 @@ extern "C"
 #endif
 
 typedef struct {
-    double derivative;
+    double negative_derivative;
     double function_value;
 } newton_terms_t;
 
