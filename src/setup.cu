@@ -28,7 +28,7 @@ limitations under the License.
 #include <string.h>
 #include <thrust/iterator/transform_iterator.h>
 
-static constexpr int COOP_NEWTON_THRESHOLD = 2 * THREADS_PER_BLOCK;
+static constexpr int COOP_NEWTON_THRESHOLD = 4 * THREADS_PER_BLOCK;
 
 __global__ void build_row_ind_kernel(
     const int *__restrict__ row_ptr,
