@@ -856,12 +856,12 @@ __global__ void compute_termination_metrics_kernel(
                              + pdhg_dual_scale * pdhg_dual_scale);
     double inv_iterate_norm = (iterate_norm > 1e-30) ? 1.0 / iterate_norm : 0.0;
 
-    double primal_scale_hat = primal_scale * inv_iterate_norm;
-    double homogeneous_gap_hat = fmax(-homogeneous_gap, 0.0) * inv_iterate_norm;
-    double ratio_denominator = homogeneous_gap_hat + primal_scale_hat;
-    metrics_d->normalized_homogeneous_gap   = homogeneous_gap_hat;
+    double homogeneous_gap_positive = fmax(-homogeneous_gap, 0.0);
+    metrics_d->normalized_homogeneous_gap = homogeneous_gap_positive * inv_iterate_norm;
+
+    double ratio_denominator = homogeneous_gap_positive + primal_scale;
     metrics_d->normalized_homogeneous_ratio = (ratio_denominator > 0.0)
-                                            ? homogeneous_gap_hat / ratio_denominator
+                                            ? homogeneous_gap_positive / ratio_denominator
                                             : 0.0;
 
     double homogeneous_dual_norm = reductions->homogeneous_dual_residual_norm;
