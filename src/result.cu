@@ -48,7 +48,7 @@ cuhsdlp_result_t *create_result_from_state(
 
     rescale_solution(state);
 
-    if (termination_has_solution(state->termination_reason))
+    if (termination_has_solution(state->control.termination_reason))
     {
         results->primal_solution = (double *)safe_malloc(state->var_bytes);
         results->dual_solution = (double *)safe_malloc(state->con_bytes);
@@ -78,9 +78,9 @@ cuhsdlp_result_t *create_result_from_state(
     results->num_variables = original_problem->num_variables;
     results->num_constraints = original_problem->num_constraints;
     results->num_nonzeros = original_problem->constraint_matrix_num_nonzeros;
-    results->total_count = state->total_count;
+    results->total_count = state->control.total_count;
     results->rescaling_time_sec = state->rescaling_time_sec;
-    results->cumulative_time_sec = state->cumulative_time_sec;
+    results->cumulative_time_sec = state->control.cumulative_time_sec;
     results->absolute_primal_residual = state->metrics_h->absolute_primal_residual;
     results->relative_primal_residual = state->metrics_h->relative_primal_residual;
     results->absolute_dual_residual = state->metrics_h->absolute_dual_residual;
@@ -89,15 +89,15 @@ cuhsdlp_result_t *create_result_from_state(
     results->dual_objective_value = state->objective_sign * state->metrics_h->dual_objective;
     results->objective_gap = state->metrics_h->objective_gap;
     results->relative_objective_gap = state->metrics_h->relative_objective_gap;
-    results->farkas_margin = state->certificate_margin;
-    results->farkas_residual = state->certificate_residual;
-    results->termination_reason = state->termination_reason;
+    results->farkas_margin = state->control.certificate_margin;
+    results->farkas_residual = state->control.certificate_residual;
+    results->termination_reason = state->control.termination_reason;
 
-    results->restart_count = state->restart_count;
+    results->restart_count = state->control.restart_count;
     results->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
-    results->final_step_size_primal = state->step_size_primal;
-    results->final_step_size_dual = state->step_size_dual;
-    results->final_step_size_homogeneous = state->step_size_homogeneous;
+    results->final_step_size_primal = state->control.step_size_primal;
+    results->final_step_size_dual = state->control.step_size_dual;
+    results->final_step_size_homogeneous = state->control.step_size_homogeneous;
 
     return results;
 }
@@ -109,7 +109,7 @@ static void rescale_solution(pdhg_solver_state_t *state)
                           sizeof(reductions_h), cudaMemcpyDeviceToHost));
 
     double divisor;
-    switch (state->termination_reason)
+    switch (state->control.termination_reason)
     {
     case TERMINATION_REASON_PRIMAL_INFEASIBLE:
         divisor = sqrt(

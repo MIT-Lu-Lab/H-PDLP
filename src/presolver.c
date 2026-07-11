@@ -29,7 +29,7 @@ limitations under the License.
 #define PSLP_VERSION "unknown"
 #endif
 
-const char *get_presolve_status_str(enum PresolveStatus_ status)
+const char *get_presolve_status_str(int status)
 {
     if ((status & UNBNDORINFEAS) == UNBNDORINFEAS)
         return "INFEASIBLE_OR_UNBOUNDED";

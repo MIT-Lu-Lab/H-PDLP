@@ -247,7 +247,7 @@ pdhg_solver_state_t *initialize_solver_state(
 
     state->constraint_matrix_t->num_nonzeros = nnz;
 
-    state->termination_reason = TERMINATION_REASON_UNSPECIFIED;
+    state->control.termination_reason = TERMINATION_REASON_UNSPECIFIED;
 
     state->num_blocks_primal = (state->num_variables + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_dual = (state->num_constraints + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -708,7 +708,7 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
         cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&state->power_iter_sigma_squared_mp, sizeof(double), cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&state->power_iter_residual_norm_mp, sizeof(double), cudaHostAllocMapped));
-    CUDA_CHECK(cudaHostAlloc(&state->fixed_point_error_mp, sizeof(double), cudaHostAllocMapped));
+    CUDA_CHECK(cudaHostAlloc(&state->control.fixed_point_error_mp, sizeof(double), cudaHostAllocMapped));
 }
 
 static void allocate_device_scalars(pdhg_solver_state_t *state)
@@ -741,10 +741,10 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->constraint_bound_rescaling_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->objective_vector_rescaling_d, sizeof(double)));
-    allocate_zeroed_device_buffer((void **)&state->inner_count_d, sizeof(int));
-    allocate_zeroed_device_buffer((void **)&state->step_size_primal_d, sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->step_size_dual_d, sizeof(double));
-    allocate_zeroed_device_buffer((void **)&state->step_size_homogeneous_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->control.inner_count_d, sizeof(int));
+    allocate_zeroed_device_buffer((void **)&state->control.step_size_primal_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->control.step_size_dual_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->control.step_size_homogeneous_d, sizeof(double));
     state->graphExec = NULL;
     state->graph_created = false;
 
@@ -908,8 +908,8 @@ static void initialize_iterates_from_starts(pdhg_solver_state_t *state)
 
 static void initialize_convergence_tracking(pdhg_solver_state_t *state)
 {
-    state->initial_fixed_point_error = INFINITY;
-    state->last_trial_fixed_point_error = INFINITY;
+    state->control.initial_fixed_point_error = INFINITY;
+    state->control.last_trial_fixed_point_error = INFINITY;
 }
 
 void pdhg_solver_state_free(pdhg_solver_state_t *state)
@@ -1069,10 +1069,10 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->primal_box_cone_state.newton_partials_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
-    FREE_DEVICE_BUFFER(state->inner_count_d);
-    FREE_DEVICE_BUFFER(state->step_size_primal_d);
-    FREE_DEVICE_BUFFER(state->step_size_dual_d);
-    FREE_DEVICE_BUFFER(state->step_size_homogeneous_d);
+    FREE_DEVICE_BUFFER(state->control.inner_count_d);
+    FREE_DEVICE_BUFFER(state->control.step_size_primal_d);
+    FREE_DEVICE_BUFFER(state->control.step_size_dual_d);
+    FREE_DEVICE_BUFFER(state->control.step_size_homogeneous_d);
     FREE_DEVICE_BUFFER(state->pdhg_reduce_d);
     FREE_DEVICE_BUFFER(state->termination_reductions_d);
     FREE_DEVICE_BUFFER(state->metrics_d);
@@ -1091,7 +1091,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_HOST_BUFFER(state->objective_norm_workspace_mp);
     FREE_HOST_BUFFER(state->power_iter_sigma_squared_mp);
     FREE_HOST_BUFFER(state->power_iter_residual_norm_mp);
-    FREE_HOST_BUFFER(state->fixed_point_error_mp);
+    FREE_HOST_BUFFER(state->control.fixed_point_error_mp);
 
 #undef FREE_HOST_BUFFER
 }

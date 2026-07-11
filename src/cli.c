@@ -18,7 +18,6 @@ limitations under the License.
 #include "display.h"
 #include "mps_parser.h"
 #include "presolver.h"
-#include "solver.h"
 #include "utils.h"
 #include <errno.h>
 #include <getopt.h>
@@ -354,7 +353,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    cuhsdlp_result_t *result = optimize(&params, problem);
+    cuhsdlp_result_t *result = solve_lp_problem(problem, &params);
 
     int exit_code = 0;
     if (result == NULL)

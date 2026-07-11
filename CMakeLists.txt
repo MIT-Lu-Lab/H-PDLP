@@ -1,12 +1,13 @@
 # -----------------------------------------------------------------------------
 # ROOT CMakeLists.txt for cuHSDLP (Unified Build System)
 # -----------------------------------------------------------------------------
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.24)
 
-# Must precede project(... CUDA): CMP0104=NEW makes project() auto-initialize
-# CMAKE_CUDA_ARCHITECTURES, so a default set afterwards is ignored.
+# Build the major GPU families supported by the selected CUDA compiler. This
+# stays valid when the installed GPU is newer than the toolkit (for example,
+# an sm_120 GPU with CUDA 12.4). Release builds may still override the list.
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-  set(CMAKE_CUDA_ARCHITECTURES 75 80 86 89 90 100 120)
+  set(CMAKE_CUDA_ARCHITECTURES all-major)
 endif()
 
 # Project config
@@ -122,18 +123,25 @@ FetchContent_Declare(
   GIT_TAG ${PSLP_VERSION_TAG})
 
 FetchContent_MakeAvailable(pslp)
-include_directories(${pslp_SOURCE_DIR}/PSLP)
-add_compile_definitions(PSLP_VERSION=\"${PSLP_VERSION_TAG}\")
 
 # -----------------------------------------------------------------------------
 # SOURCE DISCOVERY & TARGET DEFINITION
 # -----------------------------------------------------------------------------
-# Using file(GLOB) for convenience, but explicit lists are recommended for robust
-# builds.
-file(GLOB_RECURSE C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c")
-file(GLOB_RECURSE CU_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
-# Exclude cli.c from library builds
-list(REMOVE_ITEM C_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/cli.c")
+set(CORE_SOURCES
+    src/cuhsdlp.c
+    src/mps_parser.c
+    src/presolver.c
+    src/utils/matrix_formats.c
+    src/utils/pid_controller.c
+    src/cone_projector.cu
+    src/preconditioner.cu
+    src/result.cu
+    src/setup.cu
+    src/solver.cu
+    src/termination_checker.cu
+    src/utils/display.cu
+    src/utils/power_iteration.cu
+    src/utils/utils.cu)
 
 # Set common include directories for the core libraries
 set(CORE_INCLUDE_DIRS
@@ -150,11 +158,26 @@ set(CORE_LINK_LIBS PUBLIC
                    ZLIB::ZLIB
                    PSLP)
 
+# Compile the CUDA-heavy implementation once and reuse it in both library
+# variants. Dependencies remain attached to the final public targets below.
+add_library(cuhsdlp_objects OBJECT ${CORE_SOURCES})
+target_include_directories(
+  cuhsdlp_objects
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal ${pslp_SOURCE_DIR}/PSLP)
+target_compile_definitions(cuhsdlp_objects PRIVATE PSLP_VERSION=\"${PSLP_VERSION_TAG}\")
+target_link_libraries(cuhsdlp_objects PRIVATE CUDA::cudart CUDA::cublas
+                                                 CUDA::cusparse CUDA::curand
+                                                 ZLIB::ZLIB PSLP)
+set_target_properties(
+  cuhsdlp_objects
+  PROPERTIES POSITION_INDEPENDENT_CODE ON CUDA_SEPARABLE_COMPILATION ON)
+
 # -----------------------------------------------------------------------------
 # 1. Core STATIC Library (cuhsdlp_core)
 # -----------------------------------------------------------------------------
 if(CUHSDLP_BUILD_STATIC_LIB)
-  add_library(cuhsdlp_core STATIC ${C_SOURCES} ${CU_SOURCES})
+  add_library(cuhsdlp_core STATIC $<TARGET_OBJECTS:cuhsdlp_objects>)
   target_include_directories(cuhsdlp_core ${CORE_INCLUDE_DIRS})
   target_link_libraries(cuhsdlp_core ${CORE_LINK_LIBS})
 
@@ -169,7 +192,7 @@ endif()
 # 2. Shared Library (libcuhsdlp.so)
 # -----------------------------------------------------------------------------
 if(CUHSDLP_BUILD_SHARED_LIB)
-  add_library(cuhsdlp_shared SHARED ${C_SOURCES} ${CU_SOURCES})
+  add_library(cuhsdlp_shared SHARED $<TARGET_OBJECTS:cuhsdlp_objects>)
   target_include_directories(cuhsdlp_shared ${CORE_INCLUDE_DIRS})
   target_link_libraries(cuhsdlp_shared ${CORE_LINK_LIBS})
 
@@ -217,8 +240,11 @@ if(CUHSDLP_BUILD_TESTS)
   endif()
 
   enable_testing()
-  file(GLOB TEST_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/test/*.c"
-                         "${CMAKE_CURRENT_SOURCE_DIR}/test/*.cu")
+  file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
+       "${CMAKE_CURRENT_SOURCE_DIR}/test/unit/*.c"
+       "${CMAKE_CURRENT_SOURCE_DIR}/test/unit/*.cu"
+       "${CMAKE_CURRENT_SOURCE_DIR}/test/integration/*.c"
+       "${CMAKE_CURRENT_SOURCE_DIR}/test/integration/*.cu")
 
   foreach(TEST_SRC ${TEST_SOURCES})
     get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)

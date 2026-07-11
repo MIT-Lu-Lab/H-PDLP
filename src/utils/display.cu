@@ -211,13 +211,13 @@ void display_iteration_stats(
     {
         return;
     }
-    if (is_restart || state->total_count % get_print_frequency(state->total_count) == 0)
+    if (is_restart || state->control.total_count % get_print_frequency(state->control.total_count) == 0)
     {
         printf(
             "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %.1e %.1e %.1e\n",
             is_restart ? 'R' : ' ',
-            state->total_count,
-            state->cumulative_time_sec,
+            state->control.total_count,
+            state->control.cumulative_time_sec,
             state->metrics_h->primal_objective,
             state->metrics_h->dual_objective,
             state->metrics_h->absolute_primal_residual,
@@ -229,9 +229,9 @@ void display_iteration_stats(
             state->metrics_h->current_primal_scale,
             state->metrics_h->normalized_homogeneous_gap,
             state->metrics_h->normalized_homogeneous_ratio,
-            state->step_size_primal,
-            state->step_size_dual,
-            state->step_size_homogeneous);
+            state->control.step_size_primal,
+            state->control.step_size_dual,
+            state->control.step_size_homogeneous);
     }
 }
 

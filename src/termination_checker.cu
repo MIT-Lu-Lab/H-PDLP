@@ -439,13 +439,13 @@ void check_termination_criteria(
     pdhg_solver_state_t *solver_state,
     const termination_criteria_t *criteria)
 {
-    solver_state->cumulative_time_sec = (double)(clock() - solver_state->start_time) / CLOCKS_PER_SEC;
+    solver_state->control.cumulative_time_sec = (double)(clock() - solver_state->control.start_time) / CLOCKS_PER_SEC;
 
     if (!isfinite(solver_state->metrics_h->primal_solution_norm) ||
         !isfinite(solver_state->metrics_h->dual_solution_norm) ||
         !isfinite(solver_state->metrics_h->pdhg_primal_scale))
     {
-        solver_state->termination_reason = TERMINATION_REASON_NUMERICAL_FAILURE;
+        solver_state->control.termination_reason = TERMINATION_REASON_NUMERICAL_FAILURE;
         return;
     }
 
@@ -496,14 +496,14 @@ void check_termination_criteria(
         return;
     }
 
-    if (solver_state->total_count >= criteria->iteration_limit)
+    if (solver_state->control.total_count >= criteria->iteration_limit)
     {
-        solver_state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
+        solver_state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         return;
     }
-    if (solver_state->cumulative_time_sec >= criteria->time_sec_limit)
+    if (solver_state->control.cumulative_time_sec >= criteria->time_sec_limit)
     {
-        solver_state->termination_reason = TERMINATION_REASON_TIME_LIMIT;
+        solver_state->control.termination_reason = TERMINATION_REASON_TIME_LIMIT;
         return;
     }
 }
@@ -516,7 +516,7 @@ static bool certify_optimality(
         state->metrics_h->relative_dual_residual   < criteria->eps_feasible_relative &&
         state->metrics_h->relative_objective_gap   < criteria->eps_optimal_relative)
     {
-        state->termination_reason = TERMINATION_REASON_OPTIMAL;
+        state->control.termination_reason = TERMINATION_REASON_OPTIMAL;
         return true;
     }
     return false;
@@ -531,9 +531,9 @@ static bool certify_infeasibility(
 {
     if (margin > 0.0 && residual < eps * margin)
     {
-        state->certificate_margin = margin;
-        state->certificate_residual = residual;
-        state->termination_reason = reason;
+        state->control.certificate_margin = margin;
+        state->control.certificate_residual = residual;
+        state->control.termination_reason = reason;
         return true;
     }
     return false;

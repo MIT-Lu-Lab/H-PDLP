@@ -119,10 +119,10 @@ cuhsdlp_result_t *optimize(
 
     initialize_step_size_and_primal_weight(state, params);
 
-    state->start_time = clock();
+    state->control.start_time = clock();
     bool do_restart = false;
 
-    while (state->total_count < params->termination_criteria.iteration_limit)
+    while (state->control.total_count < params->termination_criteria.iteration_limit)
     {
         sync_inner_count_to_gpu(state);
         sync_step_sizes_to_gpu(state);
@@ -133,7 +133,7 @@ cuhsdlp_result_t *optimize(
         {
             compute_fixed_point_error(state);
             CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-            state->initial_fixed_point_error = *state->fixed_point_error_mp;
+            state->control.initial_fixed_point_error = *state->control.fixed_point_error_mp;
             do_restart = false;
         }
 
@@ -159,11 +159,11 @@ cuhsdlp_result_t *optimize(
 
         compute_fixed_point_error(state);
         compute_termination_metrics(state, params);
-        state->inner_count += params->termination_evaluation_frequency;
-        state->total_count += params->termination_evaluation_frequency;
+        state->control.inner_count += params->termination_evaluation_frequency;
+        state->control.total_count += params->termination_evaluation_frequency;
 
         check_termination_criteria(state, &params->termination_criteria);
-        if (state->termination_reason != TERMINATION_REASON_UNSPECIFIED)
+        if (state->control.termination_reason != TERMINATION_REASON_UNSPECIFIED)
         {
             display_iteration_stats(state, params->verbose, false);
             break;
@@ -172,7 +172,7 @@ cuhsdlp_result_t *optimize(
         do_restart = should_do_adaptive_restart(state, params);
         if (do_restart)
         {
-            state->restart_count++;
+            state->control.restart_count++;
             display_iteration_stats(state, params->verbose, true);
             perform_restart(state, &params->step_size_params);
         }
@@ -182,9 +182,9 @@ cuhsdlp_result_t *optimize(
         }
     }
 
-    if (state->termination_reason == TERMINATION_REASON_UNSPECIFIED)
+    if (state->control.termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
-        state->termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
+        state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_termination_metrics(state, params);
         display_iteration_stats(state, params->verbose, false);
     }
@@ -208,8 +208,8 @@ cuhsdlp_result_t *optimize(
 
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
 {
-    CUDA_CHECK(cudaMemcpyAsync(state->inner_count_d,
-                               &state->inner_count,
+    CUDA_CHECK(cudaMemcpyAsync(state->control.inner_count_d,
+                               &state->control.inner_count,
                                sizeof(int),
                                cudaMemcpyHostToDevice,
                                state->stream_A));
@@ -217,18 +217,18 @@ static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
 
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
 {
-    CUDA_CHECK(cudaMemcpyAsync(state->step_size_primal_d,
-                               &state->step_size_primal,
+    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_primal_d,
+                               &state->control.step_size_primal,
                                sizeof(double),
                                cudaMemcpyHostToDevice,
                                state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(state->step_size_dual_d,
-                               &state->step_size_dual,
+    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_dual_d,
+                               &state->control.step_size_dual,
                                sizeof(double),
                                cudaMemcpyHostToDevice,
                                state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(state->step_size_homogeneous_d,
-                               &state->step_size_homogeneous,
+    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_homogeneous_d,
+                               &state->control.step_size_homogeneous,
                                sizeof(double),
                                cudaMemcpyHostToDevice,
                                state->stream_A));
@@ -238,13 +238,13 @@ static void compute_step_sizes(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params)
 {
-    double omega  = state->primal_weight;
-    double lambda = state->step_size_base;
+    double omega  = state->control.primal_weight;
+    double lambda = state->control.step_size_base;
     double factor = step_size_params->step_size_factor;
 
-    state->step_size_primal = lambda / omega;
-    state->step_size_dual   = omega * lambda;
-    state->step_size_homogeneous = 0.99 * factor / state->step_size_dual;
+    state->control.step_size_primal = lambda / omega;
+    state->control.step_size_dual   = omega * lambda;
+    state->control.step_size_homogeneous = 0.99 * factor / state->control.step_size_dual;
 }
 
 static void initialize_step_size_and_primal_weight(
@@ -254,19 +254,19 @@ static void initialize_step_size_and_primal_weight(
     double sigma = state->rescaled_constraint_norm;
     double factor = params->step_size_params.step_size_factor;
 
-    state->step_size_base = factor / sigma;
+    state->control.step_size_base = factor / sigma;
 
     if (params->scaling_params.bound_objective_rescaling)
     {
-        state->primal_weight = 1.0;
+        state->control.primal_weight = 1.0;
     }
     else
     {
-        state->primal_weight =
+        state->control.primal_weight =
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
-    initialize_pid_state(&state->pid, state->primal_weight);
+    initialize_pid_state(&state->control.pid, state->control.primal_weight);
 
     compute_step_sizes(state, &params->step_size_params);
 }
@@ -316,9 +316,9 @@ static void hsd_update_dual_solution(
         state->pdhg_dual_solution_d,
         state->initial_dual_solution_d,
         state->primal_product_d,
-        state->step_size_dual_d,
+        state->control.step_size_dual_d,
         state->hsd_primal_scale_current_d,
-        state->inner_count_d,
+        state->control.inner_count_d,
         k_offset,
         reflection_coefficient,
         state->hsd_dual_scale_initial_d,
@@ -366,10 +366,10 @@ static void update_hsd_primal_block(
         state->initial_primal_solution_d,
         state->dual_product_d,
         state->objective_vector_d,
-        state->step_size_primal_d,
-        state->step_size_homogeneous_d,
+        state->control.step_size_primal_d,
+        state->control.step_size_homogeneous_d,
         state->hsd_dual_scale_reflected_d,
-        state->inner_count_d,
+        state->control.inner_count_d,
         k_offset,
         reflection_coefficient,
         state->hsd_primal_scale_initial_d,
@@ -437,7 +437,7 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->fixed_point_operator_cross_d));
 
     compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->fixed_point_error_mp,
+        state->control.fixed_point_error_mp,
         state->pdhg_primal_norm_d,
         state->pdhg_dual_norm_d,
         state->fixed_point_operator_cross_d,
@@ -445,9 +445,9 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->hsd_primal_scale_reflected_d,
         state->hsd_dual_scale_pdhg_d,
         state->hsd_dual_scale_reflected_d,
-        state->step_size_primal,
-        state->step_size_dual,
-        state->step_size_homogeneous);
+        state->control.step_size_primal,
+        state->control.step_size_dual,
+        state->control.step_size_homogeneous);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
@@ -461,29 +461,29 @@ static bool should_do_adaptive_restart(
     int termination_evaluation_frequency = params->termination_evaluation_frequency;
 
     bool do_restart = false;
-    if (state->total_count == termination_evaluation_frequency)
+    if (state->control.total_count == termination_evaluation_frequency)
     {
         do_restart = true;
     }
-    else if (state->total_count > termination_evaluation_frequency)
+    else if (state->control.total_count > termination_evaluation_frequency)
     {
-        if (*state->fixed_point_error_mp <= restart_params->sufficient_reduction_for_restart * state->initial_fixed_point_error)
+        if (*state->control.fixed_point_error_mp <= restart_params->sufficient_reduction_for_restart * state->control.initial_fixed_point_error)
         {
             do_restart = true;
         }
-        if (*state->fixed_point_error_mp <= restart_params->necessary_reduction_for_restart * state->initial_fixed_point_error)
+        if (*state->control.fixed_point_error_mp <= restart_params->necessary_reduction_for_restart * state->control.initial_fixed_point_error)
         {
-            if (*state->fixed_point_error_mp > state->last_trial_fixed_point_error)
+            if (*state->control.fixed_point_error_mp > state->control.last_trial_fixed_point_error)
             {
                 do_restart = true;
             }
         }
-        if (state->inner_count >= restart_params->artificial_restart_threshold * state->total_count)
+        if (state->control.inner_count >= restart_params->artificial_restart_threshold * state->control.total_count)
         {
             do_restart = true;
         }
     }
-    state->last_trial_fixed_point_error = *state->fixed_point_error_mp;
+    state->control.last_trial_fixed_point_error = *state->control.fixed_point_error_mp;
     return do_restart;
 }
 
@@ -556,8 +556,8 @@ static void perform_restart(
         state->dual_box_cone_state.scalar_d,
         cone_warm_start_scale);
 
-    state->inner_count = 0;
-    state->last_trial_fixed_point_error = INFINITY;
+    state->control.inner_count = 0;
+    state->control.last_trial_fixed_point_error = INFINITY;
 }
 
 static void update_primal_weight_via_restart_pid(
@@ -589,7 +589,7 @@ static void update_primal_weight_via_restart_pid(
         hsd_scalars_h[HSD_PRIMAL_SCALE_INITIAL];
     double d_ac    = hsd_scalars_h[HSD_DUAL_SCALE_PDHG]
                    - hsd_scalars_h[HSD_DUAL_SCALE_INITIAL];
-    double base2   = state->step_size_base * state->step_size_base;
+    double base2   = state->control.step_size_base * state->control.step_size_base;
     double alpha_p = base2 / step_size_params->step_size_factor;
     double primal_scale_delta_squared =
         primal_scale_delta * primal_scale_delta;
@@ -607,7 +607,7 @@ static void update_primal_weight_via_restart_pid(
                  / state->metrics_h->relative_primal_residual;
     bool ratio_ok = ratio > 1e-8 && ratio < 1e8;
 
-    apply_restart_pid(&state->pid, &state->primal_weight, step_size_params,
+    apply_restart_pid(&state->control.pid, &state->control.primal_weight, step_size_params,
                       primal_dist, dual_dist, dist_ok, ratio_ok);
 }
 

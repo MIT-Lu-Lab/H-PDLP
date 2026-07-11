@@ -53,6 +53,32 @@ typedef struct {
     double primal_infeasibility_residual;
 } termination_reductions_t;
 
+typedef struct {
+    double step_size_primal;
+    double step_size_dual;
+    double step_size_homogeneous;
+    double step_size_base;
+    int total_count;
+    int inner_count;
+    int restart_count;
+    clock_t start_time;
+    double cumulative_time_sec;
+    termination_reason_t termination_reason;
+    double certificate_margin;
+    double certificate_residual;
+
+    int *inner_count_d;
+    double *step_size_primal_d;
+    double *step_size_dual_d;
+    double *step_size_homogeneous_d;
+
+    double primal_weight;
+    pid_state_t pid;
+    double *fixed_point_error_mp;
+    double initial_fixed_point_error;
+    double last_trial_fixed_point_error;
+} solver_control_t;
+
 enum HsdScalarSlot {
     HSD_PRIMAL_SCALE_INITIAL             = 0,
     HSD_PRIMAL_SCALE_CURRENT             = 1,
@@ -184,30 +210,7 @@ typedef struct {
     box_newton_state_t dual_box_cone_state;
     box_newton_state_t primal_box_cone_state;
 
-    double step_size_primal;
-    double step_size_dual;
-    double step_size_homogeneous;
-    double step_size_base;
-    int    total_count;
-    int    inner_count;
-    int    restart_count;
-    clock_t start_time;
-    double  cumulative_time_sec;
-    termination_reason_t termination_reason;
-    double certificate_margin;
-    double certificate_residual;
-
-    int    *inner_count_d;
-    double *step_size_primal_d;
-    double *step_size_dual_d;
-    double *step_size_homogeneous_d;
-
-    double primal_weight;
-    pid_state_t pid;
-
-    double *fixed_point_error_mp;
-    double  initial_fixed_point_error;
-    double  last_trial_fixed_point_error;
+    solver_control_t control;
 
     double *pdhg_reduce_d;
     double *pdhg_primal_norm_d;

@@ -38,7 +38,7 @@ extern "C"
     cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool verbose);
 
     cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *original_prob);
-    const char *get_presolve_status_str(enum PresolveStatus_ status);
+    const char *get_presolve_status_str(int status);
 
     void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
                         cuhsdlp_result_t *reduced_result,
