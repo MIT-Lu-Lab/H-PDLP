@@ -179,6 +179,7 @@ void compute_termination_metrics(
         state->original_bound_norm,
         state->original_objective_norm,
         state->objective_constant);
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpyAsync(state->metrics_h, state->metrics_d,
                                sizeof(pdhg_metrics_t),
                                cudaMemcpyDeviceToHost,
@@ -340,6 +341,7 @@ static void compute_objective_and_support_terms(
         state->constraint_upper_bound_d,
         1.0,
         state->num_constraints);
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cub::DeviceReduce::Sum(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
@@ -355,6 +357,7 @@ static void compute_objective_and_support_terms(
         state->variable_upper_bound_d,
         variable_direction_sign,
         state->num_variables);
+    CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cub::DeviceReduce::Sum(
         state->cub_reduce_workspace_d,
         state->cub_reduce_workspace_bytes,
