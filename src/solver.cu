@@ -601,7 +601,8 @@ static void update_primal_weight_via_restart_pid(
                       primal_dist, dual_dist,
                       state->metrics_h->relative_objective_gap,
                       state->metrics_h->relative_primal_residual,
-                      hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG]);
+                      hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG],
+                      state->metrics_h->normalized_homogeneous_ratio);
 }
 
 

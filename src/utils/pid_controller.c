@@ -36,7 +36,8 @@ void apply_restart_pid(pid_state_t *pid,
                        double dual_dist,
                        double relative_objective_gap,
                        double relative_primal_residual,
-                       double homogeneous_scale)
+                       double homogeneous_scale,
+                       double homogeneous_ratio)
 {
     double gap_to_primal_ratio = relative_objective_gap / relative_primal_residual;
     double scale_reference = fmax(homogeneous_scale, 1e-300);
@@ -47,7 +48,7 @@ void apply_restart_pid(pid_state_t *pid,
     bool ratio_high = gap_to_primal_ratio >= 1e7 ||
                       isinf(gap_to_primal_ratio);
     bool ratio_low = gap_to_primal_ratio <= 1e-7 &&
-                     homogeneous_scale >= 1e-2;
+                     homogeneous_ratio < 0.5;
 
     if (ratio_high)
     {
