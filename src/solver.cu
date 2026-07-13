@@ -635,9 +635,13 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
     {
         inv_scale = 1.0 / primal_scale;
     }
-    else
+    else if (primal_scale > 1.0e-15 * max_block_norm)
     {
         inv_scale = 10.0;
+    }
+    else
+    {
+        inv_scale = 1.0;
     }
 
     CUDA_CHECK(cudaMemcpyAsync(
