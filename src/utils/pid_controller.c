@@ -17,10 +17,11 @@ limitations under the License.
 #include "pid_controller.h"
 #include <math.h>
 
-static void update_reversal_streak(pid_state_t *pid,
-                                   double primal_weight,
-                                   double primal_dist,
-                                   double dual_dist);
+static void reset_pid_integrator(pid_state_t *pid);
+static void align_pid_last_error(pid_state_t *pid,
+                                 double primal_weight,
+                                 double primal_dist,
+                                 double dual_dist);
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
                              const step_size_parameters_t *params,
@@ -33,52 +34,63 @@ void apply_restart_pid(pid_state_t *pid,
                        const step_size_parameters_t *params,
                        double primal_dist,
                        double dual_dist,
-                       bool dist_ok,
-                       bool ratio_ok)
+                       double relative_objective_gap,
+                       double relative_primal_residual,
+                       double homogeneous_scale,
+                       double homogeneous_ratio)
 {
-    const int oscillation_streak_threshold = 8;
+    double gap_to_primal_ratio = relative_objective_gap / relative_primal_residual;
+    double scale_reference = fmax(homogeneous_scale, 1e-300);
+    bool dist_ok = primal_dist > 1e-16 * scale_reference &&
+                   dual_dist > 1e-16 * scale_reference &&
+                   primal_dist < 1e12 * scale_reference &&
+                   dual_dist < 1e12 * scale_reference;
+    bool ratio_high = gap_to_primal_ratio >= 1e7 ||
+                      isinf(gap_to_primal_ratio);
+    bool ratio_low = gap_to_primal_ratio <= 1e-7 &&
+                     homogeneous_ratio < 0.5;
 
-    update_reversal_streak(pid, *primal_weight, primal_dist, dual_dist);
-
-    if (pid->reversal_streak >= oscillation_streak_threshold)
+    if (ratio_high)
     {
-        *primal_weight = pid->best_primal_weight;
-        pid->error_sum = 0.0;
-        pid->last_error = 0.0;
+        *primal_weight /= 10.0;
+        reset_pid_integrator(pid);
+        if (dist_ok)
+            align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
+        return;
+    }
+
+    if (ratio_low)
+    {
+        *primal_weight *= 10.0;
+        reset_pid_integrator(pid);
+        if (dist_ok)
+            align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
+        return;
+    }
+
+    if (dist_ok)
+    {
+        apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist, false);
     }
     else
     {
-        bool clamp_step = !(dist_ok && ratio_ok);
-        apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist, clamp_step);
+        apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist, true);
     }
 }
 
-void initialize_pid_state(pid_state_t *pid, double primal_weight)
+static void reset_pid_integrator(pid_state_t *pid)
 {
     pid->error_sum = 0.0;
-    pid->last_error = 0.0;
-    pid->best_primal_weight = primal_weight;
-    pid->reversal_streak = 0;
-    pid->last_step_sign = 0;
 }
 
-static void update_reversal_streak(pid_state_t *pid,
-                                   double primal_weight,
-                                   double primal_dist,
-                                   double dual_dist)
+static void align_pid_last_error(pid_state_t *pid,
+                                 double primal_weight,
+                                 double primal_dist,
+                                 double dual_dist)
 {
     double error = log(dual_dist) - log(primal_dist) - log(primal_weight);
-    int step_sign = (error > 1e-12) ? 1 : (error < -1e-12 ? -1 : 0);
-    if (step_sign == 0)
-        return;
-    if (pid->last_step_sign != 0 && step_sign != pid->last_step_sign)
-        pid->reversal_streak++;
-    else if (step_sign == pid->last_step_sign)
-    {
-        pid->reversal_streak = 0;
-        pid->best_primal_weight = primal_weight;
-    }
-    pid->last_step_sign = step_sign;
+    if (isfinite(error))
+        pid->last_error = error;
 }
 
 static void apply_pid_update(pid_state_t *pid,
@@ -97,11 +109,17 @@ static void apply_pid_update(pid_state_t *pid,
     double step = params->k_p * error +
                   params->k_i * pid->error_sum +
                   params->k_d * delta_error;
-    if (clamp_step)
+    if (clamp_step && step * error > 0.0)
     {
         const double max_log_step = log(10.0);
         step = fmin(fmax(step, -max_log_step), max_log_step);
     }
     *primal_weight *= exp(step);
     pid->last_error = error;
+}
+
+void initialize_pid_state(pid_state_t *pid)
+{
+    pid->error_sum = 0.0;
+    pid->last_error = 0.0;
 }

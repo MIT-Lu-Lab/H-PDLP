@@ -23,9 +23,6 @@ typedef struct
 {
     double error_sum;
     double last_error;
-    double best_primal_weight;
-    int    reversal_streak;
-    int    last_step_sign;
 } pid_state_t;
 
 #ifdef __cplusplus
@@ -38,10 +35,12 @@ void apply_restart_pid(pid_state_t *pid,
                        const step_size_parameters_t *params,
                        double primal_dist,
                        double dual_dist,
-                       bool dist_ok,
-                       bool ratio_ok);
+                       double relative_objective_gap,
+                       double relative_primal_residual,
+                       double homogeneous_scale,
+                       double homogeneous_ratio);
 
-void initialize_pid_state(pid_state_t *pid, double primal_weight);
+void initialize_pid_state(pid_state_t *pid);
 
 #ifdef __cplusplus
 }

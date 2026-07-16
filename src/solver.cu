@@ -266,7 +266,7 @@ static void initialize_step_size_and_primal_weight(
             (state->rescaled_objective_norm + 1.0) / (state->rescaled_bound_norm + 1.0);
     }
 
-    initialize_pid_state(&state->control.pid, state->control.primal_weight);
+    initialize_pid_state(&state->control.pid);
 
     compute_step_sizes(state, &params->step_size_params);
 }
@@ -597,18 +597,12 @@ static void update_primal_weight_via_restart_pid(
     double primal_dist = sqrt(dx2 + alpha_p * primal_scale_delta_squared);
     double dual_dist   = sqrt(dy2 + d_ac * d_ac);
 
-    double scale_reference = fmax(hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG], 1e-300);
-    bool dist_ok = primal_dist > 1e-16 * scale_reference
-                && dual_dist > 1e-16 * scale_reference
-                && primal_dist < 1e12 * scale_reference
-                && dual_dist < 1e12 * scale_reference;
-
-    double ratio = state->metrics_h->relative_objective_gap
-                 / state->metrics_h->relative_primal_residual;
-    bool ratio_ok = ratio > 1e-8 && ratio < 1e8;
-
     apply_restart_pid(&state->control.pid, &state->control.primal_weight, step_size_params,
-                      primal_dist, dual_dist, dist_ok, ratio_ok);
+                      primal_dist, dual_dist,
+                      state->metrics_h->relative_objective_gap,
+                      state->metrics_h->relative_primal_residual,
+                      hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG],
+                      state->metrics_h->normalized_homogeneous_ratio);
 }
 
 
