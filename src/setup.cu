@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "setup.h"
+#include "conjugate_gradient.h"
 #include "cone_projector.h"
 #include "cuhsdlp.h"
 #include "display.h"
@@ -34,7 +35,43 @@ __global__ void build_row_ind_kernel(
     const int *__restrict__ row_ptr,
     int num_rows,
     int *__restrict__ row_ind);
-__global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
+__global__ void initialize_iterates_kernel(
+    double *__restrict__ current_primal_sol,
+    double *__restrict__ pdhg_primal_sol,
+    const double *__restrict__ initial_primal_sol,
+    double *__restrict__ current_dual_sol,
+    double *__restrict__ pdhg_dual_sol,
+    const double *__restrict__ initial_dual_sol,
+    double *__restrict__ hsd_scalars,
+    double primal_scale,
+    double dual_scale,
+    int n_vars,
+    int n_cons);
+__global__ void compute_variable_projection_kernel(
+    double *__restrict__ var_projection,
+    const double *__restrict__ var_lb,
+    const double *__restrict__ var_ub,
+    int n_vars);
+__global__ void compute_constraint_projection_residual_kernel(
+    double *__restrict__ cons_projection_residual,
+    const double *__restrict__ cons_values,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    int n_cons);
+__global__ void compute_initial_primal_system_rhs_kernel(
+    double *__restrict__ rhs,
+    const double *__restrict__ dual_prod,
+    const double *__restrict__ obj_vec,
+    double step_size_base,
+    double primal_weight,
+    int n_vars);
+__global__ void compute_initial_dual_solution_kernel(
+    double *__restrict__ initial_dual_sol,
+    const double *__restrict__ primal_prod,
+    const double *__restrict__ primal_res,
+    double step_size_dual,
+    int n_cons);
+
 static void transpose_csr_and_build_map(
     const lp_problem_t *problem,
     int **transpose_row_ptr,
@@ -82,7 +119,10 @@ static void initialize_newton_structure(
 static void initialize_newton_workspaces(pdhg_solver_state_t *state);
 static void release_preprocessing_resources(pdhg_solver_state_t *state);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
-static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
+static void initialize_iterates(
+    pdhg_solver_state_t *state,
+    double primal_scale,
+    double dual_scale);
 static void initialize_convergence_tracking(pdhg_solver_state_t *state);
 static void free_sparse_resources(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
@@ -289,8 +329,6 @@ pdhg_solver_state_t *initialize_solver_state(
     initialize_newton_workspaces(state);
     apply_warm_starts(state, working_problem);
 
-    init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
-
     setup_sparse_resources(state);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
@@ -310,7 +348,7 @@ pdhg_solver_state_t *initialize_solver_state(
 
     release_preprocessing_resources(state);
     release_setup_only_matrix_data(state);
-    initialize_iterates_from_starts(state);
+    initialize_iterates(state, 1.0, 1.0);
     initialize_convergence_tracking(state);
 
     print_iteration_header(params->verbose);
@@ -886,24 +924,219 @@ static void release_setup_only_matrix_data(pdhg_solver_state_t *state)
     state->constraint_matrix->transpose_map = NULL;
 }
 
-static void initialize_iterates_from_starts(pdhg_solver_state_t *state)
+static void initialize_iterates(
+    pdhg_solver_state_t *state,
+    double primal_scale,
+    double dual_scale)
 {
-    CUDA_CHECK(cudaMemcpy(state->current_primal_solution_d,
-                          state->initial_primal_solution_d,
-                          state->var_bytes,
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->current_dual_solution_d,
-                          state->initial_dual_solution_d,
-                          state->con_bytes,
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d,
-                          state->initial_primal_solution_d,
-                          state->var_bytes,
-                          cudaMemcpyDeviceToDevice));
-    CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution_d,
-                          state->initial_dual_solution_d,
-                          state->con_bytes,
-                          cudaMemcpyDeviceToDevice));
+    const int num_blocks = state->num_blocks_primal_dual > 0
+                               ? state->num_blocks_primal_dual
+                               : 1;
+    initialize_iterates_kernel<<<
+        num_blocks,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->current_primal_solution_d,
+        state->pdhg_primal_solution_d,
+        state->initial_primal_solution_d,
+        state->current_dual_solution_d,
+        state->pdhg_dual_solution_d,
+        state->initial_dual_solution_d,
+        state->hsd_scalars_d,
+        primal_scale,
+        dual_scale,
+        state->num_variables,
+        state->num_constraints);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+}
+
+void initialize_solutions(
+    pdhg_solver_state_t *state,
+    const lp_problem_t *working_problem)
+{
+    if (!isfinite(state->control.step_size_base))
+    {
+        return;
+    }
+    if (working_problem->primal_start || working_problem->dual_start)
+    {
+        const double initial_primal_scale = 1.0;
+        const double initial_dual_scale = state->control.step_size_dual;
+        initialize_iterates(
+            state,
+            initial_primal_scale,
+            initial_dual_scale);
+        state->metrics_h->current_primal_scale = initial_primal_scale;
+        state->metrics_h->pdhg_primal_scale = initial_primal_scale;
+        state->metrics_h->pdhg_dual_scale = initial_dual_scale;
+        return;
+    }
+
+    const int n_vars = state->num_variables;
+    const int n_cons = state->num_constraints;
+    const double omega = state->control.primal_weight;
+    const double lambda = state->control.step_size_base;
+    const double sigma = state->control.step_size_dual;
+    const double tau_denominator =
+        1.0 / state->control.step_size_homogeneous - sigma;
+
+    cublasPointerMode_t original_pointer_mode;
+    CUBLAS_CHECK(cublasGetPointerMode(
+        state->blas_handle_A, &original_pointer_mode));
+    CUBLAS_CHECK(cublasSetPointerMode(
+        state->blas_handle_A, CUBLAS_POINTER_MODE_HOST));
+
+    cusparseDnVecDescr_t spmv_initial_primal_solution;
+    cusparseDnVecDescr_t spmv_primal_residual;
+    create_dense_vector_descriptor(
+        &spmv_initial_primal_solution,
+        n_vars,
+        state->initial_primal_solution_d);
+    create_dense_vector_descriptor(
+        &spmv_primal_residual,
+        n_cons,
+        state->primal_residual_d);
+
+    compute_variable_projection_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->initial_primal_solution_d,
+        state->variable_lower_bound_d,
+        state->variable_upper_bound_d,
+        n_vars);
+    CUDA_CHECK(cudaGetLastError());
+
+    CUSPARSE_CHECK(cusparseSpMV(
+        state->sparse_handle_A,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &HOST_ONE,
+        state->matA,
+        spmv_initial_primal_solution,
+        &HOST_ZERO,
+        state->spmv_primal_product,
+        CUDA_R_64F,
+        CUSPARSE_SPMV_CSR_ALG2,
+        state->matA_spmv_workspace_d));
+
+    compute_constraint_projection_residual_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->primal_residual_d,
+        state->primal_product_d,
+        state->constraint_lower_bound_d,
+        state->constraint_upper_bound_d,
+        n_cons);
+    CUDA_CHECK(cudaGetLastError());
+
+    CUSPARSE_CHECK(cusparseSpMV(
+        state->sparse_handle_A,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &HOST_ONE,
+        state->matAt,
+        spmv_primal_residual,
+        &HOST_ZERO,
+        state->spmv_dual_product,
+        CUDA_R_64F,
+        CUSPARSE_SPMV_CSR_ALG2,
+        state->matAt_spmv_workspace_d));
+    compute_initial_primal_system_rhs_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->dual_residual_d,
+        state->dual_product_d,
+        state->objective_vector_d,
+        lambda,
+        omega,
+        n_vars);
+    CUDA_CHECK(cudaGetLastError());
+
+    double objective_dot_variable_projection = 0.0;
+    CUBLAS_CHECK(cublasDdot(
+        state->blas_handle_A, n_vars,
+        state->objective_vector_d, 1,
+        state->initial_primal_solution_d, 1,
+        &objective_dot_variable_projection));
+    CUDA_CHECK(cudaMemsetAsync(
+        state->initial_primal_solution_d,
+        0,
+        state->var_bytes,
+        state->stream_A));
+
+    solve_initial_primal_system(
+        state,
+        state->initial_primal_solution_d,
+        state->dual_residual_d);
+    double initial_primal_scale =
+        (1.0 + objective_dot_variable_projection) / tau_denominator;
+    double initial_dual_scale = sigma * initial_primal_scale;
+
+    CUSPARSE_CHECK(cusparseSpMV(
+        state->sparse_handle_A,
+        CUSPARSE_OPERATION_NON_TRANSPOSE,
+        &HOST_ONE,
+        state->matA,
+        spmv_initial_primal_solution,
+        &HOST_ZERO,
+        state->spmv_primal_product,
+        CUDA_R_64F,
+        CUSPARSE_SPMV_CSR_ALG2,
+        state->matA_spmv_workspace_d));
+    compute_initial_dual_solution_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->initial_dual_solution_d,
+        state->primal_product_d,
+        state->primal_residual_d,
+        sigma,
+        n_cons);
+    CUDA_CHECK(cudaGetLastError());
+
+    double primal_norm = 0.0;
+    double dual_norm = 0.0;
+    CUBLAS_CHECK(cublasDnrm2(
+        state->blas_handle_A, n_vars,
+        state->initial_primal_solution_d, 1, &primal_norm));
+    CUBLAS_CHECK(cublasDnrm2(
+        state->blas_handle_A, n_cons,
+        state->initial_dual_solution_d, 1, &dual_norm));
+    double max_block_norm = fmax(
+        fmax(primal_norm, dual_norm),
+        fmax(fabs(initial_primal_scale), fabs(initial_dual_scale)));
+    double inv_scale = compute_gauge_inverse_scale(initial_primal_scale, max_block_norm);
+    if (inv_scale != 1.0)
+    {
+        CUBLAS_CHECK(cublasDscal(
+            state->blas_handle_A, n_vars, &inv_scale,
+            state->initial_primal_solution_d, 1));
+        CUBLAS_CHECK(cublasDscal(
+            state->blas_handle_A, n_cons, &inv_scale,
+            state->initial_dual_solution_d, 1));
+        initial_primal_scale *= inv_scale;
+        initial_dual_scale *= inv_scale;
+    }
+
+    initialize_iterates(
+        state,
+        initial_primal_scale,
+        initial_dual_scale);
+    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, original_pointer_mode));
+
+    state->metrics_h->current_primal_scale = initial_primal_scale;
+    state->metrics_h->pdhg_primal_scale = initial_primal_scale;
+    state->metrics_h->pdhg_dual_scale = initial_dual_scale;
+
+    CUSPARSE_CHECK(cusparseDestroyDnVec(spmv_initial_primal_solution));
+    CUSPARSE_CHECK(cusparseDestroyDnVec(spmv_primal_residual));
 }
 
 static void initialize_convergence_tracking(pdhg_solver_state_t *state)
@@ -1109,8 +1342,95 @@ __global__ void build_row_ind_kernel(
         row_ind[k] = row;
 }
 
-__global__ void init_hsd_scalars_kernel(double *hsd_scalars_d)
+__global__ void initialize_iterates_kernel(
+    double *__restrict__ current_primal_sol,
+    double *__restrict__ pdhg_primal_sol,
+    const double *__restrict__ initial_primal_sol,
+    double *__restrict__ current_dual_sol,
+    double *__restrict__ pdhg_dual_sol,
+    const double *__restrict__ initial_dual_sol,
+    double *__restrict__ hsd_scalars,
+    double primal_scale,
+    double dual_scale,
+    int n_vars,
+    int n_cons)
 {
-    for (int i = 0; i < HSD_SCALARS_COUNT; ++i)
-        hsd_scalars_d[i] = 1.0;
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_vars)
+    {
+        current_primal_sol[i] = initial_primal_sol[i];
+        pdhg_primal_sol[i] = initial_primal_sol[i];
+    }
+    else if (i < n_vars + n_cons)
+    {
+        int j = i - n_vars;
+        current_dual_sol[j] = initial_dual_sol[j];
+        pdhg_dual_sol[j] = initial_dual_sol[j];
+    }
+
+    if (i == 0)
+    {
+        for (int j = HSD_PRIMAL_SCALE_INITIAL; j < HSD_DUAL_SCALE_INITIAL; ++j)
+            hsd_scalars[j] = primal_scale;
+        for (int j = HSD_DUAL_SCALE_INITIAL; j < HSD_SCALARS_COUNT; ++j)
+            hsd_scalars[j] = dual_scale;
+    }
+}
+
+__global__ void compute_variable_projection_kernel(
+    double *__restrict__ var_projection,
+    const double *__restrict__ var_lb,
+    const double *__restrict__ var_ub,
+    int n_vars)
+{
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n_vars)
+        return;
+
+    var_projection[j] = fmin(fmax(0.0, var_lb[j]), var_ub[j]);
+}
+
+__global__ void compute_constraint_projection_residual_kernel(
+    double *__restrict__ cons_projection_residual,
+    const double *__restrict__ cons_values,
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    int n_cons)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_cons)
+        return;
+
+    double value = cons_values[i];
+    double projection = fmin(fmax(value, cons_lb[i]), cons_ub[i]);
+    cons_projection_residual[i] = value - projection;
+}
+
+__global__ void compute_initial_primal_system_rhs_kernel(
+    double *__restrict__ rhs,
+    const double *__restrict__ dual_prod,
+    const double *__restrict__ obj_vec,
+    double step_size_base,
+    double primal_weight,
+    int n_vars)
+{
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= n_vars)
+        return;
+
+    rhs[j] = -step_size_base * dual_prod[j] - obj_vec[j] / primal_weight;
+}
+
+__global__ void compute_initial_dual_solution_kernel(
+    double *__restrict__ initial_dual_sol,
+    const double *__restrict__ primal_prod,
+    const double *__restrict__ primal_res,
+    double step_size_dual,
+    int n_cons)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_cons)
+        return;
+
+    initial_dual_sol[i] = step_size_dual * (primal_prod[i] - primal_res[i]);
 }

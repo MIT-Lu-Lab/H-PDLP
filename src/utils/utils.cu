@@ -38,6 +38,27 @@ static __global__ void compute_bound_norm_entries_kernel(
     int n_cons,
     int use_linf);
 
+double compute_gauge_inverse_scale(double primal_scale, double max_block_norm)
+{
+    if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
+    {
+        return 1.0 / fmax(max_block_norm, 1.0e-300);
+    }
+    if (primal_scale >= 0.1 && primal_scale <= 10.0)
+    {
+        return 1.0;
+    }
+    if (primal_scale > 1.0e-3)
+    {
+        return 1.0 / primal_scale;
+    }
+    if (primal_scale > 1.0e-15 * max_block_norm)
+    {
+        return 10.0;
+    }
+    return 1.0;
+}
+
 void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params)
 {
     const int num_rows = problem->num_constraints;

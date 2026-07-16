@@ -120,6 +120,7 @@ cuhsdlp_result_t *optimize(
     initialize_step_size_and_primal_weight(state, params);
 
     state->control.start_time = clock();
+    initialize_solutions(state, working_problem);
     bool do_restart = false;
 
     while (state->control.total_count < params->termination_criteria.iteration_limit)
@@ -615,27 +616,10 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
                             fmax(fabs(primal_scale),
                                  fabs(state->metrics_h->pdhg_dual_scale)));
 
-    double inv_scale;
-    if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
-    {
-        inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
-    }
-    else if (primal_scale >= 0.1 &&
-             primal_scale <= 10.0)
+    double inv_scale = compute_gauge_inverse_scale(primal_scale, max_block_norm);
+    if (inv_scale == 1.0)
     {
         return 1.0;
-    }
-    else if (primal_scale > 1.0e-3)
-    {
-        inv_scale = 1.0 / primal_scale;
-    }
-    else if (primal_scale > 1.0e-15 * max_block_norm)
-    {
-        inv_scale = 10.0;
-    }
-    else
-    {
-        inv_scale = 1.0;
     }
 
     CUDA_CHECK(cudaMemcpyAsync(

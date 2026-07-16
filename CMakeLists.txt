@@ -139,6 +139,7 @@ set(CORE_SOURCES
     src/setup.cu
     src/solver.cu
     src/termination_checker.cu
+    src/utils/conjugate_gradient.cu
     src/utils/display.cu
     src/utils/power_iteration.cu
     src/utils/utils.cu)

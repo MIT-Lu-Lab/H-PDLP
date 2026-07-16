@@ -52,6 +52,10 @@ extern "C"
     void *safe_calloc(size_t num, size_t size);
     void *safe_realloc(void *ptr, size_t new_size);
 
+    double compute_gauge_inverse_scale(
+        double primal_scale,
+        double max_block_norm);
+
     void reduce_device_sum(
         pdhg_solver_state_t *state,
         const double *input,
