@@ -17,13 +17,15 @@ limitations under the License.
 #include "pid_controller.h"
 #include <math.h>
 
-static const double CERTIFICATE_SUSPEND_THRESHOLD = 0.9;
-
-static void reset_pid_integrator(pid_state_t *pid);
 static bool compute_pid_error(double primal_weight,
                               double primal_dist,
                               double dual_dist,
                               double *error);
+static void apply_pid_rebase(pid_state_t *pid,
+                             double *primal_weight,
+                             double primal_dist,
+                             double dual_dist,
+                             bool dist_ok);
 static void align_pid_last_error(pid_state_t *pid,
                                  double primal_weight,
                                  double primal_dist,
@@ -34,6 +36,17 @@ static void apply_pid_update(pid_state_t *pid,
                              double primal_dist,
                              double dual_dist,
                              bool clamp_step);
+static double clamp_primal_weight(double primal_weight);
+
+
+void initialize_pid_state(pid_state_t *pid)
+{
+    pid->error_sum = 0.0;
+    pid->last_error = 0.0;
+    pid->suspended = false;
+    pid->has_last_error = false;
+}
+
 
 void apply_restart_pid(pid_state_t *pid,
                        double *primal_weight,
@@ -69,20 +82,14 @@ void apply_restart_pid(pid_state_t *pid,
     if (ratio_high)
     {
         *primal_weight /= 10.0;
-        reset_pid_integrator(pid);
-        pid->has_last_error = false;
-        if (dist_ok)
-            align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
+        apply_pid_rebase(pid, primal_weight, primal_dist, dual_dist, dist_ok);
         return;
     }
 
     if (ratio_low)
     {
         *primal_weight *= 10.0;
-        reset_pid_integrator(pid);
-        pid->has_last_error = false;
-        if (dist_ok)
-            align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
+        apply_pid_rebase(pid, primal_weight, primal_dist, dual_dist, dist_ok);
         return;
     }
 
@@ -94,28 +101,6 @@ void apply_restart_pid(pid_state_t *pid,
     {
         apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist, true);
     }
-}
-
-static void reset_pid_integrator(pid_state_t *pid)
-{
-    pid->error_sum = 0.0;
-}
-
-static bool compute_pid_error(double primal_weight,
-                              double primal_dist,
-                              double dual_dist,
-                              double *error)
-{
-    if (!(primal_weight > 0.0) || !(primal_dist > 0.0) || !(dual_dist > 0.0) ||
-        !isfinite(primal_weight) || !isfinite(primal_dist) || !isfinite(dual_dist))
-        return false;
-
-    double value = log(dual_dist) - log(primal_dist) - log(primal_weight);
-    if (!isfinite(value))
-        return false;
-
-    *error = value;
-    return true;
 }
 
 static void align_pid_last_error(pid_state_t *pid,
@@ -135,6 +120,19 @@ static void align_pid_last_error(pid_state_t *pid,
     }
 }
 
+static void apply_pid_rebase(pid_state_t *pid,
+                             double *primal_weight,
+                             double primal_dist,
+                             double dual_dist,
+                             bool dist_ok)
+{
+    *primal_weight = clamp_primal_weight(*primal_weight);
+    pid->error_sum = 0.0;
+    pid->has_last_error = false;
+    if (dist_ok)
+        align_pid_last_error(pid, *primal_weight, primal_dist, dual_dist);
+}
+
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
                              const step_size_parameters_t *params,
@@ -145,29 +143,46 @@ static void apply_pid_update(pid_state_t *pid,
     double error = 0.0;
     if (!compute_pid_error(*primal_weight, primal_dist, dual_dist, &error))
         return;
-    pid->error_sum *= params->i_smooth;
-    pid->error_sum += error;
+    double next_error_sum = params->i_smooth * pid->error_sum + error;
     double delta_error = pid->has_last_error ? error - pid->last_error : 0.0;
     double step = params->k_p * error +
-                  params->k_i * pid->error_sum +
+                  params->k_i * next_error_sum +
                   params->k_d * delta_error;
     if (clamp_step && step * error > 0.0)
     {
         const double max_log_step = log(10.0);
         step = fmin(fmax(step, -max_log_step), max_log_step);
     }
-    double multiplier = exp(step);
-    if (!isfinite(multiplier))
-        return;
-    *primal_weight *= multiplier;
+
+    double candidate_weight = *primal_weight * exp(step);
+    bool pushes_outward = (candidate_weight >= 1e8 && error > 0.0) ||
+                          (candidate_weight <= 1e-8 && error < 0.0);
+    if (!pushes_outward)
+        pid->error_sum = next_error_sum;
+
+    *primal_weight = clamp_primal_weight(candidate_weight);
     pid->last_error = error;
     pid->has_last_error = true;
 }
 
-void initialize_pid_state(pid_state_t *pid)
+static bool compute_pid_error(double primal_weight,
+                              double primal_dist,
+                              double dual_dist,
+                              double *error)
 {
-    pid->error_sum = 0.0;
-    pid->last_error = 0.0;
-    pid->suspended = false;
-    pid->has_last_error = false;
+    if (!(primal_weight > 0.0) || !(primal_dist > 0.0) || !(dual_dist > 0.0) ||
+        !isfinite(primal_weight) || !isfinite(primal_dist) || !isfinite(dual_dist))
+        return false;
+
+    double value = log(dual_dist) - log(primal_dist) - log(primal_weight);
+    if (!isfinite(value))
+        return false;
+
+    *error = value;
+    return true;
+}
+
+static double clamp_primal_weight(double primal_weight)
+{
+    return fmin(fmax(primal_weight, 1e-8), 1e8);
 }
