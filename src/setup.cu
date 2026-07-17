@@ -1402,7 +1402,7 @@ __global__ void compute_constraint_projection_residual_kernel(
         return;
 
     double value = cons_values[i];
-    double projection = fmin(fmax(value, cons_lb[i]), cons_ub[i]);
+    double projection = fmin(fmax(0.0, cons_lb[i]), cons_ub[i]);
     cons_projection_residual[i] = value - projection;
 }
 
