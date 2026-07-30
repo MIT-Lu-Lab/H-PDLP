@@ -39,6 +39,7 @@ void apply_restart_pid(pid_state_t *pid,
                        double dual_dist,
                        double relative_objective_gap,
                        double relative_primal_residual,
+                       double relative_dual_residual,
                        double homogeneous_scale,
                        double homogeneous_ratio);
 
