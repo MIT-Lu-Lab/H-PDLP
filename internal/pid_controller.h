@@ -23,7 +23,6 @@ typedef struct
 {
     double error_sum;
     double last_error;
-    bool suspended;
     bool has_last_error;
 } pid_state_t;
 
