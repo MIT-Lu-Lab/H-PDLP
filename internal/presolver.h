@@ -44,6 +44,14 @@ extern "C"
                         cuhsdlp_result_t *reduced_result,
                         const lp_problem_t *original_prob);
 
+    void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
+                                                 cuhsdlp_result_t *reduced_result,
+                                                 const lp_problem_t *original_prob);
+
+    void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
+                                               cuhsdlp_result_t *reduced_result,
+                                               const lp_problem_t *original_prob);
+
     void cuhsdlp_presolve_info_free(cuhsdlp_presolve_info_t *info);
 
 #ifdef __cplusplus

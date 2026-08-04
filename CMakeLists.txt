@@ -115,7 +115,7 @@ if(CUHSDLP_BUILD_PYTHON)
                                                         # and pybind11
 endif()
 
-set(PSLP_VERSION_TAG "v0.0.8")
+set(PSLP_VERSION_TAG "v0.0.9")
 
 FetchContent_Declare(
   pslp

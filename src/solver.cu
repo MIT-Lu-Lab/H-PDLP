@@ -197,6 +197,14 @@ cuhsdlp_result_t *optimize(
         {
             pslp_postsolve(presolve_info, result, original_problem);
         }
+        else if (result->termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
+        {
+            pslp_postsolve_primal_infeasibility_ray(presolve_info, result, original_problem);
+        }
+        else if (result->termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
+        {
+            pslp_postsolve_dual_infeasibility_ray(presolve_info, result, original_problem);
+        }
         cuhsdlp_presolve_info_free(presolve_info);
     }
 
