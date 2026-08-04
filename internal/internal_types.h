@@ -38,14 +38,15 @@ enum PdhgReduction {
 
 typedef struct {
     double dual_solution_norm;
-    double homogeneous_dual_residual_norm;
+    double primal_infeasibility_stationarity_residual_norm;
     double constraint_recession_residual_norm;
     double variable_recession_residual_norm;
-    double constraint_support;
-    double variable_support;
     double original_dual_ray_norm;
     double original_reduced_cost_ray_norm;
     double original_primal_ray_norm;
+    double constraint_support;
+    double variable_support;
+    double homogeneous_variable_support;
     double dual_infeasibility_objective;
     double primal_infeasibility_constraint_support;
     double primal_infeasibility_variable_support;
@@ -66,6 +67,7 @@ typedef struct {
     termination_reason_t termination_reason;
     double certificate_margin;
     double certificate_residual;
+    bool certificate_from_homogeneous;
 
     int *inner_count_d;
     double *step_size_primal_d;
@@ -181,6 +183,7 @@ typedef struct {
     double *constraint_reduction_entries_d;
 
     double *pdhg_reduced_cost_d;
+    double *primal_infeasibility_reduced_cost_d;
     double *reduced_cost_ray_d;
     double *dual_ray_d;
     double *primal_ray_d;
@@ -203,7 +206,7 @@ typedef struct {
 
     double *primal_residual_d;
     double *dual_residual_d;
-    double *homogeneous_dual_residual_d;
+    double *primal_infeasibility_stationarity_residual_d;
     double *constraint_recession_residual_d;
     double *variable_recession_residual_d;
 

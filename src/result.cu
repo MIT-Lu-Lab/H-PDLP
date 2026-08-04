@@ -32,6 +32,12 @@ __global__ void rescale_solution_kernel(
     int n_vars,
     int n_cons);
 static void rescale_solution(pdhg_solver_state_t *state);
+static double compute_original_primal_infeasibility_margin(
+    const pdhg_solver_state_t *state,
+    const termination_reductions_t *reductions_h);
+static double compute_original_dual_infeasibility_margin(
+    const pdhg_solver_state_t *state,
+    const termination_reductions_t *reductions_h);
 
 bool termination_has_solution(termination_reason_t reason)
 {
@@ -74,6 +80,41 @@ cuhsdlp_result_t *create_result_from_state(
             state->stream_A));
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     }
+    else if (state->num_variables == original_problem->num_variables &&
+             state->num_constraints == original_problem->num_constraints)
+    {
+        if (state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
+        {
+            results->dual_solution = (double *)safe_malloc(state->con_bytes);
+            results->reduced_cost = (double *)safe_malloc(state->var_bytes);
+
+            CUDA_CHECK(cudaMemcpyAsync(
+                results->dual_solution,
+                state->pdhg_dual_solution_d,
+                state->con_bytes,
+                cudaMemcpyDeviceToHost,
+                state->stream_A));
+            CUDA_CHECK(cudaMemcpyAsync(
+                results->reduced_cost,
+                state->pdhg_reduced_cost_d,
+                state->var_bytes,
+                cudaMemcpyDeviceToHost,
+                state->stream_A));
+            CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+        }
+        else if (state->control.termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
+        {
+            results->primal_solution = (double *)safe_malloc(state->var_bytes);
+
+            CUDA_CHECK(cudaMemcpyAsync(
+                results->primal_solution,
+                state->pdhg_primal_solution_d,
+                state->var_bytes,
+                cudaMemcpyDeviceToHost,
+                state->stream_A));
+            CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+        }
+    }
 
     results->num_variables = original_problem->num_variables;
     results->num_constraints = original_problem->num_constraints;
@@ -112,14 +153,10 @@ static void rescale_solution(pdhg_solver_state_t *state)
     switch (state->control.termination_reason)
     {
     case TERMINATION_REASON_PRIMAL_INFEASIBLE:
-        divisor = sqrt(
-            reductions_h.original_dual_ray_norm *
-                reductions_h.original_dual_ray_norm +
-            reductions_h.original_reduced_cost_ray_norm *
-                reductions_h.original_reduced_cost_ray_norm);
+        divisor = compute_original_primal_infeasibility_margin(state, &reductions_h);
         break;
     case TERMINATION_REASON_DUAL_INFEASIBLE:
-        divisor = reductions_h.original_primal_ray_norm;
+        divisor = compute_original_dual_infeasibility_margin(state, &reductions_h);
         break;
     default:
         divisor = state->metrics_h->pdhg_primal_scale;
@@ -141,6 +178,39 @@ static void rescale_solution(pdhg_solver_state_t *state)
         divisor,
         state->num_variables,
         state->num_constraints);
+}
+
+static double compute_original_primal_infeasibility_margin(
+    const pdhg_solver_state_t *state,
+    const termination_reductions_t *reductions_h)
+{
+    double support_total =
+        state->control.certificate_from_homogeneous
+            ? reductions_h->constraint_support +
+                  reductions_h->homogeneous_variable_support
+            : reductions_h->primal_infeasibility_constraint_support +
+                  reductions_h->primal_infeasibility_variable_support;
+    return support_total /
+           (state->constraint_bound_rescaling * state->objective_vector_rescaling);
+}
+
+static double compute_original_dual_infeasibility_margin(
+    const pdhg_solver_state_t *state,
+    const termination_reductions_t *reductions_h)
+{
+    double objective_dot_ray;
+    if (state->control.certificate_from_homogeneous)
+    {
+        CUDA_CHECK(cudaMemcpy(&objective_dot_ray,
+                              state->objective_dot_primal_d,
+                              sizeof(double), cudaMemcpyDeviceToHost));
+    }
+    else
+    {
+        objective_dot_ray = reductions_h->dual_infeasibility_objective;
+    }
+    return -objective_dot_ray /
+           (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 }
 
 __global__ void rescale_solution_kernel(
