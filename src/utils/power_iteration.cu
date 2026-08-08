@@ -179,7 +179,7 @@ double estimate_maximum_singular_value(
                 state->stream_A));
             CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
             if (*state->power_iter_residual_norm_mp <
-                power_iter_params->tol)
+                power_iter_params->tol * fmin(1.0, *state->power_iter_sigma_squared_mp))
             {
                 break;
             }
@@ -190,7 +190,7 @@ double estimate_maximum_singular_value(
 
     if (remainder > 0 &&
         *state->power_iter_residual_norm_mp >=
-            power_iter_params->tol)
+            power_iter_params->tol * fmin(1.0, *state->power_iter_sigma_squared_mp))
     {
         for (int k = 0; k < remainder - 1; ++k)
         {
