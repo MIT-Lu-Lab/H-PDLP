@@ -25,7 +25,7 @@ extern "C"
 
     cuhsdlp_result_t *optimize(
         const pdhg_parameters_t *params,
-        lp_problem_t *original_problem);
+        const lp_problem_t *original_problem);
 
 #ifdef __cplusplus
 }

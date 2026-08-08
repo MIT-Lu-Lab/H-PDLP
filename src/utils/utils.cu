@@ -38,17 +38,20 @@ static __global__ void compute_bound_norm_entries_kernel(
     int n_cons,
     int use_linf);
 
-void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_parameters_t *params)
+void filter_constraint_matrix_entries(
+    lp_problem_t *working_problem,
+    const lp_problem_t *original_problem,
+    const pdhg_parameters_t *params)
 {
-    const int num_rows = problem->num_constraints;
-    const int nnz = problem->constraint_matrix_num_nonzeros;
+    const int num_rows = original_problem->num_constraints;
+    const int nnz = original_problem->constraint_matrix_num_nonzeros;
 
     if (num_rows == 0 || nnz == 0)
         return;
 
-    const int *row_ptr = problem->constraint_matrix_row_pointers;
-    const int *col_ind = problem->constraint_matrix_col_indices;
-    const double *vals = problem->constraint_matrix_values;
+    const int *row_ptr = original_problem->constraint_matrix_row_pointers;
+    const int *col_ind = original_problem->constraint_matrix_col_indices;
+    const double *vals = original_problem->constraint_matrix_values;
 
     int filtered_nnz = 0;
     for (int i = 0; i < num_rows; ++i)
@@ -79,16 +82,12 @@ void filter_constraint_matrix_entries(lp_problem_t *problem, const pdhg_paramete
         new_row_ptr[i + 1] = pos;
     }
 
-    free(problem->constraint_matrix_row_pointers);
-    free(problem->constraint_matrix_col_indices);
-    free(problem->constraint_matrix_values);
+    working_problem->constraint_matrix_row_pointers = new_row_ptr;
+    working_problem->constraint_matrix_col_indices = new_col_ind;
+    working_problem->constraint_matrix_values = new_vals;
+    working_problem->constraint_matrix_num_nonzeros = filtered_nnz;
 
-    problem->constraint_matrix_row_pointers = new_row_ptr;
-    problem->constraint_matrix_col_indices = new_col_ind;
-    problem->constraint_matrix_values = new_vals;
-    problem->constraint_matrix_num_nonzeros = filtered_nnz;
-
-    if (((nnz - filtered_nnz) > 0) && params->verbose)
+    if (params->verbose)
     {
         printf("Dropped %d near-zero %s (|value| <= %.1e) from the constraint matrix\n",
                nnz - filtered_nnz,

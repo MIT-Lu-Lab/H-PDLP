@@ -29,7 +29,7 @@ extern "C"
 
     cuhsdlp_result_t *create_result_from_state(
         pdhg_solver_state_t *state,
-        const lp_problem_t *original_problem);
+        const lp_problem_t *working_problem);
 
 #ifdef __cplusplus
 }

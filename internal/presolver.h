@@ -35,22 +35,22 @@ extern "C"
         char presolve_status;
     } cuhsdlp_presolve_info_t;
 
-    cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool verbose);
+    cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose);
 
-    cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *original_prob);
+    cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *working_problem);
     const char *get_presolve_status_str(int status);
 
     void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
                         cuhsdlp_result_t *reduced_result,
-                        const lp_problem_t *original_prob);
+                        const lp_problem_t *working_problem);
 
     void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
                                                  cuhsdlp_result_t *reduced_result,
-                                                 const lp_problem_t *original_prob);
+                                                 const lp_problem_t *working_problem);
 
     void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
                                                cuhsdlp_result_t *reduced_result,
-                                               const lp_problem_t *original_prob);
+                                               const lp_problem_t *working_problem);
 
     void cuhsdlp_presolve_info_free(cuhsdlp_presolve_info_t *info);
 

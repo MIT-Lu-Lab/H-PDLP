@@ -48,7 +48,7 @@ bool termination_has_solution(termination_reason_t reason)
 
 cuhsdlp_result_t *create_result_from_state(
     pdhg_solver_state_t *state,
-    const lp_problem_t *original_problem)
+    const lp_problem_t *working_problem)
 {
     cuhsdlp_result_t *results = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
 
@@ -112,9 +112,9 @@ cuhsdlp_result_t *create_result_from_state(
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     }
 
-    results->num_variables = original_problem->num_variables;
-    results->num_constraints = original_problem->num_constraints;
-    results->num_nonzeros = original_problem->constraint_matrix_num_nonzeros;
+    results->num_variables = working_problem->num_variables;
+    results->num_constraints = working_problem->num_constraints;
+    results->num_nonzeros = working_problem->constraint_matrix_num_nonzeros;
     results->total_count = state->control.total_count;
     results->rescaling_time_sec = state->rescaling_time_sec;
     results->cumulative_time_sec = state->control.cumulative_time_sec;
@@ -122,8 +122,8 @@ cuhsdlp_result_t *create_result_from_state(
     results->relative_primal_residual = state->metrics_h->relative_primal_residual;
     results->absolute_dual_residual = state->metrics_h->absolute_dual_residual;
     results->relative_dual_residual = state->metrics_h->relative_dual_residual;
-    results->primal_objective_value = state->objective_sign * state->metrics_h->primal_objective;
-    results->dual_objective_value = state->objective_sign * state->metrics_h->dual_objective;
+    results->primal_objective_value = state->metrics_h->primal_objective;
+    results->dual_objective_value = state->metrics_h->dual_objective;
     results->objective_gap = state->metrics_h->objective_gap;
     results->relative_objective_gap = state->metrics_h->relative_objective_gap;
     results->farkas_margin = state->control.certificate_margin;

@@ -42,20 +42,13 @@ const char *get_presolve_status_str(int status)
     return "UNKNOWN_STATUS";
 }
 
-static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob, const lp_problem_t *original_prob)
+static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob, const lp_problem_t *working_problem)
 {
     lp_problem_t *prob = (lp_problem_t *)safe_malloc(sizeof(lp_problem_t));
     prob->primal_start = NULL;
     prob->dual_start = NULL;
 
-    if (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        prob->objective_constant = -original_prob->objective_constant + reduced_prob->obj_offset;
-    }
-    else
-    {
-        prob->objective_constant = original_prob->objective_constant + reduced_prob->obj_offset;
-    }
+    prob->objective_constant = working_problem->objective_constant + reduced_prob->obj_offset;
     prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
     prob->objective_vector = reduced_prob->c;
     prob->constraint_lower_bound = reduced_prob->lhs;
@@ -74,9 +67,9 @@ static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob, con
     return prob;
 }
 
-cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool verbose)
+cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose)
 {
-    if (original_prob->primal_start || original_prob->dual_start)
+    if (working_problem->primal_start || working_problem->dual_start)
     {
         printf("Warning: Warm-starting is currently not supported when presolve is enabled.\n"
                "The provided initial solutions will be ignored.\n");
@@ -92,33 +85,19 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool v
     info->settings = default_settings();
     info->settings->verbose = false;
 
-    const double *presolve_objective = original_prob->objective_vector;
-    double *negated_objective = NULL;
-    if (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        negated_objective = (double *)safe_malloc(
-            (size_t)original_prob->num_variables * sizeof(double));
-        for (int i = 0; i < original_prob->num_variables; ++i)
-        {
-            negated_objective[i] = -original_prob->objective_vector[i];
-        }
-        presolve_objective = negated_objective;
-    }
-
     info->presolver = new_presolver(
-        original_prob->constraint_matrix_values,
-        original_prob->constraint_matrix_col_indices,
-        original_prob->constraint_matrix_row_pointers,
-        original_prob->num_constraints,
-        original_prob->num_variables,
-        original_prob->constraint_matrix_num_nonzeros,
-        original_prob->constraint_lower_bound,
-        original_prob->constraint_upper_bound,
-        original_prob->variable_lower_bound,
-        original_prob->variable_upper_bound,
-        presolve_objective,
+        working_problem->constraint_matrix_values,
+        working_problem->constraint_matrix_col_indices,
+        working_problem->constraint_matrix_row_pointers,
+        working_problem->num_constraints,
+        working_problem->num_variables,
+        working_problem->constraint_matrix_num_nonzeros,
+        working_problem->constraint_lower_bound,
+        working_problem->constraint_upper_bound,
+        working_problem->variable_lower_bound,
+        working_problem->variable_upper_bound,
+        working_problem->objective_vector,
         info->settings);
-    free(negated_objective);
 
     PresolveStatus status = run_presolver(info->presolver);
     info->presolve_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
@@ -143,7 +122,7 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *original_prob, bool v
     else
     {
         info->problem_solved_during_presolve = false;
-        info->reduced_problem = convert_pslp_to_cuhsdlp(info->presolver->reduced_prob, original_prob);
+        info->reduced_problem = convert_pslp_to_cuhsdlp(info->presolver->reduced_prob, working_problem);
     }
     return info;
 }
@@ -158,12 +137,12 @@ static void copy_presolve_stats(const cuhsdlp_presolve_info_t *info,
     result->presolve_time = info->presolve_time;
 }
 
-cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *original_prob)
+cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *working_problem)
 {
     cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
-    result->num_variables = original_prob->num_variables;
-    result->num_constraints = original_prob->num_constraints;
-    result->num_nonzeros = original_prob->constraint_matrix_num_nonzeros;
+    result->num_variables = working_problem->num_variables;
+    result->num_constraints = working_problem->num_constraints;
+    result->num_nonzeros = working_problem->constraint_matrix_num_nonzeros;
     copy_presolve_stats(info, result);
 
     if ((info->presolve_status & UNBNDORINFEAS) == UNBNDORINFEAS)
@@ -195,7 +174,7 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
     else if (info->presolver->reduced_prob->n == 0)
     {
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
-        pslp_postsolve(info, result, original_prob);
+        pslp_postsolve(info, result, working_problem);
         return result;
     }
     result->termination_reason = TERMINATION_REASON_UNSPECIFIED;
@@ -204,7 +183,7 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
 
 void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
                     cuhsdlp_result_t *result,
-                    const lp_problem_t *original_prob)
+                    const lp_problem_t *working_problem)
 {
     postsolve(info->presolver,
               result->primal_solution,
@@ -217,21 +196,21 @@ void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
     free(result->dual_solution);
     free(result->reduced_cost);
 
-    result->primal_solution = (double *)safe_malloc(original_prob->num_variables * sizeof(double));
-    result->dual_solution = (double *)safe_malloc(original_prob->num_constraints * sizeof(double));
-    result->reduced_cost = (double *)safe_malloc(original_prob->num_variables * sizeof(double));
+    result->primal_solution = (double *)safe_malloc(working_problem->num_variables * sizeof(double));
+    result->dual_solution = (double *)safe_malloc(working_problem->num_constraints * sizeof(double));
+    result->reduced_cost = (double *)safe_malloc(working_problem->num_variables * sizeof(double));
 
-    memcpy(result->primal_solution, info->presolver->sol->x, original_prob->num_variables * sizeof(double));
-    memcpy(result->dual_solution, info->presolver->sol->y, original_prob->num_constraints * sizeof(double));
-    memcpy(result->reduced_cost, info->presolver->sol->z, original_prob->num_variables * sizeof(double));
+    memcpy(result->primal_solution, info->presolver->sol->x, working_problem->num_variables * sizeof(double));
+    memcpy(result->dual_solution, info->presolver->sol->y, working_problem->num_constraints * sizeof(double));
+    memcpy(result->reduced_cost, info->presolver->sol->z, working_problem->num_variables * sizeof(double));
     if (info->presolver->reduced_prob->n == 0)
     {
         double obj = 0.0;
-        for (int i = 0; i < original_prob->num_variables; i++)
+        for (int i = 0; i < working_problem->num_variables; i++)
         {
-            obj += original_prob->objective_vector[i] * result->primal_solution[i];
+            obj += working_problem->objective_vector[i] * result->primal_solution[i];
         }
-        obj += original_prob->objective_constant;
+        obj += working_problem->objective_constant;
         result->primal_objective_value = obj;
         result->dual_objective_value = obj;
     }
@@ -260,10 +239,10 @@ static double compute_box_support(const double *direction,
 
 void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
                                              cuhsdlp_result_t *result,
-                                             const lp_problem_t *original_prob)
+                                             const lp_problem_t *working_problem)
 {
-    int num_constraints = original_prob->num_constraints;
-    int num_variables = original_prob->num_variables;
+    int num_constraints = working_problem->num_constraints;
+    int num_variables = working_problem->num_variables;
     size_t num_reduced_constraints = info->presolver->reduced_prob->m;
 
     double *farkas_dual = (double *)safe_malloc(num_reduced_constraints * sizeof(double));
@@ -279,9 +258,9 @@ void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info
         dual_ray[i] = -dual_ray[i];
     }
 
-    const int *row_pointers = original_prob->constraint_matrix_row_pointers;
-    const int *col_indices = original_prob->constraint_matrix_col_indices;
-    const double *values = original_prob->constraint_matrix_values;
+    const int *row_pointers = working_problem->constraint_matrix_row_pointers;
+    const int *col_indices = working_problem->constraint_matrix_col_indices;
+    const double *values = working_problem->constraint_matrix_values;
     double *reduced_cost_ray = (double *)safe_calloc(num_variables, sizeof(double));
     for (int i = 0; i < num_constraints; i++)
     {
@@ -292,19 +271,19 @@ void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info
     }
     for (int j = 0; j < num_variables; j++)
     {
-        double farkas_lower_bound = !isfinite(original_prob->variable_upper_bound[j]) ? 0.0 : -INFINITY;
-        double farkas_upper_bound = !isfinite(original_prob->variable_lower_bound[j]) ? 0.0 : INFINITY;
+        double farkas_lower_bound = !isfinite(working_problem->variable_upper_bound[j]) ? 0.0 : -INFINITY;
+        double farkas_upper_bound = !isfinite(working_problem->variable_lower_bound[j]) ? 0.0 : INFINITY;
         reduced_cost_ray[j] = fmax(farkas_lower_bound,
                                    fmin(-reduced_cost_ray[j], farkas_upper_bound));
     }
 
     double margin = compute_box_support(dual_ray,
-                                        original_prob->constraint_lower_bound,
-                                        original_prob->constraint_upper_bound,
+                                        working_problem->constraint_lower_bound,
+                                        working_problem->constraint_upper_bound,
                                         num_constraints)
                   + compute_box_support(reduced_cost_ray,
-                                        original_prob->variable_lower_bound,
-                                        original_prob->variable_upper_bound,
+                                        working_problem->variable_lower_bound,
+                                        working_problem->variable_upper_bound,
                                         num_variables);
     if (margin > 0.0)
     {
@@ -328,9 +307,9 @@ void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info
 
 void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
                                            cuhsdlp_result_t *result,
-                                           const lp_problem_t *original_prob)
+                                           const lp_problem_t *working_problem)
 {
-    int num_variables = original_prob->num_variables;
+    int num_variables = working_problem->num_variables;
 
     double *primal_ray = (double *)safe_malloc(num_variables * sizeof(double));
     postsolve_dual_infeas_ray(info->presolver, result->primal_solution, primal_ray);
@@ -338,11 +317,7 @@ void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
     double objective_dot_ray = 0.0;
     for (int j = 0; j < num_variables; j++)
     {
-        objective_dot_ray += original_prob->objective_vector[j] * primal_ray[j];
-    }
-    if (original_prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        objective_dot_ray = -objective_dot_ray;
+        objective_dot_ray += working_problem->objective_vector[j] * primal_ray[j];
     }
 
     double margin = -objective_dot_ray;

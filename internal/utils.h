@@ -71,7 +71,8 @@ extern "C"
         double *output);
 
     void filter_constraint_matrix_entries(
-        lp_problem_t *problem,
+        lp_problem_t *working_problem,
+        const lp_problem_t *original_problem,
         const pdhg_parameters_t *params);
 
     void compute_lp_problem_norms(

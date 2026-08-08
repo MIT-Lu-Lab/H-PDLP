@@ -27,7 +27,7 @@ extern "C"
 
     const char *termination_reason_to_string(termination_reason_t reason);
 
-    void print_initial_info(const pdhg_parameters_t *params, lp_problem_t *problem);
+    void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *problem);
 
     void print_iteration_header(bool verbose);
 

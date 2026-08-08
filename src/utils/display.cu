@@ -69,7 +69,7 @@ const char *termination_reason_to_string(termination_reason_t reason)
 
 void print_initial_info(
     const pdhg_parameters_t *params,
-    lp_problem_t *problem)
+    const lp_problem_t *problem)
 {
     pdhg_parameters_t default_params;
     set_default_parameters(&default_params);
@@ -218,8 +218,8 @@ void display_iteration_stats(
             is_restart ? 'R' : ' ',
             state->control.total_count,
             state->control.cumulative_time_sec,
-            state->metrics_h->primal_objective,
-            state->metrics_h->dual_objective,
+            state->objective_sign * state->metrics_h->primal_objective,
+            state->objective_sign * state->metrics_h->dual_objective,
             state->metrics_h->absolute_primal_residual,
             state->metrics_h->absolute_dual_residual,
             state->metrics_h->objective_gap,
