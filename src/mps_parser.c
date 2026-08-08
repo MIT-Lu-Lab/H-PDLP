@@ -549,7 +549,8 @@ lp_problem_t *read_mps_file(const char *filename)
 
             
         bool objsense_inline =
-            n_tokens == 2 && strcmp(tokens[0], "OBJSENSE") == 0 &&
+            n_tokens == 2 &&
+            (strcmp(tokens[0], "OBJSENSE") == 0 || strcmp(tokens[0], "OBJSENS") == 0) &&
             (token_has_prefix_ci(tokens[1], "MIN") ||
              token_has_prefix_ci(tokens[1], "MAX"));
         if (isalpha((unsigned char)tokens[0][0]) &&
@@ -566,7 +567,7 @@ lp_problem_t *read_mps_file(const char *filename)
                 next_section = SEC_RANGES;
             else if (strcmp(tokens[0], "BOUNDS") == 0)
                 next_section = SEC_BOUNDS;
-            else if (strcmp(tokens[0], "OBJSENSE") == 0)
+            else if (strcmp(tokens[0], "OBJSENSE") == 0 || strcmp(tokens[0], "OBJSENS") == 0)
                 next_section = SEC_OBJSENSE;
             else if (strcmp(tokens[0], "ENDATA") == 0)
             {
