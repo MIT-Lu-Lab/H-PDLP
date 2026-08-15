@@ -36,81 +36,45 @@ typedef cub::BlockReduce<newton_terms_t, THREADS_PER_BLOCK> ConeBlockReduce;
 
 __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
-    double *__restrict__ reflected_dual,
-    double *__restrict__ evaluation_dual,
-    const double *__restrict__ initial_dual,
+    double *__restrict__ extrapolated_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
     const double *primal_scale_current,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    const double *dual_scale_initial,
     double *dual_scale_current,
-    double *dual_scale_evaluation,
-    double *dual_scale_reflected,
-    bool is_major,
+    double *dual_scale_extrapolated,
     box_newton_state_t state,
     int max_iter,
     double tol);
 __global__ void update_dual_box_cone_projection_single_block_kernel(
     double *__restrict__ current_dual,
-    double *__restrict__ reflected_dual,
-    double *__restrict__ evaluation_dual,
-    const double *__restrict__ initial_dual,
+    double *__restrict__ extrapolated_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
     const double *primal_scale_current,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    const double *dual_scale_initial,
     double *dual_scale_current,
-    double *dual_scale_evaluation,
-    double *dual_scale_reflected,
-    bool is_major,
+    double *dual_scale_extrapolated,
     box_newton_state_t state,
     int max_iter,
     double tol);
 __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *__restrict__ current_primal,
-    double *__restrict__ reflected_primal,
-    double *__restrict__ evaluation_primal,
-    const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    double *initial_primal_scale,
     double *current_primal_scale,
-    double *evaluation_primal_scale,
-    double *reflected_primal_scale,
-    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol);
 __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *__restrict__ current_primal,
-    double *__restrict__ reflected_primal,
-    double *__restrict__ evaluation_primal,
-    const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    double *initial_primal_scale,
     double *current_primal_scale,
-    double *evaluation_primal_scale,
-    double *reflected_primal_scale,
-    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -175,20 +139,12 @@ void update_dual_box_cone_projection(
     const cone_parameters_t *cone_params,
     box_newton_state_t *dual_state,
     double *current_dual,
-    double *reflected_dual,
-    double *evaluation_dual,
-    const double *initial_dual,
+    double *extrapolated_dual,
     const double *gradient,
     const double *step_size_d,
     const double *primal_scale_current,
-    const int *base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    const double *dual_scale_initial,
     double *dual_scale_current,
-    double *dual_scale_evaluation,
-    double *dual_scale_reflected,
-    bool is_major,
+    double *dual_scale_extrapolated,
     cudaStream_t stream)
 {
     const box_newton_state_t state = *dual_state;
@@ -198,20 +154,12 @@ void update_dual_box_cone_projection(
         update_dual_box_cone_projection_single_block_kernel<<<
             1, THREADS_PER_BLOCK, 0, stream>>>(
             current_dual,
-            reflected_dual,
-            evaluation_dual,
-            initial_dual,
+            extrapolated_dual,
             gradient,
             step_size_d,
             primal_scale_current,
-            base_count_d,
-            k_offset,
-            reflection_coefficient,
-            dual_scale_initial,
             dual_scale_current,
-            dual_scale_evaluation,
-            dual_scale_reflected,
-            is_major,
+            dual_scale_extrapolated,
             state,
             cone_params->max_iter,
             cone_params->tol);
@@ -235,20 +183,12 @@ void update_dual_box_cone_projection(
         &config,
         update_dual_box_cone_projection_cooperative_kernel,
         current_dual,
-        reflected_dual,
-        evaluation_dual,
-        initial_dual,
+        extrapolated_dual,
         gradient,
         step_size_d,
         primal_scale_current,
-        base_count_d,
-        k_offset,
-        reflection_coefficient,
-        dual_scale_initial,
         dual_scale_current,
-        dual_scale_evaluation,
-        dual_scale_reflected,
-        is_major,
+        dual_scale_extrapolated,
         state,
         cone_params->max_iter,
         cone_params->tol));
@@ -258,22 +198,12 @@ void update_primal_box_cone_resolvent(
     const cone_parameters_t *cone_params,
     box_newton_state_t *primal_state,
     double *current_primal,
-    double *reflected_primal,
-    double *evaluation_primal,
-    const double *initial_primal,
     const double *gradient,
     const double *objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
-    const int *base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    double *initial_primal_scale,
     double *current_primal_scale,
-    double *evaluation_primal_scale,
-    double *reflected_primal_scale,
-    bool is_major,
     cudaStream_t stream)
 {
     const box_newton_state_t state = *primal_state;
@@ -283,22 +213,12 @@ void update_primal_box_cone_resolvent(
         update_primal_box_cone_resolvent_single_block_kernel<<<
             1, THREADS_PER_BLOCK, 0, stream>>>(
             current_primal,
-            reflected_primal,
-            evaluation_primal,
-            initial_primal,
             gradient,
             objective_d,
             step_size_d,
             step_size_homogeneous_d,
             homogeneous_dual_gradient,
-            base_count_d,
-            k_offset,
-            reflection_coefficient,
-            initial_primal_scale,
             current_primal_scale,
-            evaluation_primal_scale,
-            reflected_primal_scale,
-            is_major,
             state,
             cone_params->max_iter,
             cone_params->tol);
@@ -322,22 +242,12 @@ void update_primal_box_cone_resolvent(
         &config,
         update_primal_box_cone_resolvent_cooperative_kernel,
         current_primal,
-        reflected_primal,
-        evaluation_primal,
-        initial_primal,
         gradient,
         objective_d,
         step_size_d,
         step_size_homogeneous_d,
         homogeneous_dual_gradient,
-        base_count_d,
-        k_offset,
-        reflection_coefficient,
-        initial_primal_scale,
         current_primal_scale,
-        evaluation_primal_scale,
-        reflected_primal_scale,
-        is_major,
         state,
         cone_params->max_iter,
         cone_params->tol));
@@ -377,20 +287,12 @@ int compute_max_cooperative_primal_box_cone_blocks()
 
 __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
-    double *__restrict__ reflected_dual,
-    double *__restrict__ evaluation_dual,
-    const double *__restrict__ initial_dual,
+    double *__restrict__ extrapolated_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
     const double *primal_scale_current,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    const double *dual_scale_initial,
     double *dual_scale_current,
-    double *dual_scale_evaluation,
-    double *dual_scale_reflected,
-    bool is_major,
+    double *dual_scale_extrapolated,
     box_newton_state_t state,
     int max_iter,
     double tol)
@@ -399,7 +301,6 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
 
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
-    __shared__ double s_weight;
     __shared__ int s_converged;
 
     double scale = *state.scalar_d;
@@ -482,13 +383,6 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         }
     }
 
-    if (threadIdx.x == 0)
-    {
-        const int k = *base_count_d + k_offset;
-        s_weight = (double)k / (double)(k + 1);
-    }
-    __syncthreads();
-    const double weight = s_weight;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -501,57 +395,33 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
         const double projected =
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
-        if (is_major)
-            evaluation_dual[i] = projected;
-        const double reflected = 2.0 * projected - current;
-        reflected_dual[i] = reflected;
-        const double relaxed =
-            reflection_coefficient * reflected +
-            (1.0 - reflection_coefficient) * current;
-        current_dual[i] =
-            weight * relaxed + (1.0 - weight) * initial_dual[i];
+        extrapolated_dual[i] = 2.0 * projected - current;
+        current_dual[i] = projected;
     }
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
         *state.scalar_d = scale;
         const double projected = unprojected_scale + scale;
-        if (is_major)
-            *dual_scale_evaluation = projected;
-        const double current = *dual_scale_current;
-        const double reflected = 2.0 * projected - current;
-        const double relaxed =
-            reflection_coefficient * reflected +
-            (1.0 - reflection_coefficient) * current;
-        *dual_scale_current =
-            weight * relaxed + (1.0 - weight) * (*dual_scale_initial);
-        *dual_scale_reflected = reflected;
+        *dual_scale_extrapolated = 2.0 * projected - (*dual_scale_current);
+        *dual_scale_current = projected;
     }
 }
 
 __global__ void update_dual_box_cone_projection_single_block_kernel(
     double *__restrict__ current_dual,
-    double *__restrict__ reflected_dual,
-    double *__restrict__ evaluation_dual,
-    const double *__restrict__ initial_dual,
+    double *__restrict__ extrapolated_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
     const double *primal_scale_current,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    const double *dual_scale_initial,
     double *dual_scale_current,
-    double *dual_scale_evaluation,
-    double *dual_scale_reflected,
-    bool is_major,
+    double *dual_scale_extrapolated,
     box_newton_state_t state,
     int max_iter,
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
-    __shared__ double s_weight;
     __shared__ int s_converged;
 
     double scale = *state.scalar_d;
@@ -611,13 +481,6 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         }
     }
 
-    if (threadIdx.x == 0)
-    {
-        const int k = *base_count_d + k_offset;
-        s_weight = (double)k / (double)(k + 1);
-    }
-    __syncthreads();
-    const double weight = s_weight;
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double current = current_dual[i];
@@ -628,52 +491,27 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         const double box_upper = isfinite(upper) ? upper * scale : INFINITY;
         const double projected =
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
-        if (is_major)
-            evaluation_dual[i] = projected;
-        const double reflected = 2.0 * projected - current;
-        reflected_dual[i] = reflected;
-        const double relaxed =
-            reflection_coefficient * reflected +
-            (1.0 - reflection_coefficient) * current;
-        current_dual[i] =
-            weight * relaxed + (1.0 - weight) * initial_dual[i];
+        extrapolated_dual[i] = 2.0 * projected - current;
+        current_dual[i] = projected;
     }
 
     if (threadIdx.x == 0)
     {
         *state.scalar_d = scale;
         const double projected = unprojected_scale + scale;
-        if (is_major)
-            *dual_scale_evaluation = projected;
-        const double current = *dual_scale_current;
-        const double reflected = 2.0 * projected - current;
-        const double relaxed =
-            reflection_coefficient * reflected +
-            (1.0 - reflection_coefficient) * current;
-        *dual_scale_current =
-            weight * relaxed + (1.0 - weight) * (*dual_scale_initial);
-        *dual_scale_reflected = reflected;
+        *dual_scale_extrapolated = 2.0 * projected - (*dual_scale_current);
+        *dual_scale_current = projected;
     }
 }
 
 __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *__restrict__ current_primal,
-    double *__restrict__ reflected_primal,
-    double *__restrict__ evaluation_primal,
-    const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    double *initial_primal_scale,
     double *current_primal_scale,
-    double *evaluation_primal_scale,
-    double *reflected_primal_scale,
-    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol)
@@ -682,7 +520,6 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
 
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
-    __shared__ double s_weight;
     __shared__ int s_converged;
 
     const double primal_step = *step_size_d;
@@ -773,13 +610,6 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         }
     }
 
-    if (threadIdx.x == 0)
-    {
-        const int k = *base_count_d + k_offset;
-        s_weight = (double)k / (double)(k + 1);
-    }
-    __syncthreads();
-    const double weight = s_weight;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -798,64 +628,29 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
                 : INFINITY;
         const double projected = fmin(fmax(shifted, lower), upper);
 
-        const double reflected = 2.0 * projected - current_primal[i];
-        if (is_major)
-        {
-            evaluation_primal[i] = projected;
-            reflected_primal[i] = reflected;
-        }
-        const double relaxed =
-            reflection_coefficient * reflected +
-            (1.0 - reflection_coefficient) * current_primal[i];
-        current_primal[i] =
-            weight * relaxed + (1.0 - weight) * initial_primal[i];
+        current_primal[i] = projected;
     }
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        const double reflected_scale =
-            2.0 * primal_scale - (*current_primal_scale);
-        if (is_major)
-        {
-            *evaluation_primal_scale = primal_scale;
-            *reflected_primal_scale = reflected_scale;
-        }
-
-        const double relaxed_scale =
-            reflection_coefficient * reflected_scale +
-            (1.0 - reflection_coefficient) *
-                (*current_primal_scale);
-        *current_primal_scale =
-            weight * relaxed_scale +
-            (1.0 - weight) * (*initial_primal_scale);
+        *current_primal_scale = primal_scale;
     }
 }
 
 __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *__restrict__ current_primal,
-    double *__restrict__ reflected_primal,
-    double *__restrict__ evaluation_primal,
-    const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
     const double *step_size_d,
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
-    const int *__restrict__ base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    double *initial_primal_scale,
     double *current_primal_scale,
-    double *evaluation_primal_scale,
-    double *reflected_primal_scale,
-    bool is_major,
     box_newton_state_t state,
     int max_iter,
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
     __shared__ double s_scale;
-    __shared__ double s_weight;
     __shared__ int s_converged;
 
     const double primal_step = *step_size_d;
@@ -921,13 +716,6 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         }
     }
 
-    if (threadIdx.x == 0)
-    {
-        const int k = *base_count_d + k_offset;
-        s_weight = (double)k / (double)(k + 1);
-    }
-    __syncthreads();
-    const double weight = s_weight;
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double unprojected =
@@ -944,36 +732,12 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
                 : INFINITY;
         const double projected = fmin(fmax(shifted, lower), upper);
 
-        const double reflected = 2.0 * projected - current_primal[i];
-        if (is_major)
-        {
-            evaluation_primal[i] = projected;
-            reflected_primal[i] = reflected;
-        }
-        const double relaxed =
-            reflection_coefficient * reflected +
-            (1.0 - reflection_coefficient) * current_primal[i];
-        current_primal[i] =
-            weight * relaxed + (1.0 - weight) * initial_primal[i];
+        current_primal[i] = projected;
     }
 
     if (threadIdx.x == 0)
     {
-        const double reflected_scale =
-            2.0 * primal_scale - (*current_primal_scale);
-        if (is_major)
-        {
-            *evaluation_primal_scale = primal_scale;
-            *reflected_primal_scale = reflected_scale;
-        }
-
-        const double relaxed_scale =
-            reflection_coefficient * reflected_scale +
-            (1.0 - reflection_coefficient) *
-                (*current_primal_scale);
-        *current_primal_scale =
-            weight * relaxed_scale +
-            (1.0 - weight) * (*initial_primal_scale);
+        *current_primal_scale = primal_scale;
     }
 }
 

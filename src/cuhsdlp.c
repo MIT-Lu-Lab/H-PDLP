@@ -176,7 +176,6 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->presolve = true;
     params->verbose = true;
     params->optimality_norm = NORM_TYPE_L2;
-    params->reflection_coefficient = 1.0;
     params->termination_evaluation_frequency = 200;
 
     params->scaling_params.l_inf_ruiz_iterations = 10;
@@ -189,10 +188,6 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->power_iter_params.tol = 1e-4;
 
     params->step_size_params.step_size_factor = 0.998;
-    params->step_size_params.k_p = 0.97;
-    params->step_size_params.k_i = 0.05;
-    params->step_size_params.k_d = 0.0;
-    params->step_size_params.i_smooth = 0.3;
 
     params->cone_params.max_iter = 100;
     params->cone_params.tol = 1e-6;
@@ -203,10 +198,6 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->termination_criteria.eps_farkas_displacement = 1e-10;
     params->termination_criteria.time_sec_limit = 3600.0;
     params->termination_criteria.iteration_limit = INT32_MAX;
-
-    params->restart_params.artificial_restart_threshold = 0.36;
-    params->restart_params.sufficient_reduction_for_restart = 0.2;
-    params->restart_params.necessary_reduction_for_restart = 0.5;
 }
 
 cuhsdlp_result_t *solve_lp_problem(

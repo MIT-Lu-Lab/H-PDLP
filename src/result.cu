@@ -62,13 +62,13 @@ cuhsdlp_result_t *create_result_from_state(
 
         CUDA_CHECK(cudaMemcpyAsync(
             results->primal_solution,
-            state->pdhg_primal_solution_d,
+            state->current_primal_solution_d,
             state->var_bytes,
             cudaMemcpyDeviceToHost,
             state->stream_A));
         CUDA_CHECK(cudaMemcpyAsync(
             results->dual_solution,
-            state->pdhg_dual_solution_d,
+            state->current_dual_solution_d,
             state->con_bytes,
             cudaMemcpyDeviceToHost,
             state->stream_A));
@@ -87,7 +87,7 @@ cuhsdlp_result_t *create_result_from_state(
 
         CUDA_CHECK(cudaMemcpyAsync(
             results->dual_solution,
-            state->pdhg_dual_solution_d,
+            state->current_dual_solution_d,
             state->con_bytes,
             cudaMemcpyDeviceToHost,
             state->stream_A));
@@ -105,7 +105,7 @@ cuhsdlp_result_t *create_result_from_state(
 
         CUDA_CHECK(cudaMemcpyAsync(
             results->primal_solution,
-            state->pdhg_primal_solution_d,
+            state->current_primal_solution_d,
             state->var_bytes,
             cudaMemcpyDeviceToHost,
             state->stream_A));
@@ -130,7 +130,6 @@ cuhsdlp_result_t *create_result_from_state(
     results->farkas_residual = state->control.certificate_residual;
     results->termination_reason = state->control.termination_reason;
 
-    results->restart_count = state->control.restart_count;
     results->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
     results->final_step_size_primal = state->control.step_size_primal;
     results->final_step_size_dual = state->control.step_size_dual;
@@ -164,8 +163,8 @@ static void rescale_solution(pdhg_solver_state_t *state)
         THREADS_PER_BLOCK,
         0,
         state->stream_A>>>(
-        state->pdhg_primal_solution_d,
-        state->pdhg_dual_solution_d,
+        state->current_primal_solution_d,
+        state->current_dual_solution_d,
         state->pdhg_reduced_cost_d,
         state->variable_rescaling_d,
         state->constraint_rescaling_d,

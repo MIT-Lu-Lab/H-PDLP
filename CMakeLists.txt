@@ -132,7 +132,6 @@ set(CORE_SOURCES
     src/mps_parser.c
     src/presolver.c
     src/utils/matrix_formats.c
-    src/utils/pid_controller.c
     src/cone_projector.cu
     src/preconditioner.cu
     src/result.cu

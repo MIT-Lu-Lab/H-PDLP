@@ -36,7 +36,6 @@ extern "C"
         double objective_gap;
         double relative_objective_gap;
 
-        double current_primal_scale;
         double pdhg_primal_scale;
         double pdhg_dual_scale;
 

@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-**cuHSDLP** is a GPU-accelerated linear programming solver based on a Primal-Dual Hybrid Gradient (PDHG) method applied to a **Homogeneous Self-Dual (HSD) embedding** of the LP. The HSD formulation lets a single first-order loop detect optimality, primal infeasibility, and dual infeasibility simultaneously, while retaining the massive parallelism of PDHG on GPU. It combines a reflected Halpern-style update, adaptive restart, PID-controlled primal weight, and standard rescaling (Ruiz + Pock-Chambolle + bound-objective) to deliver robust convergence across a wide range of LP benchmarks.
+**cuHSDLP** is a GPU-accelerated linear programming solver based on a Primal-Dual Hybrid Gradient (PDHG) method applied to a **Homogeneous Self-Dual (HSD) embedding** of the LP. The HSD formulation lets a single first-order loop detect optimality, primal infeasibility, and dual infeasibility simultaneously, while retaining the massive parallelism of PDHG on GPU. This branch is a **plain PDHG baseline**: the iteration is vanilla Chambolle-Pock on the HSD embedding, with no Halpern anchoring, no reflection, no adaptive restart, no gauge control, and a fixed primal weight. Standard rescaling (Ruiz + Pock-Chambolle + bound-objective) and presolve are retained.
 
 cuHSDLP solves linear programs of the form
 ```math
@@ -117,7 +117,7 @@ The solver generates three text files in the specified `<output_directory>`. The
 └── INSTANCE_dual_solution.txt    # Dual solution vector
 ```
 
-The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and restart count.
+The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, and objective gap.
 
 ### C Interface
 The public C API is defined in the header files [`include/cuhsdlp.h`](include/cuhsdlp.h) and [`include/cuhsdlp_types.h`](include/cuhsdlp_types.h). The core entry points are:
@@ -135,7 +135,7 @@ void               cuhsdlp_result_free(cuhsdlp_result_t *result);
 void               lp_problem_free(lp_problem_t *prob);
 ```
 
-The matrix descriptor `matrix_desc_t` accepts CSR, CSC, COO, or dense input; warm-start values can be supplied through `set_start_values`. The result struct exposes primal/dual solutions, reduced costs, residuals, objective values, timing breakdown, restart count, and the final HSD homogeneous scale τ.
+The matrix descriptor `matrix_desc_t` accepts CSR, CSC, COO, or dense input; warm-start values can be supplied through `set_start_values`. The result struct exposes primal/dual solutions, reduced costs, residuals, objective values, timing breakdown, and the final HSD homogeneous scale τ.
 
 ## License
 cuHSDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.

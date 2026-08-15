@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "cone_projector.h"
 #include "cuhsdlp_types.h"
-#include "pid_controller.h"
 #include <cublas_v2.h>
 #include <curand.h>
 #include <cusparse.h>
@@ -32,8 +31,7 @@ enum PdhgReduction {
     PDHG_PRIMAL_NORM         = 0,
     PDHG_DUAL_NORM           = 1,
     PDHG_OBJECTIVE_DOT_X     = 2,
-    PDHG_OPERATOR_CROSS_TERM = 3,
-    PDHG_COUNT               = 4,
+    PDHG_COUNT               = 3,
 };
 
 typedef struct {
@@ -60,8 +58,6 @@ typedef struct {
     double step_size_homogeneous;
     double step_size_base;
     int total_count;
-    int inner_count;
-    int restart_count;
     clock_t start_time;
     double cumulative_time_sec;
     termination_reason_t termination_reason;
@@ -69,28 +65,18 @@ typedef struct {
     double certificate_residual;
     bool certificate_from_homogeneous;
 
-    int *inner_count_d;
     double *step_size_primal_d;
     double *step_size_dual_d;
     double *step_size_homogeneous_d;
 
     double primal_weight;
-    pid_state_t pid;
-    double *fixed_point_error_mp;
-    double initial_fixed_point_error;
-    double last_trial_fixed_point_error;
 } solver_control_t;
 
 enum HsdScalarSlot {
-    HSD_PRIMAL_SCALE_INITIAL             = 0,
-    HSD_PRIMAL_SCALE_CURRENT             = 1,
-    HSD_PRIMAL_SCALE_PDHG                = 2,
-    HSD_PRIMAL_SCALE_REFLECTED           = 3,
-    HSD_DUAL_SCALE_INITIAL   = 4,
-    HSD_DUAL_SCALE_CURRENT   = 5,
-    HSD_DUAL_SCALE_PDHG      = 6,
-    HSD_DUAL_SCALE_REFLECTED = 7,
-    HSD_SCALARS_COUNT             = 8,
+    HSD_PRIMAL_SCALE              = 0,
+    HSD_DUAL_SCALE                = 1,
+    HSD_DUAL_SCALE_EXTRAPOLATED   = 2,
+    HSD_SCALARS_COUNT             = 3,
 };
 
 typedef struct {
@@ -137,9 +123,8 @@ typedef struct {
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
     cusparseDnVecDescr_t spmv_current_primal_solution;
-    cusparseDnVecDescr_t spmv_reflected_dual_solution;
-    cusparseDnVecDescr_t spmv_pdhg_primal_solution;
-    cusparseDnVecDescr_t spmv_pdhg_dual_solution;
+    cusparseDnVecDescr_t spmv_current_dual_solution;
+    cusparseDnVecDescr_t spmv_extrapolated_dual_solution;
     cusparseDnVecDescr_t spmv_delta_primal_solution;
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
@@ -168,16 +153,13 @@ typedef struct {
 
     double *initial_primal_solution_d;
     double *current_primal_solution_d;
-    double *pdhg_primal_solution_d;
-    double *reflected_primal_solution_d;
     double *delta_primal_solution_d;
     double *primal_product_d;
     double *variable_reduction_entries_d;
 
     double *initial_dual_solution_d;
     double *current_dual_solution_d;
-    double *pdhg_dual_solution_d;
-    double *reflected_dual_solution_d;
+    double *extrapolated_dual_solution_d;
     double *delta_dual_solution_d;
     double *dual_product_d;
     double *constraint_reduction_entries_d;
@@ -189,15 +171,9 @@ typedef struct {
     double *primal_ray_d;
 
     double *hsd_scalars_d;
-    double *hsd_inverse_scale_d;
-    double *hsd_primal_scale_initial_d;
-    double *hsd_primal_scale_current_d;
-    double *hsd_primal_scale_pdhg_d;
-    double *hsd_primal_scale_reflected_d;
-    double *hsd_dual_scale_initial_d;
-    double *hsd_dual_scale_current_d;
-    double *hsd_dual_scale_pdhg_d;
-    double *hsd_dual_scale_reflected_d;
+    double *hsd_primal_scale_d;
+    double *hsd_dual_scale_d;
+    double *hsd_dual_scale_extrapolated_d;
 
     double *power_iteration_normalized_vector_d;
     double *power_iteration_vector_norm_scalar_d;
@@ -219,7 +195,6 @@ typedef struct {
     double *pdhg_primal_norm_d;
     double *pdhg_dual_norm_d;
     double *objective_dot_primal_d;
-    double *fixed_point_operator_cross_d;
 
     termination_reductions_t *termination_reductions_d;
 

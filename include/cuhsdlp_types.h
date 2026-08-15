@@ -87,10 +87,6 @@ extern "C"
     typedef struct
     {
         double step_size_factor;
-        double k_p;
-        double k_i;
-        double k_d;
-        double i_smooth;
     } step_size_parameters_t;
 
     typedef struct
@@ -98,13 +94,6 @@ extern "C"
         int max_iter;
         double tol;
     } cone_parameters_t;
-
-    typedef struct
-    {
-        double artificial_restart_threshold;
-        double sufficient_reduction_for_restart;
-        double necessary_reduction_for_restart;
-    } restart_parameters_t;
 
     typedef struct
     {
@@ -121,7 +110,6 @@ extern "C"
         bool presolve;
         bool verbose;
         norm_type_t optimality_norm;
-        double reflection_coefficient;
         int termination_evaluation_frequency;
 
         scaling_parameters_t scaling_params;
@@ -129,7 +117,6 @@ extern "C"
         step_size_parameters_t step_size_params;
         cone_parameters_t cone_params;
         termination_criteria_t termination_criteria;
-        restart_parameters_t restart_params;
     } pdhg_parameters_t;
 
     typedef struct
@@ -164,7 +151,6 @@ extern "C"
         double farkas_residual;
         termination_reason_t termination_reason;
 
-        int restart_count;
         double homogeneous_scale;
         double final_step_size_primal;
         double final_step_size_dual;

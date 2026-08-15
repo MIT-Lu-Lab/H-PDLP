@@ -151,7 +151,6 @@ void save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
     fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
     fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
     fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
-    fprintf(outfile, "Restarts: %d\n", result->restart_count);
     fprintf(outfile, "Rows: %d\n", result->num_constraints);
     fprintf(outfile, "Columns: %d\n", result->num_variables);
     fprintf(outfile, "Nonzeros: %d\n", result->num_nonzeros);

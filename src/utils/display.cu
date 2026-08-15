@@ -204,18 +204,16 @@ int get_print_frequency(int iter)
 
 void display_iteration_stats(
     const pdhg_solver_state_t *state,
-    bool verbose,
-    bool is_restart)
+    bool verbose)
 {
     if (!verbose)
     {
         return;
     }
-    if (is_restart || state->control.total_count % get_print_frequency(state->control.total_count) == 0)
+    if (state->control.total_count % get_print_frequency(state->control.total_count) == 0)
     {
         printf(
-            "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %.1e %.1e %.1e\n",
-            is_restart ? 'R' : ' ',
+            " %6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %.1e %.1e %.1e\n",
             state->control.total_count,
             state->control.cumulative_time_sec,
             state->objective_sign * state->metrics_h->primal_objective,
@@ -226,7 +224,7 @@ void display_iteration_stats(
             state->metrics_h->relative_primal_residual,
             state->metrics_h->relative_dual_residual,
             state->metrics_h->relative_objective_gap,
-            state->metrics_h->current_primal_scale,
+            state->metrics_h->pdhg_primal_scale,
             state->metrics_h->normalized_homogeneous_gap,
             state->metrics_h->normalized_homogeneous_ratio,
             state->control.step_size_primal,

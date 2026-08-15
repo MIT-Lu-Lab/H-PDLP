@@ -37,7 +37,7 @@ __global__ void compute_residual_kernel(
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ primal_sol,
-    const double *primal_scale_pdhg,
+    const double *primal_scale_d,
     double *__restrict__ primal_infeasibility_reduced_cost,
     double *__restrict__ primal_infeasibility_stationarity_res,
     double *__restrict__ constraint_recession_res,
@@ -87,9 +87,8 @@ __global__ void compute_termination_metrics_kernel(
     const double *__restrict__ dual_norm,
     const double *__restrict__ objective_dot_primal,
     const termination_reductions_t *__restrict__ reductions,
-    const double *__restrict__ primal_scale_current,
-    const double *__restrict__ primal_scale_pdhg,
-    const double *__restrict__ dual_scale_pdhg,
+    const double *__restrict__ primal_scale_d,
+    const double *__restrict__ dual_scale_d,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
@@ -146,14 +145,14 @@ void compute_termination_metrics(
     termination_reductions_t *reductions_d = state->termination_reductions_d;
 
     compute_matrix_products(state,
-                            state->spmv_pdhg_primal_solution,
-                            state->spmv_pdhg_dual_solution);
+                            state->spmv_current_primal_solution,
+                            state->spmv_current_dual_solution);
     compute_residual_vectors(state);
     compute_residual_norms(state, params);
     compute_objective_and_support_terms(
         state,
-        state->pdhg_primal_solution_d,
-        state->pdhg_dual_solution_d,
+        state->current_primal_solution_d,
+        state->current_dual_solution_d,
         state->pdhg_reduced_cost_d,
         1.0,
         state->objective_dot_primal_d,
@@ -168,9 +167,8 @@ void compute_termination_metrics(
         state->pdhg_dual_norm_d,
         state->objective_dot_primal_d,
         reductions_d,
-        state->hsd_primal_scale_current_d,
-        state->hsd_primal_scale_pdhg_d,
-        state->hsd_dual_scale_pdhg_d,
+        state->hsd_primal_scale_d,
+        state->hsd_dual_scale_d,
         state->constraint_bound_rescaling,
         state->objective_vector_rescaling,
         state->original_bound_norm,
@@ -227,14 +225,14 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
         state->constraint_upper_bound_d,
         state->dual_residual_d,
         state->dual_product_d,
-        state->pdhg_dual_solution_d,
+        state->current_dual_solution_d,
         state->objective_vector_d,
         state->constraint_rescaling_d,
         state->variable_rescaling_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        state->pdhg_primal_solution_d,
-        state->hsd_primal_scale_pdhg_d,
+        state->current_primal_solution_d,
+        state->hsd_primal_scale_d,
         state->primal_infeasibility_reduced_cost_d,
         state->primal_infeasibility_stationarity_residual_d,
         state->constraint_recession_residual_d,
@@ -260,9 +258,9 @@ static void compute_residual_norms(
                               state->pdhg_primal_norm_d);
         reduce_device_abs_max(state, state->dual_residual_d, state->num_variables,
                               state->pdhg_dual_norm_d);
-        reduce_device_abs_max(state, state->pdhg_primal_solution_d, state->num_variables,
+        reduce_device_abs_max(state, state->current_primal_solution_d, state->num_variables,
                               &state->metrics_d->primal_solution_norm);
-        reduce_device_abs_max(state, state->pdhg_dual_solution_d, state->num_constraints,
+        reduce_device_abs_max(state, state->current_dual_solution_d, state->num_constraints,
                               &reductions_d->dual_solution_norm);
     }
     else
@@ -277,11 +275,11 @@ static void compute_residual_norms(
             state->pdhg_dual_norm_d));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_variables,
-            state->pdhg_primal_solution_d, 1,
+            state->current_primal_solution_d, 1,
             &state->metrics_d->primal_solution_norm));
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_constraints,
-            state->pdhg_dual_solution_d, 1,
+            state->current_dual_solution_d, 1,
             &reductions_d->dual_solution_norm));
     }
 
@@ -414,10 +412,10 @@ static void compute_projected_displacement(pdhg_solver_state_t *state)
         0,
         state->stream_A>>>(
         state->initial_primal_solution_d,
-        state->pdhg_primal_solution_d,
+        state->current_primal_solution_d,
         state->delta_primal_solution_d,
         state->initial_dual_solution_d,
-        state->pdhg_dual_solution_d,
+        state->current_dual_solution_d,
         state->delta_dual_solution_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
@@ -583,7 +581,7 @@ static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state)
 {
     install_primal_infeasibility_ray_kernel<<<
         state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->pdhg_dual_solution_d,
+        state->current_dual_solution_d,
         state->pdhg_reduced_cost_d,
         state->delta_dual_solution_d,
         state->dual_product_d,
@@ -597,7 +595,7 @@ static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state)
 static void prepare_dual_infeasibility_ray_result(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaMemcpyAsync(
-        state->pdhg_primal_solution_d,
+        state->current_primal_solution_d,
         state->delta_primal_solution_d,
         state->var_bytes,
         cudaMemcpyDeviceToDevice,
@@ -618,7 +616,7 @@ __global__ void compute_residual_kernel(
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ primal_sol,
-    const double *primal_scale_pdhg,
+    const double *primal_scale_d,
     double *__restrict__ primal_infeasibility_reduced_cost,
     double *__restrict__ primal_infeasibility_stationarity_res,
     double *__restrict__ constraint_recession_res,
@@ -631,7 +629,7 @@ __global__ void compute_residual_kernel(
     int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
-    double primal_scale = *primal_scale_pdhg;
+    double primal_scale = *primal_scale_d;
     double inverse_primal_scale =
         (fabs(primal_scale) > 1e-50)
             ? 1.0 / primal_scale
@@ -809,18 +807,17 @@ __global__ void compute_termination_metrics_kernel(
     const double *__restrict__ dual_norm,
     const double *__restrict__ objective_dot_primal,
     const termination_reductions_t *__restrict__ reductions,
-    const double *__restrict__ primal_scale_current,
-    const double *__restrict__ primal_scale_pdhg,
-    const double *__restrict__ dual_scale_pdhg,
+    const double *__restrict__ primal_scale_d,
+    const double *__restrict__ dual_scale_d,
     double constraint_bound_rescaling,
     double objective_vector_rescaling,
     double original_bound_norm,
     double original_objective_norm,
     double objective_constant)
 {
-    double primal_scale = *primal_scale_pdhg;
+    double primal_scale = *primal_scale_d;
     double inv_primal_scale = (fabs(primal_scale) > 1e-50) ? 1.0 / primal_scale : 0.0;
-    double pdhg_dual_scale = *dual_scale_pdhg;
+    double pdhg_dual_scale = *dual_scale_d;
     double absolute_primal_residual = (*primal_norm) / constraint_bound_rescaling;
     double absolute_dual_residual = (*dual_norm) / objective_vector_rescaling;
     double objective_dot_primal_value = *objective_dot_primal;
@@ -846,7 +843,6 @@ __global__ void compute_termination_metrics_kernel(
     metrics_d->dual_objective   = dual_objective_value;
     metrics_d->objective_gap    = objective_gap;
     metrics_d->relative_objective_gap = relative_objective_gap;
-    metrics_d->current_primal_scale   = *primal_scale_current;
     metrics_d->pdhg_primal_scale      = primal_scale;
     metrics_d->pdhg_dual_scale = pdhg_dual_scale;
 
