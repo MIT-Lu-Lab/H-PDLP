@@ -76,7 +76,7 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 | :--- | :--- | :--- | :--- |
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
 | `-v`, `--verbose` | `flag` | Enable verbose logging. | `false` |
-| `--active_set_trace` | `flag` | Write per-iteration active-set flip counts to `INSTANCE_active_set_trace.csv`. | `false` |
+| `--basis_trace` | `flag` | Write one row per phase change (iteration, primal/dual basis changes) to `INSTANCE_basis_trace.csv`. | `false` |
 
 **Preprocessing / Scaling**
 
@@ -118,9 +118,7 @@ The solver generates three text files in the specified `<output_directory>`. The
 └── INSTANCE_dual_solution.txt    # Dual solution vector
 ```
 
-The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and active-set statistics (total primal/dual label flips, number of phase changes, iteration of the last change).
-
-**Active-set tracking.** Every iteration, each primal coordinate is labelled by which branch of the box-cone projection it took (at lower bound / interior / at upper bound), and each dual coordinate likewise (constraint at lower bound / slack / at upper bound). A *flip* is a coordinate whose label differs from the previous iteration; a *phase* is a maximal run of iterations with no flips, during which the PDHG update is a fixed affine map. The verbose iteration log shows the cumulative primal and dual flip counts and the current phase index. With `--active_set_trace`, `INSTANCE_active_set_trace.csv` records `iteration,primal_flips,dual_flips` for every iteration.
+The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and basis statistics. Basis changes and phases follow the PDHG-basis classification of Liu & Lu (arXiv:2409.14715).
 
 ### C Interface
 The public C API is defined in the header files [`include/cuhsdlp.h`](include/cuhsdlp.h) and [`include/cuhsdlp_types.h`](include/cuhsdlp_types.h). The core entry points are:

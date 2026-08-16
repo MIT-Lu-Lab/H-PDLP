@@ -111,7 +111,7 @@ void cuhsdlp_result_free(cuhsdlp_result_t *results)
     free(results->primal_solution);
     free(results->dual_solution);
     free(results->reduced_cost);
-    free(results->active_set_trace);
+    free(results->basis_trace);
     free(results);
 }
 

@@ -121,9 +121,10 @@ extern "C"
 
     typedef struct
     {
+        int iteration;
         int primal;
         int dual;
-    } cuhsdlp_active_set_flips_t;
+    } cuhsdlp_basis_change_t;
 
     typedef struct
     {
@@ -162,11 +163,11 @@ extern "C"
         double final_step_size_dual;
         double final_step_size_homogeneous;
 
-        int primal_active_set_flips;
-        int dual_active_set_flips;
+        int primal_basis_changes;
+        int dual_basis_changes;
         int phase_changes;
         int last_phase_change;
-        cuhsdlp_active_set_flips_t *active_set_trace;
+        cuhsdlp_basis_change_t *basis_trace;
     } cuhsdlp_result_t;
 
     typedef enum

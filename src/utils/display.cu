@@ -179,7 +179,7 @@ void print_iteration_header(bool verbose)
            "  absolute residuals   ",
            "  relative residuals   ",
            "          hsd          ",
-           "      active set       ");
+           "         basis         ");
     printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s %s %s\n",
            "  iter",
            "  time ",
@@ -194,8 +194,8 @@ void print_iteration_header(bool verbose)
            " scale ",
            "  gap  ",
            " ratio ",
-           " x flip",
-           " y flip",
+           " x chg ",
+           " y chg ",
            " phase ");
     printf("------------------------------------------------------------"
            "--------------------------------------------------------------------------------\n");
@@ -239,8 +239,8 @@ void display_iteration_stats(
             state->metrics_h->pdhg_primal_scale,
             state->metrics_h->normalized_homogeneous_gap,
             state->metrics_h->normalized_homogeneous_ratio,
-            state->control.primal_active_set_flips,
-            state->control.dual_active_set_flips,
+            state->control.last_phase_change_primal,
+            state->control.last_phase_change_dual,
             state->control.phase_changes);
     }
 }

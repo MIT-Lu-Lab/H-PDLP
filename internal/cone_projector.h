@@ -31,7 +31,7 @@ typedef struct {
     double function_value;
 } newton_terms_t;
 
-enum { ACTIVE_SET_LABEL_UNSET = 127 };
+enum { BASIS_LABEL_UNSET = 127 };
 
 typedef struct {
     const double *lower_bound_d;
@@ -41,9 +41,10 @@ typedef struct {
     int num_blocks_newton;
     double *scalar_d;
     newton_terms_t *newton_partials_d;
-    signed char *active_set_labels_d;
-    int *active_set_flip_partials_d;
-    int *active_set_flips_d;
+    signed char *projection_labels_d;
+    signed char *basis_labels_d;
+    int *basis_change_partials_d;
+    int *basis_changes_d;
 } box_newton_state_t;
 
 void update_dual_box_cone_projection(
@@ -72,7 +73,7 @@ void update_primal_box_cone_resolvent(
     int window_step,
     cudaStream_t stream);
 
-void reduce_active_set_flips(
+void reduce_basis_changes(
     const box_newton_state_t *cone_state,
     int num_steps,
     cudaStream_t stream);

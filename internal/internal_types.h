@@ -71,10 +71,12 @@ typedef struct {
 
     double primal_weight;
 
-    int primal_active_set_flips;
-    int dual_active_set_flips;
+    int primal_basis_changes;
+    int dual_basis_changes;
     int phase_changes;
     int last_phase_change;
+    int last_phase_change_primal;
+    int last_phase_change_dual;
 } solver_control_t;
 
 enum HsdScalarSlot {
@@ -193,9 +195,9 @@ typedef struct {
 
     box_newton_state_t dual_box_cone_state;
     box_newton_state_t primal_box_cone_state;
-    int *active_set_flips_h;
-    cuhsdlp_active_set_flips_t *active_set_trace_h;
-    int active_set_trace_capacity;
+    int *basis_changes_h;
+    cuhsdlp_basis_change_t *basis_trace_h;
+    int basis_trace_capacity;
 
     solver_control_t control;
 

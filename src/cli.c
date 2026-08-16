@@ -124,22 +124,23 @@ void save_solution(const double *data, int size, const char *output_dir,
     fclose(outfile);
 }
 
-void save_active_set_trace(const cuhsdlp_result_t *result, const char *output_dir,
+void save_basis_trace(const cuhsdlp_result_t *result, const char *output_dir,
                            const char *instance_name)
 {
-    if (result->active_set_trace == NULL)
+    if (result->basis_trace == NULL)
         return;
 
-    FILE *outfile = open_output_file(output_dir, instance_name, "_active_set_trace.csv",
-                                     "Error opening active-set trace file");
+    FILE *outfile = open_output_file(output_dir, instance_name, "_basis_trace.csv",
+                                     "Error opening basis trace file");
     if (outfile == NULL)
         return;
 
-    fprintf(outfile, "iteration,primal_flips,dual_flips\n");
-    for (int k = 0; k < result->total_count; ++k)
-        fprintf(outfile, "%d,%d,%d\n", k + 1,
-                result->active_set_trace[k].primal,
-                result->active_set_trace[k].dual);
+    fprintf(outfile, "iteration,primal_changes,dual_changes\n");
+    for (int k = 0; k < result->phase_changes; ++k)
+        fprintf(outfile, "%d,%d,%d\n",
+                result->basis_trace[k].iteration,
+                result->basis_trace[k].primal,
+                result->basis_trace[k].dual);
 
     fclose(outfile);
 }
@@ -171,8 +172,8 @@ void save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
     fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
     fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
     fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
-    fprintf(outfile, "Primal Active-Set Flips: %d\n", result->primal_active_set_flips);
-    fprintf(outfile, "Dual Active-Set Flips: %d\n", result->dual_active_set_flips);
+    fprintf(outfile, "Primal Basis Changes: %d\n", result->primal_basis_changes);
+    fprintf(outfile, "Dual Basis Changes: %d\n", result->dual_basis_changes);
     fprintf(outfile, "Phase Changes: %d\n", result->phase_changes);
     fprintf(outfile, "Last Phase Change: %d\n", result->last_phase_change);
     fprintf(outfile, "Rows: %d\n", result->num_constraints);
@@ -214,7 +215,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
     fprintf(stderr, "\n  Output:\n");
     fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: false).\n");
-    fprintf(stderr, "      --active_set_trace                Write per-iteration active-set flip counts to <name>_active_set_trace.csv.\n");
+    fprintf(stderr, "      --basis_trace                     Write one row per phase change to <name>_basis_trace.csv.\n");
 }
 
 int main(int argc, char *argv[])
@@ -242,11 +243,11 @@ int main(int argc, char *argv[])
         {"eps_farkas_displacement", required_argument, 0, 1016},
         {"eval_freq", required_argument, 0, 1017},
         {"opt_norm", required_argument, 0, 1018},
-        {"active_set_trace", no_argument, 0, 1020},
+        {"basis_trace", no_argument, 0, 1020},
         {"verbose", no_argument, 0, 'v'},
         {0, 0, 0, 0}};
 
-    bool write_active_set_trace = false;
+    bool write_basis_trace = false;
     int opt;
     while ((opt = getopt_long(argc, argv, "hv", long_options, NULL)) != -1)
     {
@@ -352,7 +353,7 @@ int main(int argc, char *argv[])
         }
         break;
         case 1020:
-            write_active_set_trace = true;
+            write_basis_trace = true;
             break;
         case '?':
             return 1;
@@ -399,8 +400,8 @@ int main(int argc, char *argv[])
         if (result->dual_solution)
             save_solution(result->dual_solution, problem->num_constraints, output_dir,
                           instance_name, "_dual_solution.txt");
-        if (write_active_set_trace)
-            save_active_set_trace(result, output_dir, instance_name);
+        if (write_basis_trace)
+            save_basis_trace(result, output_dir, instance_name);
         cuhsdlp_result_free(result);
     }
 
