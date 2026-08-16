@@ -118,7 +118,7 @@ The solver generates three text files in the specified `<output_directory>`. The
 └── INSTANCE_dual_solution.txt    # Dual solution vector
 ```
 
-The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and basis statistics. The basis is the PDHG basis of Liu & Lu (arXiv:2409.14715) in the sense their Theorem 7 relies on: the branch taken by each cone projection, which differs from their Definition 3 only at single-step boundary grazes.
+The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and basis statistics. The HSD basis is the joint projection-branch signature of the primal and dual cone projectors (including the homogeneous scalars); it is the HSD operator-region analogue of the PDHG basis of Liu & Lu (arXiv:2409.14715), and within a phase the PDHG update is a fixed affine map.
 
 ### C Interface
 The public C API is defined in the header files [`include/cuhsdlp.h`](include/cuhsdlp.h) and [`include/cuhsdlp_types.h`](include/cuhsdlp_types.h). The core entry points are:
