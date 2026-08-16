@@ -457,21 +457,18 @@ static void record_step_stats(
 
     for (int k = 0; k < steps_per_window; ++k)
     {
-        const int iteration = state->control.total_count + k + 1;
         if (primal_stats[k].basis_changes + dual_stats[k].basis_changes > 0)
         {
-            append_basis_change(state, iteration,
+            append_basis_change(state, state->control.total_count + k + 1,
                                 primal_stats[k].basis_changes,
                                 dual_stats[k].basis_changes);
-        }
-        if (iterate_trace_file != NULL)
-        {
-            write_iterate_row(iterate_trace_file, iteration, state->control.phase_changes,
-                              &primal_stats[k], &dual_stats[k]);
         }
     }
     if (iterate_trace_file != NULL)
     {
+        const int last = steps_per_window - 1;
+        write_iterate_row(iterate_trace_file, state->control.total_count + steps_per_window,
+                          state->control.phase_changes, &primal_stats[last], &dual_stats[last]);
         fflush(iterate_trace_file);
     }
 }
@@ -510,14 +507,11 @@ static void write_iterate_row(
     const cone_step_stats_t *primal_stats,
     const cone_step_stats_t *dual_stats)
 {
-    const double primal_second_delta_norm =
-        iteration > 1 ? sqrt(primal_stats->second_delta_norm_squared) : NAN;
-    const double dual_second_delta_norm =
-        iteration > 1 ? sqrt(dual_stats->second_delta_norm_squared) : NAN;
     fprintf(iterate_trace_file, "%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
             iteration, phase,
             primal_stats->homogeneous_scale, sqrt(primal_stats->norm_squared),
             dual_stats->homogeneous_scale, sqrt(dual_stats->norm_squared),
             sqrt(primal_stats->delta_norm_squared), sqrt(dual_stats->delta_norm_squared),
-            primal_second_delta_norm, dual_second_delta_norm);
+            sqrt(primal_stats->second_delta_norm_squared),
+            sqrt(dual_stats->second_delta_norm_squared));
 }

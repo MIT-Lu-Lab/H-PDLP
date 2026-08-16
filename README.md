@@ -77,7 +77,7 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
 | `-v`, `--verbose` | `flag` | Enable verbose logging. | `false` |
 | `--basis_trace` | `flag` | Write one row per phase change (iteration, primal/dual basis changes) to `INSTANCE_basis_trace.csv`. | `false` |
-| `--iterate_trace` | `flag` | Stream per-iteration homogeneous scales `tau`/`alpha`, `x`/`y` norms and first/second differences (rescaled coordinates, no gauge) to `INSTANCE_iterate_trace.csv`, flushed every evaluation window. | `false` |
+| `--iterate_trace` | `flag` | Stream homogeneous scales `tau`/`alpha`, `x`/`y` norms and per-step first/second differences (rescaled coordinates, no gauge) to `INSTANCE_iterate_trace.csv`, one row per evaluation window (`--eval_freq`). | `false` |
 
 **Preprocessing / Scaling**
 
@@ -118,7 +118,7 @@ The solver generates three text files in the specified `<output_directory>`, plu
 ├── INSTANCE_primal_solution.txt  # Primal solution vector
 ├── INSTANCE_dual_solution.txt    # Dual solution vector
 ├── INSTANCE_basis_trace.csv      # (--basis_trace) one row per phase change
-└── INSTANCE_iterate_trace.csv    # (--iterate_trace) one row per iteration
+└── INSTANCE_iterate_trace.csv    # (--iterate_trace) one row per evaluation window
 ```
 
 The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and basis statistics. The HSD basis is the joint projection-branch signature of the primal and dual cone projectors (including the homogeneous scalars); it is the HSD operator-region analogue of the PDHG basis of Liu & Lu (arXiv:2409.14715), and within a phase the PDHG update is a fixed linear map.

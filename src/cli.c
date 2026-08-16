@@ -216,7 +216,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "\n  Output:\n");
     fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: false).\n");
     fprintf(stderr, "      --basis_trace                     Write one row per phase change to <name>_basis_trace.csv.\n");
-    fprintf(stderr, "      --iterate_trace                   Stream per-iteration tau, alpha, norms and differences to <name>_iterate_trace.csv.\n");
+    fprintf(stderr, "      --iterate_trace                   Stream tau, alpha, norms and differences to <name>_iterate_trace.csv once per evaluation window.\n");
 }
 
 int main(int argc, char *argv[])
