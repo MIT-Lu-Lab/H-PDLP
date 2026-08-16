@@ -32,8 +32,20 @@ struct SumNewtonTerms {
     }
 };
 
+struct SumStepStats {
+    __device__ __forceinline__ cone_step_stats_t operator()(
+        const cone_step_stats_t &a, const cone_step_stats_t &b) const
+    {
+        return cone_step_stats_t{a.basis_changes + b.basis_changes,
+                                 a.norm_squared + b.norm_squared,
+                                 a.delta_norm_squared + b.delta_norm_squared,
+                                 a.second_delta_norm_squared + b.second_delta_norm_squared,
+                                 a.homogeneous_scale + b.homogeneous_scale};
+    }
+};
+
 typedef cub::BlockReduce<newton_terms_t, THREADS_PER_BLOCK> ConeBlockReduce;
-typedef cub::BlockReduce<int, THREADS_PER_BLOCK> IntBlockReduce;
+typedef cub::BlockReduce<cone_step_stats_t, THREADS_PER_BLOCK> StepStatsBlockReduce;
 
 __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
@@ -87,11 +99,18 @@ __device__ __forceinline__ int projection_label(
     double value, double box_lower, double box_upper);
 __device__ __forceinline__ int update_basis_label(
     const box_newton_state_t &state, int i, int label);
-__device__ __forceinline__ void store_basis_change_partial(
-    IntBlockReduce::TempStorage &temp,
+__device__ __forceinline__ void accumulate_step_stats(
+    const box_newton_state_t &state,
+    int i,
+    int label,
+    double current,
+    double projected,
+    cone_step_stats_t &thread_stats);
+__device__ __forceinline__ void store_step_stats_partial(
+    StepStatsBlockReduce::TempStorage &temp,
     const box_newton_state_t &state,
     int window_step,
-    int thread_changes);
+    const cone_step_stats_t &thread_stats);
 __device__ __forceinline__ double select_active_dual_bound(
     double vi, double l, double u, double scale);
 __device__ __forceinline__ void evaluate_dual_box_cone_newton_terms(
@@ -273,34 +292,35 @@ void update_primal_box_cone_resolvent(
         cone_params->tol));
 }
 
-__global__ void sum_basis_change_partials_kernel(
-    const int *__restrict__ partials,
+__global__ void sum_step_stats_partials_kernel(
+    const cone_step_stats_t *__restrict__ partials,
     int num_blocks,
-    int *__restrict__ changes)
+    cone_step_stats_t *__restrict__ stats)
 {
-    __shared__ IntBlockReduce::TempStorage temp;
-    const int *row = partials + (size_t)blockIdx.x * num_blocks;
-    int thread_sum = 0;
+    __shared__ StepStatsBlockReduce::TempStorage temp;
+    const cone_step_stats_t *row = partials + (size_t)blockIdx.x * num_blocks;
+    cone_step_stats_t thread_sum = {0, 0.0, 0.0, 0.0, 0.0};
     for (int b = threadIdx.x; b < num_blocks; b += blockDim.x)
     {
-        thread_sum += row[b];
+        thread_sum = SumStepStats{}(thread_sum, row[b]);
     }
-    const int total = IntBlockReduce(temp).Sum(thread_sum);
+    const cone_step_stats_t total =
+        StepStatsBlockReduce(temp).Reduce(thread_sum, SumStepStats{});
     if (threadIdx.x == 0)
     {
-        changes[blockIdx.x] = total;
+        stats[blockIdx.x] = total;
     }
 }
 
-void reduce_basis_changes(
+void reduce_step_stats(
     const box_newton_state_t *cone_state,
     int num_steps,
     cudaStream_t stream)
 {
-    sum_basis_change_partials_kernel<<<num_steps, THREADS_PER_BLOCK, 0, stream>>>(
-        cone_state->basis_change_partials_d,
+    sum_step_stats_partials_kernel<<<num_steps, THREADS_PER_BLOCK, 0, stream>>>(
+        cone_state->step_stats_partials_d,
         cone_state->num_blocks_newton,
-        cone_state->basis_changes_d);
+        cone_state->step_stats_d);
     CUDA_CHECK(cudaGetLastError());
 }
 
@@ -352,7 +372,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     cg::grid_group grid = cg::this_grid();
 
     __shared__ ConeBlockReduce::TempStorage temp;
-    __shared__ IntBlockReduce::TempStorage basis_temp;
+    __shared__ StepStatsBlockReduce::TempStorage stats_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -436,7 +456,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         }
     }
 
-    int thread_changes = 0;
+    cone_step_stats_t thread_stats = {0, 0.0, 0.0, 0.0, 0.0};
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -451,14 +471,17 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         extrapolated_dual[i] = 2.0 * projected - current;
         current_dual[i] = projected;
-        thread_changes += update_basis_label(
-            state, i, projection_label(-unprojected, box_lower, box_upper));
+        accumulate_step_stats(
+            state, i, projection_label(-unprojected, box_lower, box_upper),
+            current, projected, thread_stats);
     }
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        thread_changes += update_basis_label(state, state.num_elements, scale > 0.0 ? -1 : 0);
+        thread_stats.basis_changes +=
+            update_basis_label(state, state.num_elements, scale > 0.0 ? -1 : 0);
+        thread_stats.homogeneous_scale = unprojected_scale + scale;
     }
-    store_basis_change_partial(basis_temp, state, window_step, thread_changes);
+    store_step_stats_partial(stats_temp, state, window_step, thread_stats);
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
@@ -483,7 +506,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
-    __shared__ IntBlockReduce::TempStorage basis_temp;
+    __shared__ StepStatsBlockReduce::TempStorage stats_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -544,7 +567,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         }
     }
 
-    int thread_changes = 0;
+    cone_step_stats_t thread_stats = {0, 0.0, 0.0, 0.0, 0.0};
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double current = current_dual[i];
@@ -557,14 +580,17 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         extrapolated_dual[i] = 2.0 * projected - current;
         current_dual[i] = projected;
-        thread_changes += update_basis_label(
-            state, i, projection_label(-unprojected, box_lower, box_upper));
+        accumulate_step_stats(
+            state, i, projection_label(-unprojected, box_lower, box_upper),
+            current, projected, thread_stats);
     }
     if (threadIdx.x == 0)
     {
-        thread_changes += update_basis_label(state, state.num_elements, scale > 0.0 ? -1 : 0);
+        thread_stats.basis_changes +=
+            update_basis_label(state, state.num_elements, scale > 0.0 ? -1 : 0);
+        thread_stats.homogeneous_scale = unprojected_scale + scale;
     }
-    store_basis_change_partial(basis_temp, state, window_step, thread_changes);
+    store_step_stats_partial(stats_temp, state, window_step, thread_stats);
 
     if (threadIdx.x == 0)
     {
@@ -591,7 +617,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     cg::grid_group grid = cg::this_grid();
 
     __shared__ ConeBlockReduce::TempStorage temp;
-    __shared__ IntBlockReduce::TempStorage basis_temp;
+    __shared__ StepStatsBlockReduce::TempStorage stats_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -683,13 +709,14 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         }
     }
 
-    int thread_changes = 0;
+    cone_step_stats_t thread_stats = {0, 0.0, 0.0, 0.0, 0.0};
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
     {
+        const double current = current_primal[i];
         const double unprojected =
-            current_primal[i] + primal_step * gradient[i];
+            current + primal_step * gradient[i];
         const double shifted =
             unprojected - primal_step * objective_d[i] * primal_scale;
         const double lower =
@@ -703,14 +730,17 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         const double projected = fmin(fmax(shifted, lower), upper);
 
         current_primal[i] = projected;
-        thread_changes += update_basis_label(
-            state, i, projection_label(shifted, lower, upper));
+        accumulate_step_stats(
+            state, i, projection_label(shifted, lower, upper),
+            current, projected, thread_stats);
     }
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        thread_changes += update_basis_label(state, state.num_elements, primal_scale == 0.0 ? -1 : 0);
+        thread_stats.basis_changes +=
+            update_basis_label(state, state.num_elements, primal_scale == 0.0 ? -1 : 0);
+        thread_stats.homogeneous_scale = primal_scale;
     }
-    store_basis_change_partial(basis_temp, state, window_step, thread_changes);
+    store_step_stats_partial(stats_temp, state, window_step, thread_stats);
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
@@ -732,7 +762,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
-    __shared__ IntBlockReduce::TempStorage basis_temp;
+    __shared__ StepStatsBlockReduce::TempStorage stats_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -799,11 +829,12 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         }
     }
 
-    int thread_changes = 0;
+    cone_step_stats_t thread_stats = {0, 0.0, 0.0, 0.0, 0.0};
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
+        const double current = current_primal[i];
         const double unprojected =
-            current_primal[i] + primal_step * gradient[i];
+            current + primal_step * gradient[i];
         const double shifted =
             unprojected - primal_step * objective_d[i] * primal_scale;
         const double lower =
@@ -817,14 +848,17 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         const double projected = fmin(fmax(shifted, lower), upper);
 
         current_primal[i] = projected;
-        thread_changes += update_basis_label(
-            state, i, projection_label(shifted, lower, upper));
+        accumulate_step_stats(
+            state, i, projection_label(shifted, lower, upper),
+            current, projected, thread_stats);
     }
     if (threadIdx.x == 0)
     {
-        thread_changes += update_basis_label(state, state.num_elements, primal_scale == 0.0 ? -1 : 0);
+        thread_stats.basis_changes +=
+            update_basis_label(state, state.num_elements, primal_scale == 0.0 ? -1 : 0);
+        thread_stats.homogeneous_scale = primal_scale;
     }
-    store_basis_change_partial(basis_temp, state, window_step, thread_changes);
+    store_step_stats_partial(stats_temp, state, window_step, thread_stats);
 
     if (threadIdx.x == 0)
     {
@@ -848,17 +882,38 @@ __device__ __forceinline__ int update_basis_label(
     return (previous != BASIS_LABEL_UNSET) & (label != previous);
 }
 
-__device__ __forceinline__ void store_basis_change_partial(
-    IntBlockReduce::TempStorage &temp,
+__device__ __forceinline__ void accumulate_step_stats(
+    const box_newton_state_t &state,
+    int i,
+    int label,
+    double current,
+    double projected,
+    cone_step_stats_t &thread_stats)
+{
+    const double delta = projected - current;
+    thread_stats.basis_changes += update_basis_label(state, i, label);
+    thread_stats.norm_squared += projected * projected;
+    thread_stats.delta_norm_squared += delta * delta;
+    if (state.previous_delta_d != NULL)
+    {
+        const double second_delta = delta - state.previous_delta_d[i];
+        thread_stats.second_delta_norm_squared += second_delta * second_delta;
+        state.previous_delta_d[i] = delta;
+    }
+}
+
+__device__ __forceinline__ void store_step_stats_partial(
+    StepStatsBlockReduce::TempStorage &temp,
     const box_newton_state_t &state,
     int window_step,
-    int thread_changes)
+    const cone_step_stats_t &thread_stats)
 {
-    const int block_changes = IntBlockReduce(temp).Sum(thread_changes);
+    const cone_step_stats_t block_stats =
+        StepStatsBlockReduce(temp).Reduce(thread_stats, SumStepStats{});
     if (threadIdx.x == 0)
     {
-        state.basis_change_partials_d[
-            (size_t)window_step * state.num_blocks_newton + blockIdx.x] = block_changes;
+        state.step_stats_partials_d[
+            (size_t)window_step * state.num_blocks_newton + blockIdx.x] = block_stats;
     }
 }
 

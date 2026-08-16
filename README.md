@@ -77,6 +77,7 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
 | `-v`, `--verbose` | `flag` | Enable verbose logging. | `false` |
 | `--basis_trace` | `flag` | Write one row per phase change (iteration, primal/dual basis changes) to `INSTANCE_basis_trace.csv`. | `false` |
+| `--iterate_trace` | `flag` | Write per-iteration homogeneous scales `tau`/`alpha`, `x`/`y` norms and first/second differences (rescaled coordinates, no gauge) to `INSTANCE_iterate_trace.csv`. | `false` |
 
 **Preprocessing / Scaling**
 
@@ -110,12 +111,14 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 | `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf`. | `l2` |
 
 #### Output Files
-The solver generates three text files in the specified `<output_directory>`. The filenames are derived from the input file's basename. For an input `INSTANCE.mps.gz`, the output will be:
+The solver generates three text files in the specified `<output_directory>`, plus the optional traces enabled by `--basis_trace` and `--iterate_trace`. The filenames are derived from the input file's basename. For an input `INSTANCE.mps.gz`, the output will be:
 ```
 <output_directory>/
 ├── INSTANCE_summary.txt          # Statistics, timings, and termination status
 ├── INSTANCE_primal_solution.txt  # Primal solution vector
-└── INSTANCE_dual_solution.txt    # Dual solution vector
+├── INSTANCE_dual_solution.txt    # Dual solution vector
+├── INSTANCE_basis_trace.csv      # (--basis_trace) one row per phase change
+└── INSTANCE_iterate_trace.csv    # (--iterate_trace) one row per iteration
 ```
 
 The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and basis statistics. The HSD basis is the joint projection-branch signature of the primal and dual cone projectors (including the homogeneous scalars); it is the HSD operator-region analogue of the PDHG basis of Liu & Lu (arXiv:2409.14715), and within a phase the PDHG update is a fixed affine map.

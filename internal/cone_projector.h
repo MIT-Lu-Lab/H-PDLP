@@ -34,6 +34,14 @@ typedef struct {
 enum { BASIS_LABEL_UNSET = 127 };
 
 typedef struct {
+    int basis_changes;
+    double norm_squared;
+    double delta_norm_squared;
+    double second_delta_norm_squared;
+    double homogeneous_scale;
+} cone_step_stats_t;
+
+typedef struct {
     const double *lower_bound_d;
     const double *upper_bound_d;
     int num_elements;
@@ -42,8 +50,9 @@ typedef struct {
     double *scalar_d;
     newton_terms_t *newton_partials_d;
     signed char *basis_labels_d;
-    int *basis_change_partials_d;
-    int *basis_changes_d;
+    double *previous_delta_d;
+    cone_step_stats_t *step_stats_partials_d;
+    cone_step_stats_t *step_stats_d;
 } box_newton_state_t;
 
 void update_dual_box_cone_projection(
@@ -72,7 +81,7 @@ void update_primal_box_cone_resolvent(
     int window_step,
     cudaStream_t stream);
 
-void reduce_basis_changes(
+void reduce_step_stats(
     const box_newton_state_t *cone_state,
     int num_steps,
     cudaStream_t stream);

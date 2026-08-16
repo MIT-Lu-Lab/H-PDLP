@@ -35,6 +35,8 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
+static constexpr int TRACE_INITIAL_CAPACITY = 1024;
+
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -51,9 +53,20 @@ static void update_hsd_primal_block(
     const pdhg_parameters_t *params,
     int window_step);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
-static void record_basis_changes(
+static void record_step_stats(
     pdhg_solver_state_t *state,
-    int steps_per_window);
+    const pdhg_parameters_t *params);
+static void append_basis_change(
+    pdhg_solver_state_t *state,
+    int iteration,
+    int primal_changes,
+    int dual_changes);
+static void append_iterate(
+    pdhg_solver_state_t *state,
+    int iteration,
+    const cone_step_stats_t *primal_stats,
+    const cone_step_stats_t *dual_stats);
+static void grow_trace(void **trace, int *capacity, size_t element_bytes);
 static lp_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
@@ -113,11 +126,11 @@ cuhsdlp_result_t *optimize(
             {
                 hsd_run_iteration_step(state, params, i);
             }
-            reduce_basis_changes(
+            reduce_step_stats(
                 &state->primal_box_cone_state,
                 params->termination_evaluation_frequency,
                 state->stream_A);
-            reduce_basis_changes(
+            reduce_step_stats(
                 &state->dual_box_cone_state,
                 params->termination_evaluation_frequency,
                 state->stream_A);
@@ -131,7 +144,7 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
         compute_termination_metrics(state, params);
-        record_basis_changes(state, params->termination_evaluation_frequency);
+        record_step_stats(state, params);
         state->control.total_count += params->termination_evaluation_frequency;
 
         check_termination_criteria(state, &params->termination_criteria);
@@ -399,47 +412,90 @@ static void update_hsd_primal_block(
         state->stream_A);
 }
 
-static void record_basis_changes(
+static void record_step_stats(
     pdhg_solver_state_t *state,
-    int steps_per_window)
+    const pdhg_parameters_t *params)
 {
-    int *primal_changes = state->basis_changes_h;
-    int *dual_changes = state->basis_changes_h + steps_per_window;
-    const size_t window_bytes = (size_t)steps_per_window * sizeof(int);
+    const int steps_per_window = params->termination_evaluation_frequency;
+    cone_step_stats_t *primal_stats = state->step_stats_h;
+    cone_step_stats_t *dual_stats = state->step_stats_h + steps_per_window;
+    const size_t window_bytes = (size_t)steps_per_window * sizeof(cone_step_stats_t);
 
-    CUDA_CHECK(cudaMemcpyAsync(primal_changes,
-                               state->primal_box_cone_state.basis_changes_d,
+    CUDA_CHECK(cudaMemcpyAsync(primal_stats,
+                               state->primal_box_cone_state.step_stats_d,
                                window_bytes, cudaMemcpyDeviceToHost, state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(dual_changes,
-                               state->dual_box_cone_state.basis_changes_d,
+    CUDA_CHECK(cudaMemcpyAsync(dual_stats,
+                               state->dual_box_cone_state.step_stats_d,
                                window_bytes, cudaMemcpyDeviceToHost, state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    const int base = state->control.total_count;
     for (int k = 0; k < steps_per_window; ++k)
     {
-        if (primal_changes[k] + dual_changes[k] == 0)
+        const int iteration = state->control.total_count + k + 1;
+        if (primal_stats[k].basis_changes + dual_stats[k].basis_changes > 0)
         {
-            continue;
+            append_basis_change(state, iteration,
+                                primal_stats[k].basis_changes,
+                                dual_stats[k].basis_changes);
         }
-        if (state->control.phase_changes == state->basis_trace_capacity)
+        if (params->iterate_trace)
         {
-            state->basis_trace_capacity =
-                state->basis_trace_capacity > 0 ? 2 * state->basis_trace_capacity : 1024;
-            state->basis_trace_h = (cuhsdlp_basis_change_t *)safe_realloc(
-                state->basis_trace_h,
-                (size_t)state->basis_trace_capacity * sizeof(cuhsdlp_basis_change_t));
+            append_iterate(state, iteration, &primal_stats[k], &dual_stats[k]);
         }
-        cuhsdlp_basis_change_t *entry = &state->basis_trace_h[state->control.phase_changes];
-        entry->iteration = base + k + 1;
-        entry->primal = primal_changes[k];
-        entry->dual = dual_changes[k];
-
-        state->control.phase_changes++;
-        state->control.last_phase_change = entry->iteration;
-        state->control.last_phase_change_primal = entry->primal;
-        state->control.last_phase_change_dual = entry->dual;
-        state->control.primal_basis_changes += entry->primal;
-        state->control.dual_basis_changes += entry->dual;
     }
+}
+
+static void append_basis_change(
+    pdhg_solver_state_t *state,
+    int iteration,
+    int primal_changes,
+    int dual_changes)
+{
+    if (state->control.phase_changes == state->basis_trace_capacity)
+    {
+        grow_trace((void **)&state->basis_trace, &state->basis_trace_capacity,
+                   sizeof(cuhsdlp_basis_change_t));
+    }
+    cuhsdlp_basis_change_t *entry = &state->basis_trace[state->control.phase_changes];
+    entry->iteration = iteration;
+    entry->primal = primal_changes;
+    entry->dual = dual_changes;
+
+    state->control.phase_changes++;
+    state->control.last_phase_change = iteration;
+    state->control.last_phase_change_primal = primal_changes;
+    state->control.last_phase_change_dual = dual_changes;
+    state->control.primal_basis_changes += primal_changes;
+    state->control.dual_basis_changes += dual_changes;
+}
+
+static void append_iterate(
+    pdhg_solver_state_t *state,
+    int iteration,
+    const cone_step_stats_t *primal_stats,
+    const cone_step_stats_t *dual_stats)
+{
+    if (iteration > state->iterate_trace_capacity)
+    {
+        grow_trace((void **)&state->iterate_trace, &state->iterate_trace_capacity,
+                   sizeof(cuhsdlp_iterate_t));
+    }
+    cuhsdlp_iterate_t *row = &state->iterate_trace[iteration - 1];
+    row->phase = state->control.phase_changes;
+    row->primal_scale = primal_stats->homogeneous_scale;
+    row->dual_scale = dual_stats->homogeneous_scale;
+    row->primal_norm = sqrt(primal_stats->norm_squared);
+    row->dual_norm = sqrt(dual_stats->norm_squared);
+    row->primal_delta_norm = sqrt(primal_stats->delta_norm_squared);
+    row->dual_delta_norm = sqrt(dual_stats->delta_norm_squared);
+    row->primal_second_delta_norm =
+        iteration > 1 ? sqrt(primal_stats->second_delta_norm_squared) : NAN;
+    row->dual_second_delta_norm =
+        iteration > 1 ? sqrt(dual_stats->second_delta_norm_squared) : NAN;
+}
+
+static void grow_trace(void **trace, int *capacity, size_t element_bytes)
+{
+    *capacity = *capacity > 0 ? 2 * *capacity : TRACE_INITIAL_CAPACITY;
+    *trace = safe_realloc(*trace, (size_t)*capacity * element_bytes);
 }

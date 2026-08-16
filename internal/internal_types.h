@@ -195,9 +195,11 @@ typedef struct {
 
     box_newton_state_t dual_box_cone_state;
     box_newton_state_t primal_box_cone_state;
-    int *basis_changes_h;
-    cuhsdlp_basis_change_t *basis_trace_h;
+    cone_step_stats_t *step_stats_h;
+    cuhsdlp_basis_change_t *basis_trace;
     int basis_trace_capacity;
+    cuhsdlp_iterate_t *iterate_trace;
+    int iterate_trace_capacity;
 
     solver_control_t control;
 
