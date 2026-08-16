@@ -41,7 +41,6 @@ typedef struct {
     int num_blocks_newton;
     double *scalar_d;
     newton_terms_t *newton_partials_d;
-    signed char *projection_labels_d;
     signed char *basis_labels_d;
     int *basis_change_partials_d;
     int *basis_changes_d;

@@ -431,7 +431,7 @@ static void record_basis_changes(
                 (size_t)state->basis_trace_capacity * sizeof(cuhsdlp_basis_change_t));
         }
         cuhsdlp_basis_change_t *entry = &state->basis_trace_h[state->control.phase_changes];
-        entry->iteration = base + k;
+        entry->iteration = base + k + 1;
         entry->primal = primal_changes[k];
         entry->dual = dual_changes[k];
 
