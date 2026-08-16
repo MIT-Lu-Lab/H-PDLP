@@ -643,8 +643,6 @@ static void allocate_host_staging_buffers(
                               2 * (size_t)steps_per_window * sizeof(cone_step_stats_t)));
     state->basis_trace = NULL;
     state->basis_trace_capacity = 0;
-    state->iterate_trace = NULL;
-    state->iterate_trace_capacity = 0;
     CUDA_CHECK(cudaHostAlloc(
         &state->bound_norm_workspace_mp,
         sizeof(double),
@@ -756,7 +754,7 @@ static void initialize_newton_workspace(
     box_newton_state_t *newton_state,
     int cooperative_block_limit,
     int steps_per_window,
-    bool iterate_trace)
+    bool trace_iterates)
 {
     const int n = newton_state->num_elements;
 
@@ -788,7 +786,8 @@ static void initialize_newton_workspace(
     CUDA_CHECK(cudaMemset(newton_state->basis_labels_d,
                           BASIS_LABEL_UNSET,
                           (size_t)(n + 1) * sizeof(signed char)));
-    if (iterate_trace)
+    newton_state->trace_iterates = trace_iterates;
+    if (trace_iterates)
     {
         allocate_zeroed_device_buffer(
             (void **)&newton_state->previous_delta_d,
@@ -810,12 +809,12 @@ static void initialize_newton_workspaces(
         &state->dual_box_cone_state,
         compute_max_cooperative_dual_box_cone_blocks(),
         params->termination_evaluation_frequency,
-        params->iterate_trace);
+        params->iterate_trace_path != NULL);
     initialize_newton_workspace(
         &state->primal_box_cone_state,
         compute_max_cooperative_primal_box_cone_blocks(),
         params->termination_evaluation_frequency,
-        params->iterate_trace);
+        params->iterate_trace_path != NULL);
 }
 
 static void release_preprocessing_resources(
@@ -1041,7 +1040,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 
     FREE_HOST_BUFFER(state->metrics_h);
     FREE_HOST_BUFFER(state->step_stats_h);
-    free(state->iterate_trace);
     free(state->basis_trace);
     FREE_HOST_BUFFER(state->bound_norm_workspace_mp);
     FREE_HOST_BUFFER(state->objective_norm_workspace_mp);

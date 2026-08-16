@@ -198,8 +198,6 @@ typedef struct {
     cone_step_stats_t *step_stats_h;
     cuhsdlp_basis_change_t *basis_trace;
     int basis_trace_capacity;
-    cuhsdlp_iterate_t *iterate_trace;
-    int iterate_trace_capacity;
 
     solver_control_t control;
 

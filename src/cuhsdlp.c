@@ -112,7 +112,6 @@ void cuhsdlp_result_free(cuhsdlp_result_t *results)
     free(results->dual_solution);
     free(results->reduced_cost);
     free(results->basis_trace);
-    free(results->iterate_trace);
     free(results);
 }
 
@@ -177,7 +176,7 @@ void set_default_parameters(pdhg_parameters_t *params)
 {
     params->presolve = true;
     params->verbose = true;
-    params->iterate_trace = false;
+    params->iterate_trace_path = NULL;
     params->optimality_norm = NORM_TYPE_L2;
     params->termination_evaluation_frequency = 200;
 

@@ -109,7 +109,7 @@ extern "C"
     {
         bool presolve;
         bool verbose;
-        bool iterate_trace;
+        const char *iterate_trace_path;
         norm_type_t optimality_norm;
         int termination_evaluation_frequency;
 
@@ -126,19 +126,6 @@ extern "C"
         int primal;
         int dual;
     } cuhsdlp_basis_change_t;
-
-    typedef struct
-    {
-        int phase;
-        double primal_scale;
-        double dual_scale;
-        double primal_norm;
-        double dual_norm;
-        double primal_delta_norm;
-        double dual_delta_norm;
-        double primal_second_delta_norm;
-        double dual_second_delta_norm;
-    } cuhsdlp_iterate_t;
 
     typedef struct
     {
@@ -182,7 +169,6 @@ extern "C"
         int phase_changes;
         int last_phase_change;
         cuhsdlp_basis_change_t *basis_trace;
-        cuhsdlp_iterate_t *iterate_trace;
     } cuhsdlp_result_t;
 
     typedef enum

@@ -50,6 +50,7 @@ typedef struct {
     double *scalar_d;
     newton_terms_t *newton_partials_d;
     signed char *basis_labels_d;
+    bool trace_iterates;
     double *previous_delta_d;
     cone_step_stats_t *step_stats_partials_d;
     cone_step_stats_t *step_stats_d;

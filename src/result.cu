@@ -141,8 +141,6 @@ cuhsdlp_result_t *create_result_from_state(
     results->last_phase_change = state->control.last_phase_change;
     results->basis_trace = state->basis_trace;
     state->basis_trace = NULL;
-    results->iterate_trace = state->iterate_trace;
-    state->iterate_trace = NULL;
 
     return results;
 }

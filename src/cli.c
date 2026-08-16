@@ -124,31 +124,6 @@ void save_solution(const double *data, int size, const char *output_dir,
     fclose(outfile);
 }
 
-void save_iterate_trace(const cuhsdlp_result_t *result, const char *output_dir,
-                        const char *instance_name)
-{
-    if (result->iterate_trace == NULL)
-        return;
-
-    FILE *outfile = open_output_file(output_dir, instance_name, "_iterate_trace.csv",
-                                     "Error opening iterate trace file");
-    if (outfile == NULL)
-        return;
-
-    fprintf(outfile, "iteration,phase,tau,x_norm,alpha,y_norm,dx_norm,dy_norm,ddx_norm,ddy_norm\n");
-    for (int k = 0; k < result->total_count; ++k)
-    {
-        const cuhsdlp_iterate_t *row = &result->iterate_trace[k];
-        fprintf(outfile, "%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
-                k + 1, row->phase,
-                row->primal_scale, row->primal_norm, row->dual_scale, row->dual_norm,
-                row->primal_delta_norm, row->dual_delta_norm,
-                row->primal_second_delta_norm, row->dual_second_delta_norm);
-    }
-
-    fclose(outfile);
-}
-
 void save_basis_trace(const cuhsdlp_result_t *result, const char *output_dir,
                            const char *instance_name)
 {
@@ -241,7 +216,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "\n  Output:\n");
     fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: false).\n");
     fprintf(stderr, "      --basis_trace                     Write one row per phase change to <name>_basis_trace.csv.\n");
-    fprintf(stderr, "      --iterate_trace                   Write per-iteration tau, alpha, norms and differences to <name>_iterate_trace.csv.\n");
+    fprintf(stderr, "      --iterate_trace                   Stream per-iteration tau, alpha, norms and differences to <name>_iterate_trace.csv.\n");
 }
 
 int main(int argc, char *argv[])
@@ -275,6 +250,7 @@ int main(int argc, char *argv[])
         {0, 0, 0, 0}};
 
     bool write_basis_trace = false;
+    bool write_iterate_trace = false;
     int opt;
     while ((opt = getopt_long(argc, argv, "hv", long_options, NULL)) != -1)
     {
@@ -383,7 +359,7 @@ int main(int argc, char *argv[])
             write_basis_trace = true;
             break;
         case 1021:
-            params.iterate_trace = true;
+            write_iterate_trace = true;
             break;
         case '?':
             return 1;
@@ -404,11 +380,16 @@ int main(int argc, char *argv[])
     if (instance_name == NULL)
         return 1;
 
+    char *iterate_trace_path =
+        write_iterate_trace ? get_output_path(output_dir, instance_name, "_iterate_trace.csv") : NULL;
+    params.iterate_trace_path = iterate_trace_path;
+
     lp_problem_t *problem = read_mps_file(filename);
 
     if (problem == NULL)
     {
         fprintf(stderr, "Failed to read or parse the file.\n");
+        free(iterate_trace_path);
         free(instance_name);
         return 1;
     }
@@ -432,11 +413,11 @@ int main(int argc, char *argv[])
                           instance_name, "_dual_solution.txt");
         if (write_basis_trace)
             save_basis_trace(result, output_dir, instance_name);
-        save_iterate_trace(result, output_dir, instance_name);
         cuhsdlp_result_free(result);
     }
 
     lp_problem_free(problem);
+    free(iterate_trace_path);
     free(instance_name);
 
     return exit_code;

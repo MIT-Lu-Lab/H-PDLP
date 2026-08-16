@@ -890,16 +890,17 @@ __device__ __forceinline__ void accumulate_step_stats(
     double projected,
     cone_step_stats_t &thread_stats)
 {
-    const double delta = projected - current;
     thread_stats.basis_changes += update_basis_label(state, i, label);
+    if (!state.trace_iterates)
+    {
+        return;
+    }
+    const double delta = projected - current;
+    const double second_delta = delta - state.previous_delta_d[i];
     thread_stats.norm_squared += projected * projected;
     thread_stats.delta_norm_squared += delta * delta;
-    if (state.previous_delta_d != NULL)
-    {
-        const double second_delta = delta - state.previous_delta_d[i];
-        thread_stats.second_delta_norm_squared += second_delta * second_delta;
-        state.previous_delta_d[i] = delta;
-    }
+    thread_stats.second_delta_norm_squared += second_delta * second_delta;
+    state.previous_delta_d[i] = delta;
 }
 
 __device__ __forceinline__ void store_step_stats_partial(

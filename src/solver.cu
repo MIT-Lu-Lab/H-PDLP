@@ -28,6 +28,7 @@ limitations under the License.
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
+#include <errno.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -35,7 +36,7 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
-static constexpr int TRACE_INITIAL_CAPACITY = 1024;
+static constexpr int BASIS_TRACE_INITIAL_CAPACITY = 1024;
 
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
@@ -53,20 +54,22 @@ static void update_hsd_primal_block(
     const pdhg_parameters_t *params,
     int window_step);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
+static FILE *open_iterate_trace_file(const char *path);
 static void record_step_stats(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params);
+    const pdhg_parameters_t *params,
+    FILE *iterate_trace_file);
 static void append_basis_change(
     pdhg_solver_state_t *state,
     int iteration,
     int primal_changes,
     int dual_changes);
-static void append_iterate(
-    pdhg_solver_state_t *state,
+static void write_iterate_row(
+    FILE *iterate_trace_file,
     int iteration,
+    int phase,
     const cone_step_stats_t *primal_stats,
     const cone_step_stats_t *dual_stats);
-static void grow_trace(void **trace, int *capacity, size_t element_bytes);
 static lp_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
@@ -112,6 +115,7 @@ cuhsdlp_result_t *optimize(
     print_iteration_header(params->verbose);
     display_iteration_stats(state, params->verbose);
 
+    FILE *iterate_trace_file = open_iterate_trace_file(params->iterate_trace_path);
     state->control.start_time = clock();
 
     while (state->control.total_count < params->termination_criteria.iteration_limit)
@@ -144,7 +148,7 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
         compute_termination_metrics(state, params);
-        record_step_stats(state, params);
+        record_step_stats(state, params, iterate_trace_file);
         state->control.total_count += params->termination_evaluation_frequency;
 
         check_termination_criteria(state, &params->termination_criteria);
@@ -160,6 +164,10 @@ cuhsdlp_result_t *optimize(
         state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_termination_metrics(state, params);
         display_iteration_stats(state, params->verbose);
+    }
+    if (iterate_trace_file != NULL)
+    {
+        fclose(iterate_trace_file);
     }
 
     cuhsdlp_result_t *result = create_result_from_state(state, &working_problem);
@@ -412,9 +420,27 @@ static void update_hsd_primal_block(
         state->stream_A);
 }
 
+static FILE *open_iterate_trace_file(const char *path)
+{
+    if (path == NULL)
+    {
+        return NULL;
+    }
+    FILE *iterate_trace_file = fopen(path, "w");
+    if (iterate_trace_file == NULL)
+    {
+        fprintf(stderr, "Error: cannot open iterate trace %s (%s).\n", path, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
+    fprintf(iterate_trace_file,
+            "iteration,phase,tau,x_norm,alpha,y_norm,dx_norm,dy_norm,ddx_norm,ddy_norm\n");
+    return iterate_trace_file;
+}
+
 static void record_step_stats(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params)
+    const pdhg_parameters_t *params,
+    FILE *iterate_trace_file)
 {
     const int steps_per_window = params->termination_evaluation_frequency;
     cone_step_stats_t *primal_stats = state->step_stats_h;
@@ -438,10 +464,15 @@ static void record_step_stats(
                                 primal_stats[k].basis_changes,
                                 dual_stats[k].basis_changes);
         }
-        if (params->iterate_trace)
+        if (iterate_trace_file != NULL)
         {
-            append_iterate(state, iteration, &primal_stats[k], &dual_stats[k]);
+            write_iterate_row(iterate_trace_file, iteration, state->control.phase_changes,
+                              &primal_stats[k], &dual_stats[k]);
         }
+    }
+    if (iterate_trace_file != NULL)
+    {
+        fflush(iterate_trace_file);
     }
 }
 
@@ -453,8 +484,11 @@ static void append_basis_change(
 {
     if (state->control.phase_changes == state->basis_trace_capacity)
     {
-        grow_trace((void **)&state->basis_trace, &state->basis_trace_capacity,
-                   sizeof(cuhsdlp_basis_change_t));
+        state->basis_trace_capacity =
+            state->basis_trace_capacity > 0 ? 2 * state->basis_trace_capacity : BASIS_TRACE_INITIAL_CAPACITY;
+        state->basis_trace = (cuhsdlp_basis_change_t *)safe_realloc(
+            state->basis_trace,
+            (size_t)state->basis_trace_capacity * sizeof(cuhsdlp_basis_change_t));
     }
     cuhsdlp_basis_change_t *entry = &state->basis_trace[state->control.phase_changes];
     entry->iteration = iteration;
@@ -469,33 +503,21 @@ static void append_basis_change(
     state->control.dual_basis_changes += dual_changes;
 }
 
-static void append_iterate(
-    pdhg_solver_state_t *state,
+static void write_iterate_row(
+    FILE *iterate_trace_file,
     int iteration,
+    int phase,
     const cone_step_stats_t *primal_stats,
     const cone_step_stats_t *dual_stats)
 {
-    if (iteration > state->iterate_trace_capacity)
-    {
-        grow_trace((void **)&state->iterate_trace, &state->iterate_trace_capacity,
-                   sizeof(cuhsdlp_iterate_t));
-    }
-    cuhsdlp_iterate_t *row = &state->iterate_trace[iteration - 1];
-    row->phase = state->control.phase_changes;
-    row->primal_scale = primal_stats->homogeneous_scale;
-    row->dual_scale = dual_stats->homogeneous_scale;
-    row->primal_norm = sqrt(primal_stats->norm_squared);
-    row->dual_norm = sqrt(dual_stats->norm_squared);
-    row->primal_delta_norm = sqrt(primal_stats->delta_norm_squared);
-    row->dual_delta_norm = sqrt(dual_stats->delta_norm_squared);
-    row->primal_second_delta_norm =
+    const double primal_second_delta_norm =
         iteration > 1 ? sqrt(primal_stats->second_delta_norm_squared) : NAN;
-    row->dual_second_delta_norm =
+    const double dual_second_delta_norm =
         iteration > 1 ? sqrt(dual_stats->second_delta_norm_squared) : NAN;
-}
-
-static void grow_trace(void **trace, int *capacity, size_t element_bytes)
-{
-    *capacity = *capacity > 0 ? 2 * *capacity : TRACE_INITIAL_CAPACITY;
-    *trace = safe_realloc(*trace, (size_t)*capacity * element_bytes);
+    fprintf(iterate_trace_file, "%d,%d,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g,%.17g\n",
+            iteration, phase,
+            primal_stats->homogeneous_scale, sqrt(primal_stats->norm_squared),
+            dual_stats->homogeneous_scale, sqrt(dual_stats->norm_squared),
+            sqrt(primal_stats->delta_norm_squared), sqrt(dual_stats->delta_norm_squared),
+            primal_second_delta_norm, dual_second_delta_norm);
 }
