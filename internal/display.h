@@ -31,6 +31,8 @@ extern "C"
 
     void print_iteration_header(bool verbose);
 
+    void display_step_sizes(const pdhg_solver_state_t *state, bool verbose);
+
     void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose);
 
     void pdhg_final_log(

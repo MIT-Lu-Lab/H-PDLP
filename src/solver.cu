@@ -37,17 +37,23 @@ limitations under the License.
 
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params);
+    const pdhg_parameters_t *params,
+    int window_step);
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 static void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params);
+    const pdhg_parameters_t *params,
+    int window_step);
 static void update_hsd_primal_block(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params);
+    const pdhg_parameters_t *params,
+    int window_step);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
+static void record_active_set_changes(
+    pdhg_solver_state_t *state,
+    int steps_per_window);
 static lp_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
@@ -86,10 +92,12 @@ cuhsdlp_result_t *optimize(
         presolve_info ? presolve_info->reduced_problem : &working_problem,
         original_problem,
         params);
-    display_iteration_stats(state, params->verbose);
 
     initialize_step_size_and_primal_weight(state, params);
     sync_step_sizes_to_gpu(state);
+    display_step_sizes(state, params->verbose);
+    print_iteration_header(params->verbose);
+    display_iteration_stats(state, params->verbose);
 
     state->control.start_time = clock();
 
@@ -103,8 +111,16 @@ cuhsdlp_result_t *optimize(
 
             for (int i = 0; i < params->termination_evaluation_frequency; i++)
             {
-                hsd_run_iteration_step(state, params);
+                hsd_run_iteration_step(state, params, i);
             }
+            reduce_active_set_flips(
+                &state->primal_box_cone_state,
+                params->termination_evaluation_frequency,
+                state->stream_A);
+            reduce_active_set_flips(
+                &state->dual_box_cone_state,
+                params->termination_evaluation_frequency,
+                state->stream_A);
 
             CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
             CUDA_CHECK(cudaGraphInstantiate(&state->graphExec, graph,
@@ -115,6 +131,7 @@ cuhsdlp_result_t *optimize(
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
         compute_termination_metrics(state, params);
+        record_active_set_changes(state, params->termination_evaluation_frequency);
         state->control.total_count += params->termination_evaluation_frequency;
 
         check_termination_criteria(state, &params->termination_criteria);
@@ -302,15 +319,17 @@ static void initialize_step_size_and_primal_weight(
 
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params)
+    const pdhg_parameters_t *params,
+    int window_step)
 {
-    hsd_update_dual_solution(state, params);
-    update_hsd_primal_block(state, params);
+    hsd_update_dual_solution(state, params, window_step);
+    update_hsd_primal_block(state, params, window_step);
 }
 
 static void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params)
+    const pdhg_parameters_t *params,
+    int window_step)
 {
     const cone_parameters_t *cone_params = &params->cone_params;
 
@@ -336,6 +355,7 @@ static void hsd_update_dual_solution(
         state->hsd_primal_scale_d,
         state->hsd_dual_scale_d,
         state->hsd_dual_scale_extrapolated_d,
+        window_step,
         state->stream_A);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
@@ -343,7 +363,8 @@ static void hsd_update_dual_solution(
 
 static void update_hsd_primal_block(
     pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params)
+    const pdhg_parameters_t *params,
+    int window_step)
 {
     const cone_parameters_t *cone_params = &params->cone_params;
 
@@ -374,5 +395,53 @@ static void update_hsd_primal_block(
         state->control.step_size_homogeneous_d,
         state->hsd_dual_scale_extrapolated_d,
         state->hsd_primal_scale_d,
+        window_step,
         state->stream_A);
+}
+
+static void record_active_set_changes(
+    pdhg_solver_state_t *state,
+    int steps_per_window)
+{
+    int *primal_flips = state->active_set_flips_h;
+    int *dual_flips = state->active_set_flips_h + steps_per_window;
+    const size_t window_bytes = (size_t)steps_per_window * sizeof(int);
+
+    CUDA_CHECK(cudaMemcpyAsync(primal_flips,
+                               state->primal_box_cone_state.active_set_flips_d,
+                               window_bytes, cudaMemcpyDeviceToHost, state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(dual_flips,
+                               state->dual_box_cone_state.active_set_flips_d,
+                               window_bytes, cudaMemcpyDeviceToHost, state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    const int base = state->control.total_count;
+    const int needed = base + steps_per_window;
+    if (needed > state->active_set_trace_capacity)
+    {
+        int capacity = state->active_set_trace_capacity > 0
+                           ? state->active_set_trace_capacity
+                           : steps_per_window;
+        while (capacity < needed)
+        {
+            capacity *= 2;
+        }
+        state->active_set_trace_h = (cuhsdlp_active_set_flips_t *)safe_realloc(
+            state->active_set_trace_h,
+            (size_t)capacity * sizeof(cuhsdlp_active_set_flips_t));
+        state->active_set_trace_capacity = capacity;
+    }
+
+    for (int k = 0; k < steps_per_window; ++k)
+    {
+        state->active_set_trace_h[base + k].primal = primal_flips[k];
+        state->active_set_trace_h[base + k].dual = dual_flips[k];
+        state->control.primal_active_set_flips += primal_flips[k];
+        state->control.dual_active_set_flips += dual_flips[k];
+        if (primal_flips[k] + dual_flips[k] > 0)
+        {
+            state->control.phase_changes++;
+            state->control.last_phase_change = base + k + 1;
+        }
+    }
 }

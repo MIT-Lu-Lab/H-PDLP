@@ -33,6 +33,7 @@ struct SumNewtonTerms {
 };
 
 typedef cub::BlockReduce<newton_terms_t, THREADS_PER_BLOCK> ConeBlockReduce;
+typedef cub::BlockReduce<int, THREADS_PER_BLOCK> FlipBlockReduce;
 
 __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
@@ -42,6 +43,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     const double *primal_scale_current,
     double *dual_scale_current,
     double *dual_scale_extrapolated,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -53,6 +55,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     const double *primal_scale_current,
     double *dual_scale_current,
     double *dual_scale_extrapolated,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -64,6 +67,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
     double *current_primal_scale,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol);
@@ -75,9 +79,17 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
     double *current_primal_scale,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol);
+__device__ __forceinline__ int update_active_set_label(
+    signed char *labels, int i, int label);
+__device__ __forceinline__ void store_active_set_flip_partial(
+    FlipBlockReduce::TempStorage &temp,
+    const box_newton_state_t &state,
+    int window_step,
+    int thread_flips);
 __device__ __forceinline__ double select_active_dual_bound(
     double vi, double l, double u, double scale);
 __device__ __forceinline__ void evaluate_dual_box_cone_newton_terms(
@@ -145,6 +157,7 @@ void update_dual_box_cone_projection(
     const double *primal_scale_current,
     double *dual_scale_current,
     double *dual_scale_extrapolated,
+    int window_step,
     cudaStream_t stream)
 {
     const box_newton_state_t state = *dual_state;
@@ -160,6 +173,7 @@ void update_dual_box_cone_projection(
             primal_scale_current,
             dual_scale_current,
             dual_scale_extrapolated,
+            window_step,
             state,
             cone_params->max_iter,
             cone_params->tol);
@@ -189,6 +203,7 @@ void update_dual_box_cone_projection(
         primal_scale_current,
         dual_scale_current,
         dual_scale_extrapolated,
+        window_step,
         state,
         cone_params->max_iter,
         cone_params->tol));
@@ -204,6 +219,7 @@ void update_primal_box_cone_resolvent(
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
     double *current_primal_scale,
+    int window_step,
     cudaStream_t stream)
 {
     const box_newton_state_t state = *primal_state;
@@ -219,6 +235,7 @@ void update_primal_box_cone_resolvent(
             step_size_homogeneous_d,
             homogeneous_dual_gradient,
             current_primal_scale,
+            window_step,
             state,
             cone_params->max_iter,
             cone_params->tol);
@@ -248,9 +265,41 @@ void update_primal_box_cone_resolvent(
         step_size_homogeneous_d,
         homogeneous_dual_gradient,
         current_primal_scale,
+        window_step,
         state,
         cone_params->max_iter,
         cone_params->tol));
+}
+
+__global__ void sum_active_set_flip_partials_kernel(
+    const int *__restrict__ partials,
+    int num_blocks,
+    int *__restrict__ flips)
+{
+    __shared__ FlipBlockReduce::TempStorage temp;
+    const int *row = partials + (size_t)blockIdx.x * num_blocks;
+    int thread_sum = 0;
+    for (int b = threadIdx.x; b < num_blocks; b += blockDim.x)
+    {
+        thread_sum += row[b];
+    }
+    const int total = FlipBlockReduce(temp).Sum(thread_sum);
+    if (threadIdx.x == 0)
+    {
+        flips[blockIdx.x] = total;
+    }
+}
+
+void reduce_active_set_flips(
+    const box_newton_state_t *cone_state,
+    int num_steps,
+    cudaStream_t stream)
+{
+    sum_active_set_flip_partials_kernel<<<num_steps, THREADS_PER_BLOCK, 0, stream>>>(
+        cone_state->active_set_flip_partials_d,
+        cone_state->num_blocks_newton,
+        cone_state->active_set_flips_d);
+    CUDA_CHECK(cudaGetLastError());
 }
 
 int compute_max_cooperative_dual_box_cone_blocks()
@@ -293,6 +342,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     const double *primal_scale_current,
     double *dual_scale_current,
     double *dual_scale_extrapolated,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol)
@@ -300,6 +350,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     cg::grid_group grid = cg::this_grid();
 
     __shared__ ConeBlockReduce::TempStorage temp;
+    __shared__ FlipBlockReduce::TempStorage flip_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -383,6 +434,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         }
     }
 
+    int thread_flips = 0;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -397,7 +449,11 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         extrapolated_dual[i] = 2.0 * projected - current;
         current_dual[i] = projected;
+        thread_flips += update_active_set_label(
+            state.active_set_labels_d, i,
+            (-unprojected > box_upper) - (-unprojected < box_lower));
     }
+    store_active_set_flip_partial(flip_temp, state, window_step, thread_flips);
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
@@ -416,11 +472,13 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     const double *primal_scale_current,
     double *dual_scale_current,
     double *dual_scale_extrapolated,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
+    __shared__ FlipBlockReduce::TempStorage flip_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -481,6 +539,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         }
     }
 
+    int thread_flips = 0;
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double current = current_dual[i];
@@ -493,7 +552,11 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         extrapolated_dual[i] = 2.0 * projected - current;
         current_dual[i] = projected;
+        thread_flips += update_active_set_label(
+            state.active_set_labels_d, i,
+            (-unprojected > box_upper) - (-unprojected < box_lower));
     }
+    store_active_set_flip_partial(flip_temp, state, window_step, thread_flips);
 
     if (threadIdx.x == 0)
     {
@@ -512,6 +575,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
     double *current_primal_scale,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol)
@@ -519,6 +583,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     cg::grid_group grid = cg::this_grid();
 
     __shared__ ConeBlockReduce::TempStorage temp;
+    __shared__ FlipBlockReduce::TempStorage flip_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -610,6 +675,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         }
     }
 
+    int thread_flips = 0;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x;
          i < state.num_elements;
          i += state.num_blocks_newton * blockDim.x)
@@ -629,7 +695,11 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         const double projected = fmin(fmax(shifted, lower), upper);
 
         current_primal[i] = projected;
+        thread_flips += update_active_set_label(
+            state.active_set_labels_d, i,
+            (shifted > upper) - (shifted < lower));
     }
+    store_active_set_flip_partial(flip_temp, state, window_step, thread_flips);
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
@@ -645,11 +715,13 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     const double *step_size_homogeneous_d,
     const double *homogeneous_dual_gradient,
     double *current_primal_scale,
+    int window_step,
     box_newton_state_t state,
     int max_iter,
     double tol)
 {
     __shared__ ConeBlockReduce::TempStorage temp;
+    __shared__ FlipBlockReduce::TempStorage flip_temp;
     __shared__ double s_scale;
     __shared__ int s_converged;
 
@@ -716,6 +788,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         }
     }
 
+    int thread_flips = 0;
     for (int i = threadIdx.x; i < state.num_elements; i += blockDim.x)
     {
         const double unprojected =
@@ -733,11 +806,37 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         const double projected = fmin(fmax(shifted, lower), upper);
 
         current_primal[i] = projected;
+        thread_flips += update_active_set_label(
+            state.active_set_labels_d, i,
+            (shifted > upper) - (shifted < lower));
     }
+    store_active_set_flip_partial(flip_temp, state, window_step, thread_flips);
 
     if (threadIdx.x == 0)
     {
         *current_primal_scale = primal_scale;
+    }
+}
+
+__device__ __forceinline__ int update_active_set_label(
+    signed char *labels, int i, int label)
+{
+    const signed char previous = labels[i];
+    labels[i] = (signed char)label;
+    return (previous != ACTIVE_SET_LABEL_UNSET) & (previous != label);
+}
+
+__device__ __forceinline__ void store_active_set_flip_partial(
+    FlipBlockReduce::TempStorage &temp,
+    const box_newton_state_t &state,
+    int window_step,
+    int thread_flips)
+{
+    const int block_flips = FlipBlockReduce(temp).Sum(thread_flips);
+    if (threadIdx.x == 0)
+    {
+        state.active_set_flip_partials_d[
+            (size_t)window_step * state.num_blocks_newton + blockIdx.x] = block_flips;
     }
 }
 

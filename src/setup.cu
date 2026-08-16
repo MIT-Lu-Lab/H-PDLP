@@ -71,7 +71,9 @@ static void upload_problem_data(
 static void allocate_solver_work_vectors(pdhg_solver_state_t *state);
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state);
 static void initialize_power_iteration_buffers(pdhg_solver_state_t *state);
-static void allocate_host_staging_buffers(pdhg_solver_state_t *state);
+static void allocate_host_staging_buffers(
+    pdhg_solver_state_t *state,
+    int steps_per_window);
 static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
@@ -79,7 +81,9 @@ static void apply_warm_starts(
 static void initialize_newton_structure(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
-static void initialize_newton_workspaces(pdhg_solver_state_t *state);
+static void initialize_newton_workspaces(
+    pdhg_solver_state_t *state,
+    int steps_per_window);
 static void release_preprocessing_resources(pdhg_solver_state_t *state);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
 static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
@@ -240,12 +244,12 @@ pdhg_solver_state_t *initialize_solver_state(
     allocate_cub_reduce_workspace(state);
     upload_problem_data(state, working_problem);
     allocate_solver_work_vectors(state);
-    allocate_host_staging_buffers(state);
+    allocate_host_staging_buffers(state, params->termination_evaluation_frequency);
     initialize_homogeneous_scalars(state);
     initialize_power_iteration_buffers(state);
     allocate_device_scalars(state);
     initialize_newton_structure(state, working_problem);
-    initialize_newton_workspaces(state);
+    initialize_newton_workspaces(state, params->termination_evaluation_frequency);
     apply_warm_starts(state, working_problem);
 
     init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
@@ -270,8 +274,6 @@ pdhg_solver_state_t *initialize_solver_state(
     release_preprocessing_resources(state);
     release_setup_only_matrix_data(state);
     initialize_iterates_from_starts(state);
-
-    print_iteration_header(params->verbose);
 
     return state;
 }
@@ -631,10 +633,16 @@ static void initialize_power_iteration_buffers(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMalloc(&state->power_iteration_vector_norm_scalar_d, sizeof(double)));
 }
 
-static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
+static void allocate_host_staging_buffers(
+    pdhg_solver_state_t *state,
+    int steps_per_window)
 {
     CUDA_CHECK(cudaMallocHost(&state->metrics_h, sizeof(pdhg_metrics_t)));
     memset(state->metrics_h, 0, sizeof(pdhg_metrics_t));
+    CUDA_CHECK(cudaMallocHost(&state->active_set_flips_h,
+                              2 * (size_t)steps_per_window * sizeof(int)));
+    state->active_set_trace_h = NULL;
+    state->active_set_trace_capacity = 0;
     CUDA_CHECK(cudaHostAlloc(
         &state->bound_norm_workspace_mp,
         sizeof(double),
@@ -744,7 +752,8 @@ static void initialize_newton_structure(
 
 static void initialize_newton_workspace(
     box_newton_state_t *newton_state,
-    int cooperative_block_limit)
+    int cooperative_block_limit,
+    int steps_per_window)
 {
     const int n = newton_state->num_elements;
 
@@ -752,32 +761,50 @@ static void initialize_newton_workspace(
     {
         newton_state->num_blocks_newton = 1;
         newton_state->newton_partials_d = NULL;
-        return;
+    }
+    else
+    {
+        int n_blocks_newton = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+        if (n_blocks_newton > cooperative_block_limit)
+        {
+            n_blocks_newton = cooperative_block_limit;
+        }
+        if (n_blocks_newton < 1)
+        {
+            n_blocks_newton = 1;
+        }
+        newton_state->num_blocks_newton = n_blocks_newton;
+        allocate_zeroed_device_buffer(
+            (void **)&newton_state->newton_partials_d,
+            2 * (size_t)n_blocks_newton * sizeof(newton_terms_t));
     }
 
-    int n_blocks_newton = (n + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    if (n_blocks_newton > cooperative_block_limit)
-    {
-        n_blocks_newton = cooperative_block_limit;
-    }
-    if (n_blocks_newton < 1)
-    {
-        n_blocks_newton = 1;
-    }
-    newton_state->num_blocks_newton = n_blocks_newton;
     allocate_zeroed_device_buffer(
-        (void **)&newton_state->newton_partials_d,
-        2 * (size_t)n_blocks_newton * sizeof(newton_terms_t));
+        (void **)&newton_state->active_set_labels_d,
+        (size_t)n * sizeof(signed char));
+    CUDA_CHECK(cudaMemset(newton_state->active_set_labels_d,
+                          ACTIVE_SET_LABEL_UNSET,
+                          (size_t)n * sizeof(signed char)));
+    allocate_zeroed_device_buffer(
+        (void **)&newton_state->active_set_flip_partials_d,
+        (size_t)steps_per_window * newton_state->num_blocks_newton * sizeof(int));
+    allocate_zeroed_device_buffer(
+        (void **)&newton_state->active_set_flips_d,
+        (size_t)steps_per_window * sizeof(int));
 }
 
-static void initialize_newton_workspaces(pdhg_solver_state_t *state)
+static void initialize_newton_workspaces(
+    pdhg_solver_state_t *state,
+    int steps_per_window)
 {
     initialize_newton_workspace(
         &state->dual_box_cone_state,
-        compute_max_cooperative_dual_box_cone_blocks());
+        compute_max_cooperative_dual_box_cone_blocks(),
+        steps_per_window);
     initialize_newton_workspace(
         &state->primal_box_cone_state,
-        compute_max_cooperative_primal_box_cone_blocks());
+        compute_max_cooperative_primal_box_cone_blocks(),
+        steps_per_window);
 }
 
 static void release_preprocessing_resources(
@@ -974,7 +1001,13 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.scalar_d);
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.newton_partials_d);
+    FREE_DEVICE_BUFFER(state->dual_box_cone_state.active_set_labels_d);
+    FREE_DEVICE_BUFFER(state->dual_box_cone_state.active_set_flip_partials_d);
+    FREE_DEVICE_BUFFER(state->dual_box_cone_state.active_set_flips_d);
     FREE_DEVICE_BUFFER(state->primal_box_cone_state.newton_partials_d);
+    FREE_DEVICE_BUFFER(state->primal_box_cone_state.active_set_labels_d);
+    FREE_DEVICE_BUFFER(state->primal_box_cone_state.active_set_flip_partials_d);
+    FREE_DEVICE_BUFFER(state->primal_box_cone_state.active_set_flips_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
     FREE_DEVICE_BUFFER(state->control.step_size_primal_d);
@@ -994,6 +1027,8 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     } while (0)
 
     FREE_HOST_BUFFER(state->metrics_h);
+    FREE_HOST_BUFFER(state->active_set_flips_h);
+    free(state->active_set_trace_h);
     FREE_HOST_BUFFER(state->bound_norm_workspace_mp);
     FREE_HOST_BUFFER(state->objective_norm_workspace_mp);
     FREE_HOST_BUFFER(state->power_iter_sigma_squared_mp);

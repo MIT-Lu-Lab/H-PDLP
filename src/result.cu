@@ -135,6 +135,13 @@ cuhsdlp_result_t *create_result_from_state(
     results->final_step_size_dual = state->control.step_size_dual;
     results->final_step_size_homogeneous = state->control.step_size_homogeneous;
 
+    results->primal_active_set_flips = state->control.primal_active_set_flips;
+    results->dual_active_set_flips = state->control.dual_active_set_flips;
+    results->phase_changes = state->control.phase_changes;
+    results->last_phase_change = state->control.last_phase_change;
+    results->active_set_trace = state->active_set_trace_h;
+    state->active_set_trace_h = NULL;
+
     return results;
 }
 

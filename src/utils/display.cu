@@ -154,6 +154,18 @@ void print_initial_info(
 #undef PRINT_DIFF_DBL
 #undef PRINT_DIFF_BOOL
 
+void display_step_sizes(const pdhg_solver_state_t *state, bool verbose)
+{
+    if (!verbose)
+        return;
+
+    printf("Step sizes: primal %.3e, dual %.3e, homogeneous %.3e (primal weight %.3e)\n",
+           state->control.step_size_primal,
+           state->control.step_size_dual,
+           state->control.step_size_homogeneous,
+           state->control.primal_weight);
+}
+
 void print_iteration_header(bool verbose)
 {
     if (!verbose)
@@ -167,7 +179,7 @@ void print_iteration_header(bool verbose)
            "  absolute residuals   ",
            "  relative residuals   ",
            "          hsd          ",
-           "      step sizes       ");
+           "      active set       ");
     printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s %s %s\n",
            "  iter",
            "  time ",
@@ -182,9 +194,9 @@ void print_iteration_header(bool verbose)
            " scale ",
            "  gap  ",
            " ratio ",
-           " pr ss ",
-           " du ss ",
-           " sc ss ");
+           " x flip",
+           " y flip",
+           " phase ");
     printf("------------------------------------------------------------"
            "--------------------------------------------------------------------------------\n");
 }
@@ -213,7 +225,7 @@ void display_iteration_stats(
     if (state->control.total_count % get_print_frequency(state->control.total_count) == 0)
     {
         printf(
-            " %6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %.1e %.1e %.1e\n",
+            " %6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %7d %7d %7d\n",
             state->control.total_count,
             state->control.cumulative_time_sec,
             state->objective_sign * state->metrics_h->primal_objective,
@@ -227,9 +239,9 @@ void display_iteration_stats(
             state->metrics_h->pdhg_primal_scale,
             state->metrics_h->normalized_homogeneous_gap,
             state->metrics_h->normalized_homogeneous_ratio,
-            state->control.step_size_primal,
-            state->control.step_size_dual,
-            state->control.step_size_homogeneous);
+            state->control.primal_active_set_flips,
+            state->control.dual_active_set_flips,
+            state->control.phase_changes);
     }
 }
 
