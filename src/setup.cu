@@ -817,13 +817,13 @@ static void initialize_newton_workspace(
 
     allocate_zeroed_device_buffer(
         (void **)&newton_state->projection_labels_d,
-        (size_t)n * sizeof(signed char));
+        (size_t)(n + 1) * sizeof(signed char));
     allocate_zeroed_device_buffer(
         (void **)&newton_state->basis_labels_d,
-        (size_t)n * sizeof(signed char));
+        (size_t)(n + 1) * sizeof(signed char));
     CUDA_CHECK(cudaMemset(newton_state->basis_labels_d,
                           BASIS_LABEL_UNSET,
-                          (size_t)n * sizeof(signed char)));
+                          (size_t)(n + 1) * sizeof(signed char)));
     allocate_zeroed_device_buffer(
         (void **)&newton_state->basis_change_partials_d,
         (size_t)steps_per_window * newton_state->num_blocks_newton * sizeof(int));

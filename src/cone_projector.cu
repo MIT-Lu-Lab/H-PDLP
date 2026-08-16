@@ -85,13 +85,13 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double tol);
 __device__ __forceinline__ int projection_label(
     double value, double box_lower, double box_upper);
-__device__ __forceinline__ int primal_basis_label(int now, int next);
-__device__ __forceinline__ int dual_basis_label(int now, int next);
+__device__ __forceinline__ int bound_basis_label(int now, int next);
+__device__ __forceinline__ int slack_basis_label(int now, int next);
 __device__ __forceinline__ int commit_basis_labels(
     const box_newton_state_t &state, int i, int projection, int basis);
-__device__ __forceinline__ int update_primal_basis(
+__device__ __forceinline__ int update_bound_basis(
     const box_newton_state_t &state, int i, int projection);
-__device__ __forceinline__ int update_dual_basis(
+__device__ __forceinline__ int update_slack_basis(
     const box_newton_state_t &state, int i, int projection);
 __device__ __forceinline__ void store_basis_change_partial(
     IntBlockReduce::TempStorage &temp,
@@ -457,8 +457,12 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         extrapolated_dual[i] = 2.0 * projected - current;
         current_dual[i] = projected;
-        thread_changes += update_dual_basis(
+        thread_changes += update_slack_basis(
             state, i, projection_label(-unprojected, box_lower, box_upper));
+    }
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        thread_changes += update_bound_basis(state, state.num_elements, scale > 0.0 ? -1 : 0);
     }
     store_basis_change_partial(basis_temp, state, window_step, thread_changes);
 
@@ -559,8 +563,12 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         extrapolated_dual[i] = 2.0 * projected - current;
         current_dual[i] = projected;
-        thread_changes += update_dual_basis(
+        thread_changes += update_slack_basis(
             state, i, projection_label(-unprojected, box_lower, box_upper));
+    }
+    if (threadIdx.x == 0)
+    {
+        thread_changes += update_bound_basis(state, state.num_elements, scale > 0.0 ? -1 : 0);
     }
     store_basis_change_partial(basis_temp, state, window_step, thread_changes);
 
@@ -701,8 +709,12 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         const double projected = fmin(fmax(shifted, lower), upper);
 
         current_primal[i] = projected;
-        thread_changes += update_primal_basis(
+        thread_changes += update_bound_basis(
             state, i, projection_label(shifted, lower, upper));
+    }
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        thread_changes += update_bound_basis(state, state.num_elements, primal_scale == 0.0 ? -1 : 0);
     }
     store_basis_change_partial(basis_temp, state, window_step, thread_changes);
 
@@ -811,8 +823,12 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         const double projected = fmin(fmax(shifted, lower), upper);
 
         current_primal[i] = projected;
-        thread_changes += update_primal_basis(
+        thread_changes += update_bound_basis(
             state, i, projection_label(shifted, lower, upper));
+    }
+    if (threadIdx.x == 0)
+    {
+        thread_changes += update_bound_basis(state, state.num_elements, primal_scale == 0.0 ? -1 : 0);
     }
     store_basis_change_partial(basis_temp, state, window_step, thread_changes);
 
@@ -830,12 +846,12 @@ __device__ __forceinline__ int projection_label(
     return (value > box_upper) - (value < box_lower);
 }
 
-__device__ __forceinline__ int primal_basis_label(int now, int next)
+__device__ __forceinline__ int bound_basis_label(int now, int next)
 {
     return (now != 0 && next == now) ? now : 0;
 }
 
-__device__ __forceinline__ int dual_basis_label(int now, int next)
+__device__ __forceinline__ int slack_basis_label(int now, int next)
 {
     return (now != 0) ? now : next;
 }
@@ -849,20 +865,20 @@ __device__ __forceinline__ int commit_basis_labels(
     return (previous_basis != BASIS_LABEL_UNSET) & (basis != previous_basis);
 }
 
-__device__ __forceinline__ int update_primal_basis(
+__device__ __forceinline__ int update_bound_basis(
     const box_newton_state_t &state, int i, int projection)
 {
     const int previous_projection = state.projection_labels_d[i];
     return commit_basis_labels(
-        state, i, projection, primal_basis_label(previous_projection, projection));
+        state, i, projection, bound_basis_label(previous_projection, projection));
 }
 
-__device__ __forceinline__ int update_dual_basis(
+__device__ __forceinline__ int update_slack_basis(
     const box_newton_state_t &state, int i, int projection)
 {
     const int previous_projection = state.projection_labels_d[i];
     return commit_basis_labels(
-        state, i, projection, dual_basis_label(previous_projection, projection));
+        state, i, projection, slack_basis_label(previous_projection, projection));
 }
 
 __device__ __forceinline__ void store_basis_change_partial(
