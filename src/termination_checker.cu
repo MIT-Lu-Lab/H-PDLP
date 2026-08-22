@@ -94,7 +94,8 @@ __global__ void compute_termination_metrics_kernel(
     double objective_vector_rescaling,
     double original_bound_norm,
     double original_objective_norm,
-    double objective_constant);
+    double objective_constant,
+    norm_type_t optimality_norm);
 __global__ void install_primal_infeasibility_ray_kernel(
     double *__restrict__ dual_sol,
     double *__restrict__ reduced_cost,
@@ -175,7 +176,8 @@ void compute_termination_metrics(
         state->objective_vector_rescaling,
         state->original_bound_norm,
         state->original_objective_norm,
-        state->objective_constant);
+        state->objective_constant,
+        params->optimality_norm);
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaMemcpyAsync(state->metrics_h, state->metrics_d,
                                sizeof(pdhg_metrics_t),
@@ -818,7 +820,8 @@ __global__ void compute_termination_metrics_kernel(
     double objective_vector_rescaling,
     double original_bound_norm,
     double original_objective_norm,
-    double objective_constant)
+    double objective_constant,
+    norm_type_t optimality_norm)
 {
     double primal_scale = *primal_scale_pdhg;
     double inv_primal_scale = (fabs(primal_scale) > 1e-50) ? 1.0 / primal_scale : 0.0;
@@ -859,7 +862,10 @@ __global__ void compute_termination_metrics_kernel(
 
     double homogeneous_gap = objective_dot_primal_value + pdhg_dual_scale
                            - reductions->variable_support;
-    double iterate_norm = sqrt(primal_solution_norm * primal_solution_norm
+    double iterate_norm = optimality_norm == NORM_TYPE_L_INF
+                        ? fmax(fmax(primal_solution_norm, dual_solution_norm),
+                               fmax(fabs(primal_scale), fabs(pdhg_dual_scale)))
+                        : sqrt(primal_solution_norm * primal_solution_norm
                              + dual_solution_norm * dual_solution_norm
                              + primal_scale * primal_scale
                              + pdhg_dual_scale * pdhg_dual_scale);
