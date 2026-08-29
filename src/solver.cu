@@ -673,13 +673,13 @@ static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params)
 {
-    double restart_scalars_h[2];
+    double pdhg_reduce_h[PDHG_COUNT];
     double hsd_scalars_h[HSD_SCALARS_COUNT];
 
     CUDA_CHECK(cudaMemcpyAsync(
-        restart_scalars_h,
-        state->pdhg_primal_norm_d,
-        2 * sizeof(double),
+        pdhg_reduce_h,
+        state->pdhg_reduce_d,
+        PDHG_COUNT * sizeof(double),
         cudaMemcpyDeviceToHost,
         state->stream_A));
     CUDA_CHECK(cudaMemcpyAsync(
@@ -690,8 +690,8 @@ static void update_primal_weight_via_restart_pid(
         state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    double dx2     = restart_scalars_h[0] * restart_scalars_h[0];
-    double dy2     = restart_scalars_h[1] * restart_scalars_h[1];
+    double dx2     = pdhg_reduce_h[PDHG_PRIMAL_NORM] * pdhg_reduce_h[PDHG_PRIMAL_NORM];
+    double dy2     = pdhg_reduce_h[PDHG_DUAL_NORM] * pdhg_reduce_h[PDHG_DUAL_NORM];
 
     double primal_scale_delta =
         hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG] -
@@ -767,8 +767,10 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
         state->hsd_primal_scale_pdhg_d,
         state->hsd_dual_scale_pdhg_d,
         inv_scale);
-    state->metrics_h->pdhg_primal_scale      *= inv_scale;
-    state->metrics_h->pdhg_dual_scale *= inv_scale;
+    state->metrics_h->primal_solution_norm *= inv_scale;
+    state->metrics_h->dual_solution_norm   *= inv_scale;
+    state->metrics_h->pdhg_primal_scale    *= inv_scale;
+    state->metrics_h->pdhg_dual_scale      *= inv_scale;
     return inv_scale;
 }
 
