@@ -1100,8 +1100,8 @@ __device__ __forceinline__ bool update_newton_bracket_safeguarded(
         new_scale = newton_step;
     }
 
-    const bool converged =
-        (fabs(new_scale - scale) < tol * fabs(new_scale) + 1.0e-14 * fabs(unprojected_scale));
+    const double step_tolerance = tol * fabs(new_scale) + 1.0e-14 * fabs(unprojected_scale);
+    const bool converged = fabs(new_scale - scale) <= step_tolerance;
     scale = new_scale;
     return converged;
 }
