@@ -137,9 +137,9 @@ void check_params_validity(const pdhg_parameters_t *params)
                     params->power_iter_params.tol);
     }
     if (!(params->step_size_params.step_size_factor > 0.0 &&
-          params->step_size_params.step_size_factor <= 1.0))
+          params->step_size_params.step_size_factor < 1.0))
     {
-        param_error("step_size_factor must be in (0, 1]",
+        param_error("step_size_factor must be in (0, 1)",
                     params->step_size_params.step_size_factor);
     }
     if (!isfinite(params->step_size_params.k_p) ||

@@ -175,7 +175,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: 1.0).\n");
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
-    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1] (default: 0.998).\n");
+    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: 0.998).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
     fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 100).\n");
