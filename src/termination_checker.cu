@@ -75,8 +75,8 @@ __global__ void compute_ray_infeasibility_kernel(
     const double *__restrict__ cons_ub,
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
-    double *__restrict__ primal_infeas,
-    double *__restrict__ dual_infeas,
+    double *__restrict__ dual_infeasibility_res,
+    double *__restrict__ primal_infeasibility_res,
     const double *__restrict__ cons_rescaling,
     const double *__restrict__ var_rescaling,
     int n_vars,
@@ -433,8 +433,8 @@ static void compute_projected_displacement(pdhg_solver_state_t *state)
 static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
 {
     termination_reductions_t *reductions_d = state->termination_reductions_d;
-    double *primal_ray_infeasibility_entries_d = state->constraint_reduction_entries_d;
-    double *dual_ray_infeasibility_entries_d = state->variable_reduction_entries_d;
+    double *dual_infeasibility_entries_d = state->constraint_reduction_entries_d;
+    double *primal_infeasibility_entries_d = state->variable_reduction_entries_d;
 
     compute_ray_infeasibility_kernel<<<
         state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -444,8 +444,8 @@ static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
         state->constraint_upper_bound_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        primal_ray_infeasibility_entries_d,
-        dual_ray_infeasibility_entries_d,
+        dual_infeasibility_entries_d,
+        primal_infeasibility_entries_d,
         state->constraint_rescaling_d,
         state->variable_rescaling_d,
         state->num_variables,
@@ -454,11 +454,11 @@ static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_constraints,
-        primal_ray_infeasibility_entries_d, 1,
+        dual_infeasibility_entries_d, 1,
         &reductions_d->dual_infeasibility_residual));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A, state->num_variables,
-        dual_ray_infeasibility_entries_d, 1,
+        primal_infeasibility_entries_d, 1,
         &reductions_d->primal_infeasibility_residual));
 }
 
@@ -779,8 +779,8 @@ __global__ void compute_ray_infeasibility_kernel(
     const double *__restrict__ cons_ub,
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
-    double *__restrict__ primal_infeas,
-    double *__restrict__ dual_infeas,
+    double *__restrict__ dual_infeasibility_res,
+    double *__restrict__ primal_infeasibility_res,
     const double *__restrict__ cons_rescaling,
     const double *__restrict__ var_rescaling,
     int n_vars,
@@ -794,7 +794,7 @@ __global__ void compute_ray_infeasibility_kernel(
         double lower_bound = isfinite(cons_lb[i]) ? 0.0 : -INFINITY;
         double upper_bound = isfinite(cons_ub[i]) ? 0.0 : INFINITY;
         double projected_value = fmax(lower_bound, fmin(v, upper_bound));
-        primal_infeas[i] = (v - projected_value) * cons_rescaling[i];
+        dual_infeasibility_res[i] = (v - projected_value) * cons_rescaling[i];
     }
     else if (i < n_cons + n_vars)
     {
@@ -803,7 +803,7 @@ __global__ void compute_ray_infeasibility_kernel(
         double lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
         double upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
         double projected_value = fmax(lower_bound, fmin(v, upper_bound));
-        dual_infeas[idx] = (v - projected_value) * var_rescaling[idx];
+        primal_infeasibility_res[idx] = (v - projected_value) * var_rescaling[idx];
     }
 }
 
