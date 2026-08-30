@@ -258,6 +258,23 @@ static lp_problem_t create_working_problem(
         }
     }
 
+    warn_on_large_objective_coefficients(&working_problem);
+
+    replace_large_bounds_with_infinity(
+        original_problem->variable_lower_bound,
+        original_problem->variable_upper_bound,
+        &working_problem.variable_lower_bound,
+        &working_problem.variable_upper_bound,
+        original_problem->num_variables,
+        params->scaling_params.infinite_bound);
+    replace_large_bounds_with_infinity(
+        original_problem->constraint_lower_bound,
+        original_problem->constraint_upper_bound,
+        &working_problem.constraint_lower_bound,
+        &working_problem.constraint_upper_bound,
+        original_problem->num_constraints,
+        params->scaling_params.infinite_bound);
+
     filter_constraint_matrix_entries(&working_problem, original_problem, params);
     return working_problem;
 }
@@ -306,6 +323,16 @@ static void working_problem_free(
     if (working_problem->dual_start != original_problem->dual_start)
     {
         free(working_problem->dual_start);
+    }
+    if (working_problem->variable_lower_bound != original_problem->variable_lower_bound)
+    {
+        free(working_problem->variable_lower_bound);
+        free(working_problem->variable_upper_bound);
+    }
+    if (working_problem->constraint_lower_bound != original_problem->constraint_lower_bound)
+    {
+        free(working_problem->constraint_lower_bound);
+        free(working_problem->constraint_upper_bound);
     }
     if (working_problem->constraint_matrix_values != original_problem->constraint_matrix_values)
     {

@@ -125,6 +125,11 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("matrix_zero_tol must be finite and >= 0",
                     params->scaling_params.matrix_zero_tol);
     }
+    if (!(params->scaling_params.infinite_bound > 0.0))
+    {
+        param_error("infinite_bound must be > 0",
+                    params->scaling_params.infinite_bound);
+    }
     if (params->power_iter_params.max_iter < 1)
     {
         param_error("singular_value_max_iter must be >= 1",
@@ -296,6 +301,7 @@ pdhg_solver_state_t *initialize_solver_state(
 
     compute_lp_problem_norms(
         original_problem, params->optimality_norm,
+        params->scaling_params.infinite_bound,
         &state->original_objective_norm,
         &state->original_bound_norm);
 

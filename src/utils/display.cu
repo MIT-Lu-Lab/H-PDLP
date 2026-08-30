@@ -142,6 +142,9 @@ void print_initial_info(
     PRINT_DIFF_DBL("matrix_zero_tol",
                    params->scaling_params.matrix_zero_tol,
                    default_params.scaling_params.matrix_zero_tol);
+    PRINT_DIFF_DBL("infinite_bound",
+                   params->scaling_params.infinite_bound,
+                   default_params.scaling_params.infinite_bound);
     PRINT_DIFF_INT("cone_newton_iter",
                    params->cone_params.max_iter,
                    default_params.cone_params.max_iter);

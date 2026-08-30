@@ -75,9 +75,20 @@ extern "C"
         const lp_problem_t *original_problem,
         const pdhg_parameters_t *params);
 
+    void warn_on_large_objective_coefficients(const lp_problem_t *problem);
+
+    void replace_large_bounds_with_infinity(
+        const double *original_lower,
+        const double *original_upper,
+        double **working_lower,
+        double **working_upper,
+        int length,
+        double infinite_bound);
+
     void compute_lp_problem_norms(
         const lp_problem_t *problem,
         norm_type_t optimality_norm,
+        double infinite_bound,
         double *out_objective_norm,
         double *out_bound_norm);
 

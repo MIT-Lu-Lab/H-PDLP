@@ -184,6 +184,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->scaling_params.pock_chambolle_alpha = 1.0;
     params->scaling_params.bound_objective_rescaling = true;
     params->scaling_params.matrix_zero_tol = 1e-9;
+    params->scaling_params.infinite_bound = 1e20;
 
     params->power_iter_params.max_iter = 5000;
     params->power_iter_params.tol = 1e-4;

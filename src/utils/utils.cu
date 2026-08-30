@@ -26,6 +26,9 @@ limitations under the License.
 const double HOST_ONE = 1.0;
 const double HOST_ZERO = 0.0;
 
+#define MATRIX_LARGE_VALUE 1e15
+#define OBJECTIVE_LARGE_VALUE 1e20
+
 static __global__ void compute_objective_norm_entries_kernel(
     const double *__restrict__ obj_vec,
     double *__restrict__ entries,
@@ -54,10 +57,34 @@ void filter_constraint_matrix_entries(
     const double *vals = original_problem->constraint_matrix_values;
 
     int filtered_nnz = 0;
+    int num_large_entries = 0;
+    double max_large_entry = 0.0;
     for (int i = 0; i < num_rows; ++i)
+    {
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
-            if (fabs(vals[k]) > params->scaling_params.matrix_zero_tol)
+        {
+            const double abs_value = fabs(vals[k]);
+            if (abs_value > params->scaling_params.matrix_zero_tol)
                 ++filtered_nnz;
+            if (abs_value >= MATRIX_LARGE_VALUE)
+            {
+                ++num_large_entries;
+                if (abs_value > max_large_entry)
+                    max_large_entry = abs_value;
+            }
+        }
+    }
+
+    if (num_large_entries > 0)
+    {
+        fprintf(stderr,
+                "WARNING: %d constraint matrix %s |value| >= %.1e (largest %.3e): "
+                "the problem is badly scaled.\n",
+                num_large_entries,
+                (num_large_entries == 1 ? "entry has" : "entries have"),
+                MATRIX_LARGE_VALUE,
+                max_large_entry);
+    }
 
     if (filtered_nnz == nnz)
         return;
@@ -94,6 +121,75 @@ void filter_constraint_matrix_entries(
                (nnz - filtered_nnz == 1 ? "entry" : "entries"),
                params->scaling_params.matrix_zero_tol);
     }
+}
+
+void warn_on_large_objective_coefficients(const lp_problem_t *problem)
+{
+    int num_large_coefficients = 0;
+    double max_large_coefficient = 0.0;
+    for (int j = 0; j < problem->num_variables; ++j)
+    {
+        const double abs_value = fabs(problem->objective_vector[j]);
+        if (abs_value >= OBJECTIVE_LARGE_VALUE)
+        {
+            ++num_large_coefficients;
+            if (abs_value > max_large_coefficient)
+                max_large_coefficient = abs_value;
+        }
+    }
+
+    if (num_large_coefficients > 0)
+    {
+        fprintf(stderr,
+                "WARNING: %d objective %s |value| >= %.1e (largest %.3e): "
+                "the problem is badly scaled.\n",
+                num_large_coefficients,
+                (num_large_coefficients == 1 ? "coefficient has" : "coefficients have"),
+                OBJECTIVE_LARGE_VALUE,
+                max_large_coefficient);
+    }
+}
+
+static bool is_infinite_lower_bound(double bound, double infinite_bound)
+{
+    return bound <= -infinite_bound;
+}
+
+static bool is_infinite_upper_bound(double bound, double infinite_bound)
+{
+    return bound >= infinite_bound;
+}
+
+void replace_large_bounds_with_infinity(
+    const double *original_lower,
+    const double *original_upper,
+    double **working_lower,
+    double **working_upper,
+    int length,
+    double infinite_bound)
+{
+    bool has_large_bound = false;
+    for (int i = 0; i < length && !has_large_bound; ++i)
+        has_large_bound = is_infinite_lower_bound(original_lower[i], infinite_bound) ||
+                          is_infinite_upper_bound(original_upper[i], infinite_bound);
+
+    if (!has_large_bound)
+        return;
+
+    double *new_lower = (double *)safe_malloc((size_t)length * sizeof(double));
+    double *new_upper = (double *)safe_malloc((size_t)length * sizeof(double));
+    for (int i = 0; i < length; ++i)
+    {
+        new_lower[i] = is_infinite_lower_bound(original_lower[i], infinite_bound)
+                           ? -INFINITY
+                           : original_lower[i];
+        new_upper[i] = is_infinite_upper_bound(original_upper[i], infinite_bound)
+                           ? INFINITY
+                           : original_upper[i];
+    }
+
+    *working_lower = new_lower;
+    *working_upper = new_upper;
 }
 
 void *safe_malloc(size_t size)
@@ -144,6 +240,7 @@ void *safe_realloc(void *ptr, size_t new_size)
 void compute_lp_problem_norms(
     const lp_problem_t *problem,
     norm_type_t optimality_norm,
+    double infinite_bound,
     double *out_objective_norm,
     double *out_bound_norm)
 {
@@ -165,15 +262,17 @@ void compute_lp_problem_norms(
     {
         double Li = problem->constraint_lower_bound[i];
         double Ui = problem->constraint_upper_bound[i];
+        bool finite_Li = isfinite(Li) && !is_infinite_lower_bound(Li, infinite_bound);
+        bool finite_Ui = isfinite(Ui) && !is_infinite_upper_bound(Ui, infinite_bound);
         if (use_linf)
         {
-            if (isfinite(Li) && Li != Ui) bnd_acc = fmax(bnd_acc, fabs(Li));
-            if (isfinite(Ui))             bnd_acc = fmax(bnd_acc, fabs(Ui));
+            if (finite_Li && Li != Ui) bnd_acc = fmax(bnd_acc, fabs(Li));
+            if (finite_Ui)             bnd_acc = fmax(bnd_acc, fabs(Ui));
         }
         else
         {
-            if (isfinite(Li) && Li != Ui) bnd_acc += Li * Li;
-            if (isfinite(Ui))             bnd_acc += Ui * Ui;
+            if (finite_Li && Li != Ui) bnd_acc += Li * Li;
+            if (finite_Ui)             bnd_acc += Ui * Ui;
         }
     }
     if (!use_linf) bnd_acc = sqrt(bnd_acc);

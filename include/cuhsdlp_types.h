@@ -76,6 +76,7 @@ extern "C"
         double pock_chambolle_alpha;
         bool bound_objective_rescaling;
         double matrix_zero_tol;
+        double infinite_bound;
     } scaling_parameters_t;
 
     typedef struct
