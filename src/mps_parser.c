@@ -339,6 +339,8 @@ typedef struct
     double *objective_coeffs;
     double *var_lower_bounds;
     double *var_upper_bounds;
+    unsigned char *col_binary_default;
+    unsigned char *col_has_lower;
     double *constraint_lower_bounds;
     double *constraint_upper_bounds;
 
@@ -347,6 +349,7 @@ typedef struct
 
     char *objective_row_name;
     char *current_col_name;
+    int in_integer_block;
     double objective_constant;
     objective_sense_t model_sense;
     int error_flag;
@@ -452,12 +455,18 @@ static bool ensure_column_capacity(MpsParserState *state)
         (double *)safe_realloc(state->var_lower_bounds, new_cap * sizeof(double));
     state->var_upper_bounds =
         (double *)safe_realloc(state->var_upper_bounds, new_cap * sizeof(double));
+    state->col_binary_default = (unsigned char *)safe_realloc(
+        state->col_binary_default, new_cap * sizeof(unsigned char));
+    state->col_has_lower = (unsigned char *)safe_realloc(
+        state->col_has_lower, new_cap * sizeof(unsigned char));
 
     for (size_t i = state->col_capacity; i < new_cap; ++i)
     {
         state->objective_coeffs[i] = 0.0;
         state->var_lower_bounds[i] = 0.0;
         state->var_upper_bounds[i] = INFINITY;
+        state->col_binary_default[i] = 0;
+        state->col_has_lower[i] = 0;
     }
 
     state->col_capacity = new_cap;
@@ -486,8 +495,15 @@ typedef enum
     SEC_RANGES,
     SEC_BOUNDS,
     SEC_OBJSENSE,
+    SEC_SOS,
+    SEC_UNSUPPORTED,
     SEC_ENDATA
 } MpsSection;
+
+static const char *const MPS_UNSUPPORTED_SECTIONS[] = {
+    "QUADOBJ", "QMATRIX", "QSECTION", "QCMATRIX", "CSECTION",
+    "INDICATORS", "DELAYEDROWS", "MODELCUTS", "USERCUTS", "GENCONS",
+    "PWLOBJ", "PWLNAM", "PWLCON"};
 
 lp_problem_t *read_mps_file(const char *filename)
 {
@@ -569,9 +585,32 @@ lp_problem_t *read_mps_file(const char *filename)
                 next_section = SEC_BOUNDS;
             else if (strcmp(tokens[0], "OBJSENSE") == 0 || strcmp(tokens[0], "OBJSENS") == 0)
                 next_section = SEC_OBJSENSE;
+            else if (strcmp(tokens[0], "SOS") == 0 || strcmp(tokens[0], "SETS") == 0)
+                next_section = SEC_SOS;
             else if (strcmp(tokens[0], "ENDATA") == 0)
             {
                 next_section = SEC_ENDATA;
+            }
+            else
+            {
+                const size_t num_unsupported = sizeof(MPS_UNSUPPORTED_SECTIONS) /
+                                               sizeof(MPS_UNSUPPORTED_SECTIONS[0]);
+                for (size_t k = 0; k < num_unsupported; ++k)
+                {
+                    if (strcmp(tokens[0], MPS_UNSUPPORTED_SECTIONS[k]) == 0)
+                    {
+                        next_section = SEC_UNSUPPORTED;
+                        break;
+                    }
+                }
+            }
+
+            if (next_section == SEC_UNSUPPORTED)
+            {
+                fprintf(stderr,
+                        "ERROR: MPS section '%s' is not supported.\n", tokens[0]);
+                state.error_flag = 1;
+                break;
             }
 
             if (next_section != SEC_NONE)
@@ -650,6 +689,15 @@ lp_problem_t *read_mps_file(const char *filename)
         fprintf(stderr, "ERROR: Failed to parse MPS file.\n");
         free_parser_state(&state);
         return NULL;
+    }
+
+    for (size_t i = 0; i < state.col_map.size; ++i)
+    {
+        if (state.col_binary_default[i])
+        {
+            state.var_lower_bounds[i] = 0.0;
+            state.var_upper_bounds[i] = 1.0;
+        }
     }
 
     lp_problem_t *prob = safe_calloc(1, sizeof(lp_problem_t));
@@ -855,13 +903,20 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
 
     if (n_tokens >= 2 && strcmp(tokens[1], "'MARKER'") == 0)
     {
-        if (n_tokens >= 3 && strcmp(tokens[2], "'INTORG'") == 0 &&
-            state->warn_integrality == 0)
+        if (n_tokens >= 3 && strcmp(tokens[2], "'INTORG'") == 0)
         {
-            state->warn_integrality = 1;
-            fprintf(stderr,
-                    "WARNING: integrality markers ignored: "
-                    "solving the LP relaxation.\n");
+            state->in_integer_block = 1;
+            if (state->warn_integrality == 0)
+            {
+                state->warn_integrality = 1;
+                fprintf(stderr,
+                        "WARNING: integrality markers ignored: "
+                        "solving the LP relaxation.\n");
+            }
+        }
+        else if (n_tokens >= 3 && strcmp(tokens[2], "'INTEND'") == 0)
+        {
+            state->in_integer_block = 0;
         }
         return 0;
     }
@@ -894,9 +949,12 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
     if (!ensure_column_capacity(state))
         return -1;
 
+    size_t num_columns_before = state->col_map.size;
     int col_idx = namemap_put(&state->col_map, col_name);
     if (col_idx == -1)
         return -1;
+    if (state->col_map.size > num_columns_before && state->in_integer_block)
+        state->col_binary_default[col_idx] = 1;
 
     for (int i = pair_start_index; i + 1 < n_tokens; i += 2)
     {
@@ -1080,18 +1138,20 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
                        "created with default bounds.\n", col_name);
     }
 
+    state->col_binary_default[col_idx] = 0;
+
     if (strcmp(bound_type, "LO") == 0 || strcmp(bound_type, "LI") == 0)
     {
         state->var_lower_bounds[col_idx] = value;
+        state->col_has_lower[col_idx] = 1;
     }
     else if (strcmp(bound_type, "UP") == 0 || strcmp(bound_type, "UI") == 0)
     {
         state->var_upper_bounds[col_idx] = value;
-        // MPS convention: a negative upper bound on a variable whose lower bound
-        // is still the default 0 implies a lower bound of -infinity (otherwise the
-        // interval [0, value] would be empty). LI/MI set before this leave a
-        // non-zero/-inf lower, so they are not overridden.
-        if (value < 0.0 && state->var_lower_bounds[col_idx] == 0.0)
+        // MPS convention: a negative upper bound on a variable that has no
+        // explicit lower bound implies a lower bound of -infinity (otherwise the
+        // interval [0, value] would be empty).
+        if (value < 0.0 && !state->col_has_lower[col_idx])
         {
             state->var_lower_bounds[col_idx] = -INFINITY;
         }
@@ -1100,15 +1160,18 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
     {
         state->var_lower_bounds[col_idx] = value;
         state->var_upper_bounds[col_idx] = value;
+        state->col_has_lower[col_idx] = 1;
     }
     else if (strcmp(bound_type, "FR") == 0)
     {
         state->var_lower_bounds[col_idx] = -INFINITY;
         state->var_upper_bounds[col_idx] = INFINITY;
+        state->col_has_lower[col_idx] = 1;
     }
     else if (strcmp(bound_type, "MI") == 0)
     {
         state->var_lower_bounds[col_idx] = -INFINITY;
+        state->col_has_lower[col_idx] = 1;
     }
     else if (strcmp(bound_type, "PL") == 0)
     {
@@ -1118,6 +1181,7 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
     {
         state->var_lower_bounds[col_idx] = 0.0;
         state->var_upper_bounds[col_idx] = 1.0;
+        state->col_has_lower[col_idx] = 1;
     }
     return 0;
 }
@@ -1148,6 +1212,8 @@ static void free_parser_state(MpsParserState *state)
     free(state->objective_coeffs);
     free(state->var_lower_bounds);
     free(state->var_upper_bounds);
+    free(state->col_binary_default);
+    free(state->col_has_lower);
     free(state->constraint_lower_bounds);
     free(state->constraint_upper_bounds);
     free(state->objective_row_name);
