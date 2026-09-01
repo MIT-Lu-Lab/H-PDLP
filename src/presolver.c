@@ -203,6 +203,14 @@ void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
     memcpy(result->primal_solution, info->presolver->sol->x, working_problem->num_variables * sizeof(double));
     memcpy(result->dual_solution, info->presolver->sol->y, working_problem->num_constraints * sizeof(double));
     memcpy(result->reduced_cost, info->presolver->sol->z, working_problem->num_variables * sizeof(double));
+
+    for (int j = 0; j < working_problem->num_variables; ++j)
+    {
+        if (!isfinite(working_problem->variable_lower_bound[j]))
+            result->reduced_cost[j] = fmin(result->reduced_cost[j], 0.0);
+        if (!isfinite(working_problem->variable_upper_bound[j]))
+            result->reduced_cost[j] = fmax(result->reduced_cost[j], 0.0);
+    }
     if (info->presolver->reduced_prob->n == 0)
     {
         double obj = 0.0;

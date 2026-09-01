@@ -24,6 +24,8 @@ __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
     double *__restrict__ dual_sol,
     double *__restrict__ reduced_cost,
+    const double *__restrict__ var_lb,
+    const double *__restrict__ var_ub,
     const double *__restrict__ var_rescaling,
     const double *__restrict__ cons_rescaling,
     const double obj_vec_rescaling,
@@ -167,6 +169,8 @@ static void rescale_solution(pdhg_solver_state_t *state)
         state->pdhg_primal_solution_d,
         state->pdhg_dual_solution_d,
         state->pdhg_reduced_cost_d,
+        state->variable_lower_bound_d,
+        state->variable_upper_bound_d,
         state->variable_rescaling_d,
         state->constraint_rescaling_d,
         state->objective_vector_rescaling,
@@ -213,6 +217,8 @@ __global__ void rescale_solution_kernel(
     double *__restrict__ primal_sol,
     double *__restrict__ dual_sol,
     double *__restrict__ reduced_cost,
+    const double *__restrict__ var_lb,
+    const double *__restrict__ var_ub,
     const double *__restrict__ var_rescaling,
     const double *__restrict__ cons_rescaling,
     const double obj_vec_rescaling,
@@ -235,6 +241,11 @@ __global__ void rescale_solution_kernel(
     else if (i < 2 * n_vars + n_cons)
     {
         int idx = i - n_vars - n_cons;
-        reduced_cost[idx] = reduced_cost[idx] * inv_divisor * var_rescaling[idx] / obj_vec_rescaling;
+        double rc = reduced_cost[idx] * inv_divisor * var_rescaling[idx] / obj_vec_rescaling;
+        if (!isfinite(var_lb[idx]))
+            rc = fmin(rc, 0.0);
+        if (!isfinite(var_ub[idx]))
+            rc = fmax(rc, 0.0);
+        reduced_cost[idx] = rc;
     }
 }
