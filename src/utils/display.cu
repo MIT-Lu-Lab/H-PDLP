@@ -115,6 +115,9 @@ void print_initial_info(
                params->optimality_norm == NORM_TYPE_L_INF ? "L_inf" : "L2");
     }
 
+    PRINT_DIFF_INT("geo_mean_iter",
+                   params->scaling_params.geometric_mean_iterations,
+                   default_params.scaling_params.geometric_mean_iterations);
     PRINT_DIFF_INT("l_inf_ruiz_iter",
                    params->scaling_params.l_inf_ruiz_iterations,
                    default_params.scaling_params.l_inf_ruiz_iterations);

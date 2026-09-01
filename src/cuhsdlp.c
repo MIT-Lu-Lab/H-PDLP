@@ -179,6 +179,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->reflection_coefficient = 1.0;
     params->termination_evaluation_frequency = 200;
 
+    params->scaling_params.geometric_mean_iterations = 12;
     params->scaling_params.l_inf_ruiz_iterations = 10;
     params->scaling_params.has_pock_chambolle_alpha = true;
     params->scaling_params.pock_chambolle_alpha = 1.0;

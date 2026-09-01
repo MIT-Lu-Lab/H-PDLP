@@ -71,6 +71,7 @@ extern "C"
 
     typedef struct
     {
+        int geometric_mean_iterations;
         int l_inf_ruiz_iterations;
         bool has_pock_chambolle_alpha;
         double pock_chambolle_alpha;

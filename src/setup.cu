@@ -107,6 +107,11 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("reflection_coefficient must be in (0, 1]",
                     params->reflection_coefficient);
     }
+    if (params->scaling_params.geometric_mean_iterations < 0)
+    {
+        param_error("geometric_mean_iterations must be >= 0",
+                    params->scaling_params.geometric_mean_iterations);
+    }
     if (params->scaling_params.l_inf_ruiz_iterations < 0)
     {
         param_error("l_inf_ruiz_iterations must be >= 0",
