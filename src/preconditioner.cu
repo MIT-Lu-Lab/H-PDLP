@@ -123,6 +123,13 @@ static void geometric_mean_rescaling(
     double *variable_rescaling,
     double *constraint_multiplier,
     double *variable_multiplier);
+static int compute_log2_vector_width(
+    long long num_nonzeros,
+    int num_rows,
+    int longest_row);
+static void compute_longest_csr_rows(
+    pdhg_solver_state_t *state,
+    int *longest);
 static void ruiz_rescaling(
     pdhg_solver_state_t *state,
     int num_iters,
@@ -184,58 +191,6 @@ static void scale_problem(
         constraint_rescaling,
         num_nonzeros);
     CUDA_CHECK(cudaGetLastError());
-}
-
-static int compute_log2_vector_width(
-    long long num_nonzeros,
-    int num_rows,
-    int longest_row)
-{
-    if (longest_row >= 512)
-        return MAX_LOG2_VECTOR_WIDTH;
-    if (num_rows <= 0)
-        return 0;
-
-    const long long mean_nnz = (num_nonzeros + num_rows - 1) / num_rows;
-    int log2_width = 0;
-    while (log2_width < MAX_LOG2_VECTOR_WIDTH && (1LL << log2_width) < mean_nnz)
-        ++log2_width;
-    return log2_width;
-}
-
-static void compute_longest_csr_rows(
-    pdhg_solver_state_t *state,
-    int *longest)
-{
-    int *longest_d = NULL;
-    CUDA_CHECK(cudaMalloc(&longest_d, 2 * sizeof(int)));
-    CUDA_CHECK(cudaMemsetAsync(longest_d, 0, 2 * sizeof(int), state->stream_A));
-
-    compute_csr_max_row_length_kernel<<<
-        state->num_blocks_dual,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->constraint_matrix->row_ptr,
-        state->num_constraints,
-        longest_d);
-    compute_csr_max_row_length_kernel<<<
-        state->num_blocks_primal,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->constraint_matrix_t->row_ptr,
-        state->num_variables,
-        longest_d + 1);
-
-    CUDA_CHECK(cudaMemcpyAsync(
-        longest,
-        longest_d,
-        2 * sizeof(int),
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    CUDA_CHECK(cudaFree(longest_d));
 }
 
 static void geometric_mean_rescaling(
@@ -319,6 +274,58 @@ static void geometric_mean_rescaling(
         num_variables);
 
     scale_problem(state, constraint_rescaling, variable_rescaling);
+}
+
+static int compute_log2_vector_width(
+    long long num_nonzeros,
+    int num_rows,
+    int longest_row)
+{
+    if (longest_row >= 512)
+        return MAX_LOG2_VECTOR_WIDTH;
+    if (num_rows <= 0)
+        return 0;
+
+    const long long mean_nnz = (num_nonzeros + num_rows - 1) / num_rows;
+    int log2_width = 0;
+    while (log2_width < MAX_LOG2_VECTOR_WIDTH && (1LL << log2_width) < mean_nnz)
+        ++log2_width;
+    return log2_width;
+}
+
+static void compute_longest_csr_rows(
+    pdhg_solver_state_t *state,
+    int *longest)
+{
+    int *longest_d = NULL;
+    CUDA_CHECK(cudaMalloc(&longest_d, 2 * sizeof(int)));
+    CUDA_CHECK(cudaMemsetAsync(longest_d, 0, 2 * sizeof(int), state->stream_A));
+
+    compute_csr_max_row_length_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->constraint_matrix->row_ptr,
+        state->num_constraints,
+        longest_d);
+    compute_csr_max_row_length_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->constraint_matrix_t->row_ptr,
+        state->num_variables,
+        longest_d + 1);
+
+    CUDA_CHECK(cudaMemcpyAsync(
+        longest,
+        longest_d,
+        2 * sizeof(int),
+        cudaMemcpyDeviceToHost,
+        state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    CUDA_CHECK(cudaFree(longest_d));
 }
 
 static void ruiz_rescaling(
