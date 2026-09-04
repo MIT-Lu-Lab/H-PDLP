@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "power_iteration.h"
+#include "spmv_backend.h"
 #include "utils.h"
 #include <math.h>
 
@@ -72,29 +73,17 @@ static void run_power_iteration_step(
         state->power_iteration_vector_norm_scalar_d,
         m);
 
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_A,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matAt,
         state->spmv_power_iteration_normalized_vector,
-        &HOST_ZERO,
         state->spmv_dual_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matAt_spmv_workspace_d));
+        &state->matAt_spmv_plan);
 
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_A,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matA,
         state->spmv_dual_product,
-        &HOST_ZERO,
         state->spmv_primal_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matA_spmv_workspace_d));
+        &state->matA_spmv_plan);
 
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,

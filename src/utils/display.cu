@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "display.h"
 #include "cuhsdlp.h"
+#include "spmv_backend.h"
 #include "termination_checker.h"
 #include "utils.h"
 #include <math.h>
@@ -109,6 +110,7 @@ void print_initial_info(
            params->termination_criteria.eps_farkas_homogeneous);
     printf("  eps_farkas_displ   : %.1e\n",
            params->termination_criteria.eps_farkas_displacement);
+    printf("  spmv_backend       : %s\n", spmv_backend_name());
     if (params->optimality_norm != default_params.optimality_norm)
     {
         printf("  optimality_norm    : %s\n",

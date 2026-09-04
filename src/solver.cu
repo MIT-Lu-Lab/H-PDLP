@@ -23,6 +23,7 @@ limitations under the License.
 #include "result.h"
 #include "setup.h"
 #include "solver.h"
+#include "spmv_backend.h"
 #include "termination_checker.h"
 #include "utils.h"
 #include <cub/cub.cuh>
@@ -432,17 +433,11 @@ static void hsd_update_dual_solution(
     const cone_parameters_t *cone_params = &params->cone_params;
     const double reflection_coefficient = params->reflection_coefficient;
 
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_A,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matA,
         state->spmv_current_primal_solution,
-        &HOST_ZERO,
         state->spmv_primal_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matA_spmv_workspace_d));
+        &state->matA_spmv_plan);
 
     update_dual_box_cone_projection(
         cone_params,
@@ -478,17 +473,11 @@ static void update_hsd_primal_block(
 
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_At,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matAt,
         state->spmv_reflected_dual_solution,
-        &HOST_ZERO,
         state->spmv_dual_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matAt_spmv_workspace_d));
+        &state->matAt_spmv_plan);
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
@@ -535,17 +524,11 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_At,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matAt,
         state->spmv_delta_dual_solution,
-        &HOST_ZERO,
         state->spmv_dual_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matAt_spmv_workspace_d));
+        &state->matAt_spmv_plan);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,

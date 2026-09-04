@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "preconditioner.h"
 #include "power_iteration.h"
+#include "setup.h"
 #include "utils.h"
 #include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>
@@ -612,6 +613,8 @@ void rescale_problem(
         }
         bound_objective_rescaling(state);
     }
+
+    initialize_spmv_plans(state);
 
     compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
     state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);

@@ -103,6 +103,13 @@ typedef struct {
 } cu_sparse_matrix_csr_t;
 
 typedef struct {
+    cusparseSpMatDescr_t matrix;
+    void *descriptor;
+    void *plan;
+    void *buffer;
+} spmv_plan_t;
+
+typedef struct {
     int num_variables;
     int num_constraints;
     size_t var_bytes;
@@ -145,8 +152,8 @@ typedef struct {
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
     cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
-    void   *matA_spmv_workspace_d;
-    void   *matAt_spmv_workspace_d;
+    spmv_plan_t matA_spmv_plan;
+    spmv_plan_t matAt_spmv_plan;
     void   *cub_reduce_workspace_d;
     size_t  cub_reduce_workspace_bytes;
 

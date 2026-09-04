@@ -19,6 +19,7 @@ limitations under the License.
 #include "cuhsdlp.h"
 #include "display.h"
 #include "preconditioner.h"
+#include "spmv_backend.h"
 #include "termination_checker.h"
 #include "utils.h"
 #include <cub/cub.cuh>
@@ -35,6 +36,7 @@ __global__ void build_row_ind_kernel(
     int num_rows,
     int *__restrict__ row_ind);
 __global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
+static void param_error(const char *requirement, double value);
 static void transpose_csr_and_build_map(
     const lp_problem_t *problem,
     int **transpose_row_ptr,
@@ -50,12 +52,6 @@ static void create_dense_vector_descriptor(
     cusparseDnVecDescr_t *descriptor,
     int length,
     double *values);
-static void initialize_spmv_buffer(
-    cusparseHandle_t handle,
-    cusparseSpMatDescr_t matrix,
-    cusparseDnVecDescr_t input,
-    cusparseDnVecDescr_t output,
-    void **buffer);
 static void setup_sparse_resources(pdhg_solver_state_t *state);
 static void allocate_and_copy_to_device(
     void **dst,
@@ -76,9 +72,13 @@ static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
+static bool bound_is_zero_or_infinite(double bound);
 static void initialize_newton_structure(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
+static void initialize_newton_workspace(
+    box_newton_state_t *newton_state,
+    int cooperative_block_limit);
 static void initialize_newton_workspaces(pdhg_solver_state_t *state);
 static void release_preprocessing_resources(pdhg_solver_state_t *state);
 static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
@@ -397,24 +397,6 @@ static void create_dense_vector_descriptor(
     CUSPARSE_CHECK(cusparseCreateDnVec(descriptor, length, values, CUDA_R_64F));
 }
 
-static void initialize_spmv_buffer(
-    cusparseHandle_t handle,
-    cusparseSpMatDescr_t matrix,
-    cusparseDnVecDescr_t input,
-    cusparseDnVecDescr_t output,
-    void **buffer)
-{
-    size_t buffer_size = 0;
-    CUSPARSE_CHECK(cusparseSpMV_bufferSize(
-        handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, matrix, input,
-        &HOST_ZERO, output, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, &buffer_size));
-
-    CUDA_CHECK(cudaMalloc(buffer, buffer_size));
-    CUSPARSE_CHECK(cusparseSpMV_preprocess(
-        handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, matrix, input,
-        &HOST_ZERO, output, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, *buffer));
-}
-
 static void setup_sparse_resources(pdhg_solver_state_t *state)
 {
     create_csr_descriptor(
@@ -464,19 +446,22 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         &state->spmv_power_iteration_normalized_vector,
         state->num_constraints,
         state->power_iteration_normalized_vector_d);
+}
 
-    initialize_spmv_buffer(
+void initialize_spmv_plans(pdhg_solver_state_t *state)
+{
+    create_spmv_plan(
         state->sparse_handle_A,
         state->matA,
         state->spmv_current_primal_solution,
         state->spmv_primal_product,
-        &state->matA_spmv_workspace_d);
-    initialize_spmv_buffer(
+        &state->matA_spmv_plan);
+    create_spmv_plan(
         state->sparse_handle_At,
         state->matAt,
         state->spmv_reflected_dual_solution,
         state->spmv_dual_product,
-        &state->matAt_spmv_workspace_d);
+        &state->matAt_spmv_plan);
 }
 
 static void allocate_and_copy_to_device(
@@ -950,6 +935,9 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
 
 static void free_sparse_resources(pdhg_solver_state_t *state)
 {
+    destroy_spmv_plan(&state->matA_spmv_plan);
+    destroy_spmv_plan(&state->matAt_spmv_plan);
+
     if (state->matA)
         CUSPARSE_CHECK(cusparseDestroySpMat(state->matA));
     if (state->matAt)
@@ -972,17 +960,6 @@ static void free_sparse_resources(pdhg_solver_state_t *state)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_product));
     if (state->spmv_power_iteration_normalized_vector)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_normalized_vector));
-#define FREE_SPMV_WORKSPACE(ptr) \
-    do                           \
-    {                            \
-        if ((ptr))               \
-            CUDA_CHECK(cudaFree(ptr)); \
-    } while (0)
-
-    FREE_SPMV_WORKSPACE(state->matA_spmv_workspace_d);
-    FREE_SPMV_WORKSPACE(state->matAt_spmv_workspace_d);
-
-#undef FREE_SPMV_WORKSPACE
 }
 
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix)

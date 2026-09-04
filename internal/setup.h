@@ -25,6 +25,7 @@ extern "C"
 #endif
 
     void                 check_params_validity(const pdhg_parameters_t *params);
+    void                 initialize_spmv_plans(pdhg_solver_state_t *state);
     pdhg_solver_state_t *initialize_solver_state(const lp_problem_t *working_problem,
                                                  const lp_problem_t *original_problem,
                                                  const pdhg_parameters_t *params);

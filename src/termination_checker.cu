@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "termination_checker.h"
+#include "spmv_backend.h"
 #include "utils.h"
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
@@ -193,29 +194,17 @@ static void compute_matrix_products(
 {
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_A,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matA,
         primal_vector,
-        &HOST_ZERO,
         state->spmv_primal_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matA_spmv_workspace_d));
+        &state->matA_spmv_plan);
 
-    CUSPARSE_CHECK(cusparseSpMV(
+    execute_spmv(
         state->sparse_handle_At,
-        CUSPARSE_OPERATION_NON_TRANSPOSE,
-        &HOST_ONE,
-        state->matAt,
         dual_vector,
-        &HOST_ZERO,
         state->spmv_dual_product,
-        CUDA_R_64F,
-        CUSPARSE_SPMV_CSR_ALG2,
-        state->matAt_spmv_workspace_d));
+        &state->matAt_spmv_plan);
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 }
