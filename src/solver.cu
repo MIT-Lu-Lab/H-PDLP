@@ -740,26 +740,21 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
                                  fabs(state->metrics_h->pdhg_dual_scale)));
 
     double inv_scale;
-    if (max_block_norm > 1.0e12 || max_block_norm < 1.0e-12)
-    {
-        inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
-    }
-    else if (primal_scale >= 0.1 &&
-             primal_scale <= 10.0)
+    if (primal_scale >= 0.1 &&
+        primal_scale <= 10.0 &&
+        max_block_norm <= 1.0e12 &&
+        max_block_norm >= 1.0e-12)
     {
         return 1.0;
     }
-    else if (primal_scale > 1.0e-3)
+    else if (primal_scale > 1.0e-3 &&
+             max_block_norm <= 1.0e12 * primal_scale)
     {
         inv_scale = 1.0 / primal_scale;
     }
-    else if (primal_scale > 1.0e-15 * max_block_norm)
-    {
-        inv_scale = 10.0;
-    }
     else
     {
-        inv_scale = 1.0;
+        inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
     }
 
     CUDA_CHECK(cudaMemcpyAsync(
