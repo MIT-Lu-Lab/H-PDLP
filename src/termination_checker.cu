@@ -276,30 +276,18 @@ static void compute_residual_norms(
             &reductions_d->dual_solution_norm));
     }
 
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        state->primal_infeasibility_stationarity_residual_d, 1,
-        &reductions_d->primal_infeasibility_stationarity_residual_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_constraints,
-        state->constraint_recession_residual_d, 1,
-        &reductions_d->constraint_recession_residual_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        state->variable_recession_residual_d, 1,
-        &reductions_d->variable_recession_residual_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_constraints,
-        state->dual_ray_d, 1,
-        &reductions_d->original_dual_ray_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        state->reduced_cost_ray_d, 1,
-        &reductions_d->original_reduced_cost_ray_norm));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        state->primal_ray_d, 1,
-        &reductions_d->original_primal_ray_norm));
+    reduce_device_abs_max(state, state->primal_infeasibility_stationarity_residual_d, state->num_variables,
+                          &reductions_d->primal_infeasibility_stationarity_residual_norm);
+    reduce_device_abs_max(state, state->constraint_recession_residual_d, state->num_constraints,
+                          &reductions_d->constraint_recession_residual_norm);
+    reduce_device_abs_max(state, state->variable_recession_residual_d, state->num_variables,
+                          &reductions_d->variable_recession_residual_norm);
+    reduce_device_abs_max(state, state->dual_ray_d, state->num_constraints,
+                          &reductions_d->original_dual_ray_norm);
+    reduce_device_abs_max(state, state->reduced_cost_ray_d, state->num_variables,
+                          &reductions_d->original_reduced_cost_ray_norm);
+    reduce_device_abs_max(state, state->primal_ray_d, state->num_variables,
+                          &reductions_d->original_primal_ray_norm);
 }
 
 static void compute_objective_and_support_terms(
@@ -441,14 +429,10 @@ static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
         state->num_constraints);
     CUDA_CHECK(cudaGetLastError());
 
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_constraints,
-        dual_infeasibility_entries_d, 1,
-        &reductions_d->dual_infeasibility_residual));
-    CUBLAS_CHECK(cublasDnrm2_v2_64(
-        state->blas_handle_A, state->num_variables,
-        primal_infeasibility_entries_d, 1,
-        &reductions_d->primal_infeasibility_residual));
+    reduce_device_abs_max(state, dual_infeasibility_entries_d, state->num_constraints,
+                          &reductions_d->dual_infeasibility_residual);
+    reduce_device_abs_max(state, primal_infeasibility_entries_d, state->num_variables,
+                          &reductions_d->primal_infeasibility_residual);
 }
 
 void check_termination_criteria(
@@ -872,8 +856,7 @@ __global__ void compute_termination_metrics_kernel(
     double stationarity_residual_norm = reductions->primal_infeasibility_stationarity_residual_norm;
     double original_dual_norm = reductions->original_dual_ray_norm;
     double original_reduced_cost_norm = reductions->original_reduced_cost_ray_norm;
-    double original_dual_ray_norm = sqrt(original_dual_norm * original_dual_norm
-                                       + original_reduced_cost_norm * original_reduced_cost_norm);
+    double original_dual_ray_norm = fmax(original_dual_norm, original_reduced_cost_norm);
     double inv_original_dual_ray_norm = (original_dual_ray_norm > 1e-30)
                                       ? 1.0 / original_dual_ray_norm
                                       : 0.0;
