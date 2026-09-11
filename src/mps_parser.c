@@ -1000,7 +1000,7 @@ static bool is_known_row(const MpsParserState *state, const char *name)
 static int parse_rhs_section(MpsParserState *state, char **tokens,
                              int n_tokens)
 {
-    for (int i = is_known_row(state, tokens[0]) ? 0 : 1; i + 1 < n_tokens; i += 2)
+    for (int i = n_tokens % 2; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double value = parse_mps_number(state, tokens[i + 1]);
@@ -1040,7 +1040,7 @@ static int parse_rhs_section(MpsParserState *state, char **tokens,
 static int parse_ranges_section(MpsParserState *state, char **tokens,
                                 int n_tokens)
 {
-    for (int i = is_known_row(state, tokens[0]) ? 0 : 1; i + 1 < n_tokens; i += 2)
+    for (int i = n_tokens % 2; i + 1 < n_tokens; i += 2)
     {
         const char *row_name = tokens[i];
         double range_val = parse_mps_number(state, tokens[i + 1]);
@@ -1101,20 +1101,9 @@ static int parse_bounds_section(MpsParserState *state, char **tokens,
         return -1;
     }
 
-    const char *col_name;
-    const char *value_token = NULL;
-    if (namemap_get(&state->col_map, tokens[1]) != -1 || n_tokens == 2)
-    {
-        col_name = tokens[1];
-        if (n_tokens >= 3)
-            value_token = tokens[2];
-    }
-    else
-    {
-        col_name = tokens[2];
-        if (n_tokens >= 4)
-            value_token = tokens[3];
-    }
+    const int col_index = n_tokens >= (has_value ? 4 : 3) ? 2 : 1;
+    const char *col_name = tokens[col_index];
+    const char *value_token = n_tokens > col_index + 1 ? tokens[col_index + 1] : NULL;
 
     if (has_value && value_token == NULL)
     {
