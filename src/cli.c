@@ -185,7 +185,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n", INT32_MAX);
     fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: 1e-4).\n");
     fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: 1e-4).\n");
-    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: 1e-7).\n");
+    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: 1e-9).\n");
     fprintf(stderr, "      --eps_farkas_displacement <tol>   Displacement-certificate infeasibility ratio (default: 1e-10).\n");
     fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: 200).\n");
     fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
