@@ -59,6 +59,7 @@ typedef struct {
     double step_size_dual;
     double step_size_homogeneous;
     double step_size_base;
+    double step_size;
     int total_count;
     int inner_count;
     int restart_count;
@@ -109,6 +110,43 @@ typedef struct {
     void *buffer;
 } spmv_plan_t;
 
+typedef struct sv_estimator_ctx sv_estimator_ctx_t;
+
+typedef struct {
+    double *primal_solution_d;
+    double *dual_solution_d;
+    double *hsd_scalars_d;
+    double *constraint_cone_scale_d;
+    double primal_weight;
+    pid_state_t pid;
+} active_set_anchor_t;
+
+typedef struct {
+    int variables_added;
+    int variables_removed;
+    int constraints_added;
+    int constraints_removed;
+} active_set_mask_changes_t;
+
+typedef struct {
+    double *constraint_dual_projection_input_d;
+    int *variable_last_free_iter_d;
+    int *constraint_last_binding_iter_d;
+    bool *free_variable_mask_d;
+    bool *binding_constraint_mask_d;
+    active_set_mask_changes_t *mask_changes_d;
+    sv_estimator_ctx_t *sv_estimator;
+    int free_variable_count;
+    int binding_constraint_count;
+    int mask_changes_since_estimate;
+    bool raise_checked;
+    double step_size_ceiling;
+    active_set_anchor_t anchor;
+    int raise_count;
+    int revert_count;
+    int power_iteration_count;
+} active_set_state_t;
+
 typedef struct {
     int num_variables;
     int num_constraints;
@@ -151,7 +189,6 @@ typedef struct {
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
-    cusparseDnVecDescr_t spmv_power_iteration_normalized_vector;
     spmv_plan_t matA_spmv_plan;
     spmv_plan_t matAt_spmv_plan;
     void   *cub_reduce_workspace_d;
@@ -205,12 +242,6 @@ typedef struct {
     double *hsd_dual_scale_current_d;
     double *hsd_dual_scale_pdhg_d;
     double *hsd_dual_scale_reflected_d;
-
-    double *power_iteration_normalized_vector_d;
-    double *power_iteration_vector_norm_scalar_d;
-    double *power_iter_sigma_squared_mp;
-    double *power_iter_residual_norm_mp;
-
     double *primal_residual_d;
     double *dual_residual_d;
     double *primal_infeasibility_stationarity_residual_d;
@@ -221,6 +252,7 @@ typedef struct {
     box_newton_state_t primal_box_cone_state;
 
     solver_control_t control;
+    active_set_state_t active_set;
 
     double *pdhg_reduce_d;
     double *pdhg_primal_norm_d;

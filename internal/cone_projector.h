@@ -47,6 +47,7 @@ void update_dual_box_cone_projection(
     double *current_dual,
     double *reflected_dual,
     double *evaluation_dual,
+    double *constraint_dual_projection_input,
     const double *initial_dual,
     const double *gradient,
     const double *step_size_d,

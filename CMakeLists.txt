@@ -141,6 +141,7 @@ set(CORE_SOURCES
     src/solver.cu
     src/spmv_backend.cu
     src/termination_checker.cu
+    src/active_set_boost.cu
     src/utils/display.cu
     src/utils/power_iteration.cu
     src/utils/utils.cu)

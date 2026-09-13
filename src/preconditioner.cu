@@ -617,9 +617,30 @@ void rescale_problem(
     initialize_spmv_plans(state);
 
     compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
-    state->rescaled_constraint_norm = estimate_maximum_singular_value(state, power_iter_params);
-    state->rescaling_time_sec =
-        (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
+    if (state->constraint_matrix->num_nonzeros == 0)
+    {
+        state->rescaled_constraint_norm = 0.0;
+    }
+    else
+    {
+        sv_estimator_opts_t opts = {};
+        opts.max_iter = power_iter_params->max_iter;
+        opts.tol = power_iter_params->tol;
+        sv_estimator_ctx_t *estimator = sv_estimator_create(
+            state->sparse_handle_A,
+            state->blas_handle_A,
+            state->stream_A,
+            state->curand_gen,
+            state->constraint_matrix,
+            state->constraint_matrix_t,
+            state->num_constraints,
+            state->num_variables);
+        const sv_estimator_result_t estimate =
+            sv_estimator_run(estimator, &opts);
+        sv_estimator_free(estimator);
+        state->rescaled_constraint_norm = estimate.max_singular_value;
+    }
+    state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
 
     if (constraint_rescaling)
         CUDA_CHECK(cudaFree(constraint_rescaling));

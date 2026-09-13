@@ -52,6 +52,15 @@ extern "C"
     void *safe_calloc(size_t num, size_t size);
     void *safe_realloc(void *ptr, size_t new_size);
 
+    void allocate_zeroed_device_buffer(void **dst, size_t bytes);
+
+    void allocate_and_copy_to_device(
+        void **dst,
+        const void *src,
+        size_t bytes);
+
+    void allocate_cub_reduce_workspace(pdhg_solver_state_t *state);
+
     void reduce_device_sum(
         pdhg_solver_state_t *state,
         const double *input,

@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include "active_set_boost.h"
 #include "cone_projector.h"
 #include "cuhsdlp.h"
 #include "display.h"
@@ -50,15 +51,26 @@ __global__ void compute_fixed_point_error_kernel(
     double step_size_dual,
     double step_size_homogeneous);
 __global__ void restart_hsd_scalars_kernel(
-    double *primal_scale_initial,           double *primal_scale_current,           double *primal_scale_pdhg,           double *primal_scale_reflected,
-    double *dual_scale_initial, double *dual_scale_current, double *dual_scale_pdhg, double *dual_scale_reflected,
+    double *primal_scale_initial,
+    double *primal_scale_current,
+    double *primal_scale_pdhg,
+    double *primal_scale_reflected,
+    double *dual_scale_initial,
+    double *dual_scale_current,
+    double *dual_scale_pdhg,
+    double *dual_scale_reflected,
     double *constraint_cone_scale_d,
     double  cone_warm_start_scale);
 __global__ void scale_hsd_scalars_kernel(
     double *primal_scale_pdhg,
     double *dual_scale_pdhg,
     double  inv_scale);
-static void compute_fixed_point_error(pdhg_solver_state_t *state);
+static void compute_fixed_point_error(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params);
+static void perform_active_set_boost_revert(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params);
 static void hsd_run_iteration_step(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -67,6 +79,9 @@ static void hsd_run_iteration_step(
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
+static void compute_step_sizes(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params);
 static void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -85,7 +100,7 @@ static bool should_do_adaptive_restart(
     const pdhg_parameters_t *params);
 static void perform_restart(
     pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params);
+    const pdhg_parameters_t *params);
 static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
@@ -133,21 +148,22 @@ cuhsdlp_result_t *optimize(
     initialize_step_size_and_primal_weight(state, params);
 
     state->control.start_time = clock();
-    bool do_restart = false;
+    bool restarted = false;
 
-    while (state->control.total_count < params->termination_criteria.iteration_limit)
+    while (state->control.termination_reason == TERMINATION_REASON_UNSPECIFIED &&
+           state->control.total_count < params->termination_criteria.iteration_limit)
     {
         sync_inner_count_to_gpu(state);
         sync_step_sizes_to_gpu(state);
 
         hsd_run_iteration_step(state, params, 1, true);
 
-        if (do_restart)
+        if (restarted)
         {
-            compute_fixed_point_error(state);
+            compute_fixed_point_error(state, &params->step_size_params);
             CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
             state->control.initial_fixed_point_error = *state->control.fixed_point_error_mp;
-            do_restart = false;
+            restarted = false;
         }
 
         if (!state->graph_created)
@@ -170,29 +186,41 @@ cuhsdlp_result_t *optimize(
         }
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
-        compute_fixed_point_error(state);
+        compute_fixed_point_error(state, &params->step_size_params);
         compute_termination_metrics(state, params);
         state->control.inner_count += params->termination_evaluation_frequency;
         state->control.total_count += params->termination_evaluation_frequency;
 
         check_termination_criteria(state, &params->termination_criteria);
-        if (state->control.termination_reason != TERMINATION_REASON_UNSPECIFIED)
+        const bool terminated =
+            state->control.termination_reason != TERMINATION_REASON_UNSPECIFIED;
+
+        if (!terminated)
+        {
+            update_active_set_masks(state, params);
+        }
+
+        if (should_revert_active_set_boost(state, params))
+        {
+            perform_active_set_boost_revert(state, params);
+            restarted = true;
+            continue;
+        }
+
+        if (terminated)
         {
             display_iteration_stats(state, params->verbose, false);
             break;
         }
 
-        do_restart = should_do_adaptive_restart(state, params);
-        if (do_restart)
+        if (should_do_adaptive_restart(state, params))
         {
-            state->control.restart_count++;
-            display_iteration_stats(state, params->verbose, true);
-            perform_restart(state, &params->step_size_params);
+            perform_restart(state, params);
+            restarted = true;
+            continue;
         }
-        else
-        {
-            display_iteration_stats(state, params->verbose, false);
-        }
+
+        display_iteration_stats(state, params->verbose, false);
     }
 
     if (state->control.termination_reason == TERMINATION_REASON_UNSPECIFIED)
@@ -371,31 +399,19 @@ static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
                                state->stream_A));
 }
 
-static void compute_step_sizes(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params)
-{
-    double omega  = state->control.primal_weight;
-    double lambda = state->control.step_size_base;
-    double factor = step_size_params->step_size_factor;
-
-    state->control.step_size_primal = lambda / omega;
-    state->control.step_size_dual   = omega * lambda;
-    state->control.step_size_homogeneous = 0.99 * factor / state->control.step_size_dual;
-}
-
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
-    double sigma = state->rescaled_constraint_norm;
-    double factor = params->step_size_params.step_size_factor;
+    double constraint_norm = state->rescaled_constraint_norm;
 
-    if (sigma == 0.0)
+    if (constraint_norm == 0.0)
     {
-        sigma = 1.0;
+        constraint_norm = 1.0;
     }
-    state->control.step_size_base = factor / sigma;
+    state->control.step_size_base =
+        params->step_size_params.step_size_factor / constraint_norm;
+    state->control.step_size = state->control.step_size_base;
 
     if (params->scaling_params.bound_objective_rescaling)
     {
@@ -410,6 +426,19 @@ static void initialize_step_size_and_primal_weight(
     initialize_pid_state(&state->control.pid);
 
     compute_step_sizes(state, &params->step_size_params);
+}
+
+static void compute_step_sizes(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params)
+{
+    state->control.step_size_primal =
+        state->control.step_size / state->control.primal_weight;
+    state->control.step_size_dual =
+        state->control.primal_weight * state->control.step_size;
+    state->control.step_size_homogeneous =
+        0.99 * step_size_params->step_size_factor /
+        state->control.step_size_dual;
 }
 
 static void hsd_run_iteration_step(
@@ -449,6 +478,7 @@ static void hsd_update_dual_solution(
         state->current_dual_solution_d,
         state->reflected_dual_solution_d,
         state->pdhg_dual_solution_d,
+        state->active_set.constraint_dual_projection_input_d,
         state->initial_dual_solution_d,
         state->primal_product_d,
         state->control.step_size_dual_d,
@@ -509,7 +539,9 @@ static void update_hsd_primal_block(
         state->stream_A);
 }
 
-static void compute_fixed_point_error(pdhg_solver_state_t *state)
+static void compute_fixed_point_error(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params)
 {
     compute_delta_kernel<<<
         state->num_blocks_primal_dual,
@@ -559,6 +591,13 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         1,
         state->fixed_point_operator_cross_d));
 
+    const double metric_step_size_primal =
+        state->control.step_size_base / state->control.primal_weight;
+    const double metric_step_size_dual =
+        state->control.primal_weight * state->control.step_size_base;
+    const double metric_step_size_homogeneous =
+        0.99 * step_size_params->step_size_factor / metric_step_size_dual;
+
     compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
         state->control.fixed_point_error_mp,
         state->pdhg_primal_norm_d,
@@ -568,12 +607,29 @@ static void compute_fixed_point_error(pdhg_solver_state_t *state)
         state->hsd_primal_scale_reflected_d,
         state->hsd_dual_scale_pdhg_d,
         state->hsd_dual_scale_reflected_d,
-        state->control.step_size_primal,
-        state->control.step_size_dual,
-        state->control.step_size_homogeneous);
+        metric_step_size_primal,
+        metric_step_size_dual,
+        metric_step_size_homogeneous);
 
     CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
+}
+
+static void perform_active_set_boost_revert(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params)
+{
+    state->control.restart_count++;
+    revert_active_set_boost(state, params);
+    state->control.inner_count = 0;
+    state->control.last_trial_fixed_point_error = INFINITY;
+
+    compute_step_sizes(state, &params->step_size_params);
+    compute_termination_metrics(state, params);
+    display_iteration_stats(state, params->verbose, true);
+    display_active_set_boost_revert(state, params);
+    state->control.termination_reason = TERMINATION_REASON_UNSPECIFIED;
+    check_termination_criteria(state, &params->termination_criteria);
 }
 
 static bool should_do_adaptive_restart(
@@ -581,7 +637,11 @@ static bool should_do_adaptive_restart(
     const pdhg_parameters_t *params)
 {
     const restart_parameters_t *restart_params = &params->restart_params;
-    int termination_evaluation_frequency = params->termination_evaluation_frequency;
+    const int termination_evaluation_frequency =
+        params->termination_evaluation_frequency;
+    const double fixed_point_error = *state->control.fixed_point_error_mp;
+    const double initial_fixed_point_error =
+        state->control.initial_fixed_point_error;
 
     bool do_restart = false;
     if (state->control.total_count == termination_evaluation_frequency)
@@ -590,30 +650,40 @@ static bool should_do_adaptive_restart(
     }
     else if (state->control.total_count > termination_evaluation_frequency)
     {
-        if (*state->control.fixed_point_error_mp <= restart_params->sufficient_reduction_for_restart * state->control.initial_fixed_point_error)
+        if (fixed_point_error <=
+            restart_params->sufficient_reduction_for_restart *
+                initial_fixed_point_error)
         {
             do_restart = true;
         }
-        if (*state->control.fixed_point_error_mp <= restart_params->necessary_reduction_for_restart * state->control.initial_fixed_point_error)
+        else if (
+            fixed_point_error <=
+                restart_params->necessary_reduction_for_restart *
+                    initial_fixed_point_error &&
+            fixed_point_error > state->control.last_trial_fixed_point_error)
         {
-            if (*state->control.fixed_point_error_mp > state->control.last_trial_fixed_point_error)
-            {
-                do_restart = true;
-            }
+            do_restart = true;
         }
-        if (state->control.inner_count >= restart_params->artificial_restart_threshold * state->control.total_count)
+        else if (state->control.inner_count >=
+                 restart_params->artificial_restart_threshold *
+                     state->control.total_count)
         {
             do_restart = true;
         }
     }
-    state->control.last_trial_fixed_point_error = *state->control.fixed_point_error_mp;
+    state->control.last_trial_fixed_point_error = fixed_point_error;
     return do_restart;
 }
 
 static void perform_restart(
     pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params)
+    const pdhg_parameters_t *params)
 {
+    const step_size_parameters_t *step_size_params = &params->step_size_params;
+
+    state->control.restart_count++;
+    display_iteration_stats(state, params->verbose, true);
+
     compute_delta_kernel<<<
         state->num_blocks_primal_dual,
         THREADS_PER_BLOCK,
@@ -642,8 +712,6 @@ static void perform_restart(
         state->pdhg_dual_norm_d));
 
     update_primal_weight_via_restart_pid(state, step_size_params);
-
-    compute_step_sizes(state, step_size_params);
 
     double cone_warm_start_scale = apply_gauge_control(state);
 
@@ -674,13 +742,23 @@ static void perform_restart(
     state->metrics_h->current_primal_scale = state->metrics_h->pdhg_primal_scale;
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->hsd_primal_scale_initial_d,             state->hsd_primal_scale_current_d,             state->hsd_primal_scale_pdhg_d,             state->hsd_primal_scale_reflected_d,
-        state->hsd_dual_scale_initial_d,   state->hsd_dual_scale_current_d,   state->hsd_dual_scale_pdhg_d,   state->hsd_dual_scale_reflected_d,
+        state->hsd_primal_scale_initial_d,
+        state->hsd_primal_scale_current_d,
+        state->hsd_primal_scale_pdhg_d,
+        state->hsd_primal_scale_reflected_d,
+        state->hsd_dual_scale_initial_d,
+        state->hsd_dual_scale_current_d,
+        state->hsd_dual_scale_pdhg_d,
+        state->hsd_dual_scale_reflected_d,
         state->dual_box_cone_state.scalar_d,
         cone_warm_start_scale);
 
     state->control.inner_count = 0;
     state->control.last_trial_fixed_point_error = INFINITY;
+
+    try_raise_active_set_step_size(state, params);
+
+    compute_step_sizes(state, step_size_params);
 }
 
 static void update_primal_weight_via_restart_pid(
@@ -810,12 +888,20 @@ __global__ void compute_fixed_point_error_kernel(
         dual_movement +
         delta_primal_scale * delta_primal_scale / step_size_homogeneous;
     double interaction = -2.0 * (delta_primal_scale * delta_constraint_offset + cross_term);
-    fixed_point_error_d[0] = sqrt(fmax(0.0, movement + interaction));
+    const double squared_error = movement + interaction;
+    fixed_point_error_d[0] =
+        isfinite(squared_error) ? sqrt(fmax(0.0, squared_error)) : INFINITY;
 }
 
 __global__ void restart_hsd_scalars_kernel(
-    double *primal_scale_initial,           double *primal_scale_current,           double *primal_scale_pdhg,           double *primal_scale_reflected,
-    double *dual_scale_initial, double *dual_scale_current, double *dual_scale_pdhg, double *dual_scale_reflected,
+    double *primal_scale_initial,
+    double *primal_scale_current,
+    double *primal_scale_pdhg,
+    double *primal_scale_reflected,
+    double *dual_scale_initial,
+    double *dual_scale_current,
+    double *dual_scale_pdhg,
+    double *dual_scale_reflected,
     double *constraint_cone_scale_d,
     double  cone_warm_start_scale)
 {

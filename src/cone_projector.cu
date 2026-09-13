@@ -38,6 +38,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
+    double *__restrict__ constraint_dual_projection_input,
     const double *__restrict__ initial_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
@@ -57,6 +58,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
+    double *__restrict__ constraint_dual_projection_input,
     const double *__restrict__ initial_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
@@ -177,6 +179,7 @@ void update_dual_box_cone_projection(
     double *current_dual,
     double *reflected_dual,
     double *evaluation_dual,
+    double *constraint_dual_projection_input,
     const double *initial_dual,
     const double *gradient,
     const double *step_size_d,
@@ -200,6 +203,7 @@ void update_dual_box_cone_projection(
             current_dual,
             reflected_dual,
             evaluation_dual,
+            constraint_dual_projection_input,
             initial_dual,
             gradient,
             step_size_d,
@@ -237,6 +241,7 @@ void update_dual_box_cone_projection(
         current_dual,
         reflected_dual,
         evaluation_dual,
+        constraint_dual_projection_input,
         initial_dual,
         gradient,
         step_size_d,
@@ -379,6 +384,7 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
+    double *__restrict__ constraint_dual_projection_input,
     const double *__restrict__ initial_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
@@ -502,7 +508,11 @@ __global__ void update_dual_box_cone_projection_cooperative_kernel(
         const double projected =
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         if (is_major)
+        {
             evaluation_dual[i] = projected;
+            if (constraint_dual_projection_input)
+                constraint_dual_projection_input[i] = unprojected;
+        }
         const double reflected = 2.0 * projected - current;
         reflected_dual[i] = reflected;
         const double relaxed =
@@ -533,6 +543,7 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
     double *__restrict__ current_dual,
     double *__restrict__ reflected_dual,
     double *__restrict__ evaluation_dual,
+    double *__restrict__ constraint_dual_projection_input,
     const double *__restrict__ initial_dual,
     const double *__restrict__ gradient,
     const double *step_size_d,
@@ -629,7 +640,11 @@ __global__ void update_dual_box_cone_projection_single_block_kernel(
         const double projected =
             unprojected + fmin(fmax(-unprojected, box_lower), box_upper);
         if (is_major)
+        {
             evaluation_dual[i] = projected;
+            if (constraint_dual_projection_input)
+                constraint_dual_projection_input[i] = unprojected;
+        }
         const double reflected = 2.0 * projected - current;
         reflected_dual[i] = reflected;
         const double relaxed =

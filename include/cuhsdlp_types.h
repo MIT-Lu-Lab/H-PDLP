@@ -110,6 +110,19 @@ extern "C"
 
     typedef struct
     {
+        bool step_size_boost;
+        int window_iterations;
+        double relative_active_set_tol;
+        double safety_factor;
+        double min_raise_ratio;
+        double reestimate_change_ratio;
+        double divergence_ceiling_ratio;
+        double divergence_margin;
+        int max_reverts;
+    } active_set_parameters_t;
+
+    typedef struct
+    {
         double eps_optimal_relative;
         double eps_feasible_relative;
         double eps_farkas_homogeneous;
@@ -132,6 +145,7 @@ extern "C"
         cone_parameters_t cone_params;
         termination_criteria_t termination_criteria;
         restart_parameters_t restart_params;
+        active_set_parameters_t active_set_params;
     } pdhg_parameters_t;
 
     typedef struct
@@ -171,6 +185,9 @@ extern "C"
         double final_step_size_primal;
         double final_step_size_dual;
         double final_step_size_homogeneous;
+        int active_set_raise_count;
+        int active_set_revert_count;
+        int active_set_power_iteration_count;
     } cuhsdlp_result_t;
 
     typedef enum

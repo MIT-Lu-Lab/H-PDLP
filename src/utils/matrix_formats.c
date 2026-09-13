@@ -18,6 +18,7 @@ limitations under the License.
 #include "utils.h"
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct
 {
@@ -348,6 +349,52 @@ matrix_format_status_t canonicalize_csr(const matrix_desc_t *desc, int **row_ptr
     sorted_coo_to_csr(entries, m, entry_count, row_ptr, col_ind, vals, nnz_out);
     free(entries);
     return MATRIX_FORMAT_OK;
+}
+
+void transpose_csr_and_build_map(
+    const lp_problem_t *problem,
+    int **transpose_row_ptr,
+    int **transpose_col_ind,
+    double **transpose_val,
+    int **transpose_map)
+{
+    const int num_rows = problem->num_constraints;
+    const int num_cols = problem->num_variables;
+    const int nnz = problem->constraint_matrix_num_nonzeros;
+    const int *row_ptr = problem->constraint_matrix_row_pointers;
+    const int *col_ind = problem->constraint_matrix_col_indices;
+    const double *val = problem->constraint_matrix_values;
+    const size_t alloc_nnz = nnz > 0 ? (size_t)nnz : 1;
+    const size_t alloc_cols = num_cols > 0 ? (size_t)num_cols : 1;
+
+    *transpose_row_ptr = (int *)safe_calloc((size_t)(num_cols + 1), sizeof(int));
+    *transpose_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
+    *transpose_val = (double *)safe_malloc(alloc_nnz * sizeof(double));
+    *transpose_map = (int *)safe_malloc(alloc_nnz * sizeof(int));
+
+    for (int k = 0; k < nnz; ++k)
+        (*transpose_row_ptr)[col_ind[k] + 1]++;
+
+    for (int j = 0; j < num_cols; ++j)
+        (*transpose_row_ptr)[j + 1] += (*transpose_row_ptr)[j];
+
+    int *next = (int *)safe_malloc(alloc_cols * sizeof(int));
+    if (num_cols > 0)
+        memcpy(next, *transpose_row_ptr, (size_t)num_cols * sizeof(int));
+
+    for (int i = 0; i < num_rows; ++i)
+    {
+        for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
+        {
+            const int j = col_ind[k];
+            const int pos = next[j]++;
+            (*transpose_col_ind)[pos] = i;
+            (*transpose_val)[pos] = val[k];
+            (*transpose_map)[k] = pos;
+        }
+    }
+
+    free(next);
 }
 
 static int compare_coo_entries(const void *lhs, const void *rhs)

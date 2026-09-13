@@ -133,6 +133,9 @@ cuhsdlp_result_t *create_result_from_state(
     results->termination_reason = state->control.termination_reason;
 
     results->restart_count = state->control.restart_count;
+    results->active_set_raise_count = state->active_set.raise_count;
+    results->active_set_revert_count = state->active_set.revert_count;
+    results->active_set_power_iteration_count = state->active_set.power_iteration_count;
     results->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
     results->final_step_size_primal = state->control.step_size_primal;
     results->final_step_size_dual = state->control.step_size_dual;

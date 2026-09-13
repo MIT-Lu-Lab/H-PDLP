@@ -209,6 +209,16 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->restart_params.artificial_restart_threshold = 0.36;
     params->restart_params.sufficient_reduction_for_restart = 0.2;
     params->restart_params.necessary_reduction_for_restart = 0.5;
+
+    params->active_set_params.step_size_boost = true;
+    params->active_set_params.window_iterations = 10000;
+    params->active_set_params.relative_active_set_tol = 1e-8;
+    params->active_set_params.safety_factor = 0.9;
+    params->active_set_params.min_raise_ratio = 1.1;
+    params->active_set_params.reestimate_change_ratio = 0.01;
+    params->active_set_params.divergence_ceiling_ratio = 0.7;
+    params->active_set_params.divergence_margin = 0.05;
+    params->active_set_params.max_reverts = 2;
 }
 
 cuhsdlp_result_t *solve_lp_problem(

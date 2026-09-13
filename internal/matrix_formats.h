@@ -56,6 +56,13 @@ extern "C"
                                             int **row_ptr, int **col_ind,
                                             double **vals, int *nnz_out);
 
+    void transpose_csr_and_build_map(
+        const lp_problem_t *problem,
+        int **transpose_row_ptr,
+        int **transpose_col_ind,
+        double **transpose_val,
+        int **transpose_map);
+
 #ifdef __cplusplus
 }
 #endif
