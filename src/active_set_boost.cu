@@ -38,7 +38,7 @@ __global__ void update_binding_constraint_mask_kernel(
     int window_start_iter,
     int num_constraints);
 __global__ void update_free_variable_mask_kernel(
-    const double *__restrict__ pdhg_reduced_cost,
+    const double *__restrict__ variable_primal_projection_input,
     const double *__restrict__ objective_vector,
     const double *primal_scale_pdhg,
     const double *__restrict__ variable_lower_bound,
@@ -47,6 +47,7 @@ __global__ void update_free_variable_mask_kernel(
     bool *__restrict__ free_variable_mask,
     active_set_mask_changes_t *mask_changes,
     double relative_active_set_tol,
+    double step_size_primal,
     int current_iter,
     int window_start_iter,
     int num_variables);
@@ -75,6 +76,9 @@ void initialize_active_set(
     allocate_zeroed_device_buffer(
         (void **)&active_set->constraint_dual_projection_input_d,
         state->con_bytes);
+    allocate_zeroed_device_buffer(
+        (void **)&active_set->variable_primal_projection_input_d,
+        state->var_bytes);
     allocate_zeroed_device_buffer(
         (void **)&active_set->variable_last_free_iter_d,
         num_variables * sizeof(int));
@@ -114,6 +118,8 @@ void active_set_free(active_set_state_t *active_set)
     sv_estimator_free(active_set->sv_estimator);
     if (active_set->constraint_dual_projection_input_d)
         CUDA_CHECK(cudaFree(active_set->constraint_dual_projection_input_d));
+    if (active_set->variable_primal_projection_input_d)
+        CUDA_CHECK(cudaFree(active_set->variable_primal_projection_input_d));
     if (active_set->variable_last_free_iter_d)
         CUDA_CHECK(cudaFree(active_set->variable_last_free_iter_d));
     if (active_set->constraint_last_binding_iter_d)
@@ -176,7 +182,7 @@ void update_active_set_masks(
         THREADS_PER_BLOCK,
         0,
         state->stream_A>>>(
-        state->pdhg_reduced_cost_d,
+        active_set->variable_primal_projection_input_d,
         state->objective_vector_d,
         state->hsd_primal_scale_pdhg_d,
         state->variable_lower_bound_d,
@@ -185,6 +191,7 @@ void update_active_set_masks(
         active_set->free_variable_mask_d,
         active_set->mask_changes_d,
         params->active_set_params.relative_active_set_tol,
+        state->control.step_size_primal,
         current_iter,
         window_start_iter,
         state->num_variables);
@@ -277,7 +284,7 @@ __global__ void update_binding_constraint_mask_kernel(
 }
 
 __global__ void update_free_variable_mask_kernel(
-    const double *__restrict__ pdhg_reduced_cost,
+    const double *__restrict__ variable_primal_projection_input,
     const double *__restrict__ objective_vector,
     const double *primal_scale_pdhg,
     const double *__restrict__ variable_lower_bound,
@@ -286,6 +293,7 @@ __global__ void update_free_variable_mask_kernel(
     bool *__restrict__ free_variable_mask,
     active_set_mask_changes_t *mask_changes,
     double relative_active_set_tol,
+    double step_size_primal,
     int current_iter,
     int window_start_iter,
     int num_variables)
@@ -298,16 +306,22 @@ __global__ void update_free_variable_mask_kernel(
 
     const double lower = variable_lower_bound[j];
     const double upper = variable_upper_bound[j];
-    const double reduced_cost_tolerance =
+    const double projection_residual_tolerance =
         relative_active_set_tol *
         fmax(1.0, fabs(objective_vector[j])) *
         (*primal_scale_pdhg);
-    const double reduced_cost = pdhg_reduced_cost[j];
+    const double projection_input_margin =
+        step_size_primal * projection_residual_tolerance;
+    const double projection_input = variable_primal_projection_input[j];
     const bool fixed_at_zero = lower == upper && lower == 0.0;
     const bool clamped_at_lower =
-        lower == 0.0 && reduced_cost > reduced_cost_tolerance;
+        isfinite(projection_input) &&
+        lower == 0.0 &&
+        projection_input < -projection_input_margin;
     const bool clamped_at_upper =
-        upper == 0.0 && reduced_cost < -reduced_cost_tolerance;
+        isfinite(projection_input) &&
+        upper == 0.0 &&
+        projection_input > projection_input_margin;
     const bool clamped_at_zero =
         fixed_at_zero || clamped_at_lower || clamped_at_upper;
     if (!clamped_at_zero)

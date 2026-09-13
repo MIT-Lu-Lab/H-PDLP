@@ -68,6 +68,7 @@ void update_primal_box_cone_resolvent(
     double *current_primal,
     double *reflected_primal,
     double *evaluation_primal,
+    double *variable_primal_projection_input,
     const double *initial_primal,
     const double *gradient,
     const double *objective_d,

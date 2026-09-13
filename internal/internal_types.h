@@ -130,6 +130,7 @@ typedef struct {
 
 typedef struct {
     double *constraint_dual_projection_input_d;
+    double *variable_primal_projection_input_d;
     int *variable_last_free_iter_d;
     int *constraint_last_binding_iter_d;
     bool *free_variable_mask_d;

@@ -522,6 +522,7 @@ static void update_hsd_primal_block(
         state->current_primal_solution_d,
         state->reflected_primal_solution_d,
         state->pdhg_primal_solution_d,
+        state->active_set.variable_primal_projection_input_d,
         state->initial_primal_solution_d,
         state->dual_product_d,
         state->objective_vector_d,
