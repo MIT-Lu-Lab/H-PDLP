@@ -130,10 +130,8 @@ FetchContent_MakeAvailable(pslp)
 # -----------------------------------------------------------------------------
 set(CORE_SOURCES
     src/cuhsdlp.c
-    src/mps_parser.c
     src/presolver.c
     src/utils/matrix_formats.c
-    src/utils/pid_controller.c
     src/cone_projector.cu
     src/preconditioner.cu
     src/result.cu
@@ -141,9 +139,11 @@ set(CORE_SOURCES
     src/solver.cu
     src/spmv_backend.cu
     src/termination_checker.cu
-    src/active_set_boost.cu
+    src/step_control/active_set_boost.cu
+    src/step_control/pid_controller.c
+    src/step_control/power_iteration.cu
     src/utils/display.cu
-    src/utils/power_iteration.cu
+    src/utils/mps_parser.c
     src/utils/utils.cu)
 
 # Set common include directories for the core libraries
