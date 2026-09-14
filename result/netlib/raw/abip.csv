@@ -1,0 +1,30 @@
+instance,status,outcome,solve_time,time_limit,iters,node
+bgdbg1,PRIMAL_INFEASIBLE,solved,0.017,3600,27,node3605
+bgetam,PRIMAL_INFEASIBLE,solved,0.024,3600,38,node3605
+bgindy,PRIMAL_INFEASIBLE,solved,0.570,3600,21,node3605
+bgprtr,PRIMAL_INFEASIBLE,solved,0.004,3600,37,node3605
+box1,PRIMAL_INFEASIBLE,solved,0.002,3600,16,node3605
+ceria3d,PRIMAL_INFEASIBLE,solved,0.539,3600,39,node3605
+chemcom,PRIMAL_INFEASIBLE,solved,0.032,3600,21,node3605
+cplex1,DUAL_INFEASIBLE,solved,0.175,3600,20,node3605
+cplex2,OPTIMAL,false_optimal,0.039,3600,20,node3605
+ex72a,PRIMAL_INFEASIBLE,solved,0.002,3600,20,node3605
+ex73a,PRIMAL_INFEASIBLE,solved,0.002,3600,20,node3605
+forest6,PRIMAL_INFEASIBLE,solved,0.007,3600,31,node3605
+galenet,PRIMAL_INFEASIBLE,solved,0.000,3600,21,node3605
+gosh,TIME_LIMIT,timeout,1514.760,3600,22,node3607
+gran,ERROR: malloc(): invalid size (unsorted),crash,1.001,3600,0,node3607
+greenbea,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,529.889,3600,0,node3605
+itest2,PRIMAL_INFEASIBLE,solved,0.000,3600,20,node3605
+itest6,PRIMAL_INFEASIBLE,solved,0.000,3600,23,node3605
+klein1,PRIMAL_INFEASIBLE,solved,4.774,3600,28,node3605
+klein2,PRIMAL_INFEASIBLE,solved,37.560,3600,27,node3605
+klein3,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,83.515,3600,0,node3605
+mondou2,TIME_LIMIT,timeout,56.329,3600,23,node3605
+pang,OPTIMAL,false_optimal,1.965,3600,21,node3605
+pilot4i,TIME_LIMIT,timeout,131.057,3600,23,node3605
+qual,OPTIMAL,false_optimal,1.928,3600,20,node3605
+reactor,TIME_LIMIT,timeout,82.661,3600,23,node3605
+refinery,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1.396,3600,0,node3605
+vol1,OPTIMAL,false_optimal,0.348,3600,18,node3605
+woodinfe,PRIMAL_INFEASIBLE,solved,0.003,3600,21,node3605

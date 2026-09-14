@@ -53,9 +53,14 @@ dkms.conf
 
 build/*
 test/*
-# Ignore bulky raw benchmark output under result/, but keep generated figures and tables.
+# Ignore bulky raw benchmark output under result/, but keep figures, tables, cuPDLPx inputs and baseline results.
 /result/*
 !/result/figures/
 !/result/tables/
+!/result/cuPDLPx_result_*.csv
+!/result/miplib/
+!/result/miplib_infeas/
+!/result/mittelmann/
+!/result/netlib/
 /docs
 /infeas

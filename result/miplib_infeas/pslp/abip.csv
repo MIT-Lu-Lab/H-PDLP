@@ -1,0 +1,335 @@
+instance,status,outcome,solve_time,time_limit,iters,node
+30n20b8_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,51.361,3600,0,node2511
+30n20b8_ub,DUAL_INFEASIBLE,solved,38.154,3600,31,node4415
+academictimetablebig_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,112.600,3600,0,node2511
+academictimetablesmall_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,61.994,3600,0,node2511
+adult-max5features_if,OPTIMAL,false_optimal,274.877,3600,23,node2511
+allcolor58_if,OPTIMAL,false_optimal,7.155,3600,18,node2511
+app1-2_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,36.779,3600,0,node2511
+atlanta-ip_if,OPTIMAL,false_optimal,50.324,3600,17,node2511
+atlanta-ip_ub,TIME_LIMIT,timeout,4082.493,3600,24,node2523
+bab1_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,44.752,3600,0,node2511
+bab1_ub,DUAL_INFEASIBLE,solved,2.085,3600,24,node2523
+bab2_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1266.081,3600,0,node2511
+bab3_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,354.255,3600,0,node2511
+bab5_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,319.636,3600,0,node2511
+bab5_ub,DUAL_INFEASIBLE,solved,4.960,3600,29,node2523
+bab6_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1119.002,3600,0,node2511
+blp-ar98_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,144.882,3600,0,node2511
+blp-ar98_ub,DUAL_INFEASIBLE,solved,34.135,3600,33,node2523
+blp-ic97_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,16.683,3600,0,node2511
+blp-ic97_ub,DUAL_INFEASIBLE,solved,21.468,3600,32,node2523
+blp-ic98_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,108.595,3600,0,node2511
+blp-ic98_ub,DUAL_INFEASIBLE,solved,81.444,3600,35,node2523
+bppc6-02_ub,DUAL_INFEASIBLE,solved,1.592,3600,21,node2523
+bppc6-06_ub,DUAL_INFEASIBLE,solved,0.100,3600,21,node2523
+brazil3_if,PRIMAL_INFEASIBLE,solved,8.840,3600,39,node2511
+circ10-3_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,225.331,3600,0,node2511
+cmflsp40-24-10-7_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,135.970,3600,0,node2511
+cmflsp40-24-10-7_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,195.807,3600,0,node2523
+cmflsp40-36-2-10_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,328.065,3600,0,node2511
+cmflsp40-36-2-10_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,688.644,3600,0,node2523
+cmflsp50-24-8-8_if,OPTIMAL,false_optimal,28.087,3600,19,node2511
+cmflsp50-24-8-8_ub,OPTIMAL,false_optimal,81.915,3600,20,node2523
+cmflsp60-36-2-6_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,311.459,3600,0,node2511
+cmflsp60-36-2-6_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1882.452,3600,0,node2523
+co-100_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,227.438,3600,0,node2511
+co-100_ub,TIME_LIMIT,timeout,4253.929,3600,24,node2523
+cryptanalysiskb128n5obj16_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,94.082,3600,0,node2511
+d20200_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,5.091,3600,0,node2511
+dc1l_ub,OPTIMAL,false_optimal,21.253,3600,19,node2523
+ds_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1034.776,3600,0,node2511
+ds_ub,DUAL_INFEASIBLE,solved,849.103,3600,30,node2523
+dws008-03_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,513.975,3600,0,node2511
+dws008-03_ub,DUAL_INFEASIBLE,solved,51.534,3600,32,node2523
+dws012-01_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,3799.225,3600,0,node2511
+dws012-01_ub,DUAL_INFEASIBLE,solved,26.712,3600,35,node2523
+dws012-02_if,TIME_LIMIT,timeout,4500.113,3600,0,node4415
+dws012-02_ub,DUAL_INFEASIBLE,solved,358.820,3600,38,node2523
+dws012-03_if,OPTIMAL,false_optimal,146.817,3600,22,node4415
+dws012-03_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,232.592,3600,0,node2523
+eilA101-2_if,PRIMAL_INFEASIBLE,solved,4.234,3600,39,node4415
+eilA101-2_ub,DUAL_INFEASIBLE,solved,735.046,3600,27,node2523
+eilC76-2_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,139.894,3600,0,node4415
+eilC76-2_ub,DUAL_INFEASIBLE,solved,51.555,3600,27,node2523
+eva1aprime6x6opt_if,OPTIMAL,false_optimal,11.737,3600,20,node4415
+ex1010-pi_ub,DUAL_INFEASIBLE,solved,3.964,3600,25,node3607
+ex10_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,318.760,3600,0,node4415
+ex9_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,60.659,3600,0,node4415
+fast0507_ub,DUAL_INFEASIBLE,solved,52.935,3600,33,node3607
+fastxgemm-n3r21s3t6_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+fastxgemm-n3r22s4t6_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+fastxgemm-n3r23s5t6_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,56.243,3600,0,node4415
+fhnw-binschedule0_if,TIME_LIMIT,timeout,4500.115,3600,0,node4415
+fhnw-binschedule2_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,570.085,3600,0,node4415
+fhnw-schedule-paira200_ub,OPTIMAL,false_optimal,20.416,3600,20,node3607
+genus-sym-g62-2_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,49.724,3600,0,node4415
+ger50-17-trans-dfn-3t_if,OPTIMAL,false_optimal,272.305,3600,24,node4415
+ger50-17-trans-dfn-3t_ub,OPTIMAL,false_optimal,1108.863,3600,24,node3607
+ger50-17-trans-pop-3t_if,OPTIMAL,false_optimal,5.384,3600,20,node4415
+ger50-17-trans-pop-3t_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,792.719,3600,0,node3607
+germanrr_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,202.472,3600,0,node4415
+gfd-schedulen180f7d50m30k18_if,OPTIMAL,false_optimal,36.044,3600,17,node2511
+gmut-75-50_if,OPTIMAL,false_optimal,1.524,3600,21,node2511
+gmut-75-50_ub,OPTIMAL,false_optimal,313.154,3600,18,node3607
+gmut-76-40_if,OPTIMAL,false_optimal,0.332,3600,21,node2511
+gmut-76-40_ub,TIME_LIMIT,timeout,2432.285,3600,23,node3607
+gmut-76-50_if,OPTIMAL,false_optimal,0.787,3600,22,node2511
+gmut-76-50_ub,OPTIMAL,false_optimal,682.886,3600,21,node3607
+graph20-80-1rand_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,243.950,3600,0,node2511
+graphdraw-opmanager_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,2160.113,3600,0,node2511
+graphdraw-opmanager_ub,DUAL_INFEASIBLE,solved,6.737,3600,21,node3607
+hgms30_if,OPTIMAL,false_optimal,124.549,3600,23,node2511
+hgms62_if,OPTIMAL,false_optimal,3377.270,3600,28,node2511
+hypothyroid-k1_if,PRIMAL_INFEASIBLE,solved,0.879,3600,39,node2511
+iis-hc-cov_ub,DUAL_INFEASIBLE,solved,17.290,3600,37,node3607
+k1mushroom_if,OPTIMAL,false_optimal,0.574,3600,17,node2511
+leo1_if,PRIMAL_INFEASIBLE,solved,0.002,3600,32,node2511
+leo1_ub,DUAL_INFEASIBLE,solved,4.255,3600,30,node3607
+leo2_ub,DUAL_INFEASIBLE,solved,11.221,3600,29,node3607
+lr1dr04vc05v17a-t360_if,OPTIMAL,false_optimal,261.237,3600,21,node2511
+lr1dr04vc05v17a-t360_ub,DUAL_INFEASIBLE,solved,45.918,3600,37,node3607
+lr2-22dr3-333vc4v17a-t60_if,OPTIMAL,false_optimal,123.830,3600,18,node2511
+momentum1_if,OPTIMAL,false_optimal,0.575,3600,16,node2511
+mzzv11_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,431.341,3600,0,node2511
+mzzv42z_if,TIME_LIMIT,timeout,4500.113,3600,0,node2511
+mzzv42z_ub,DUAL_INFEASIBLE,solved,5.668,3600,24,node3607
+n2seq36q_ub,DUAL_INFEASIBLE,solved,32.600,3600,31,node3607
+n3div36_ub,DUAL_INFEASIBLE,solved,600.319,3600,32,node3607
+neos-1122047_if,OPTIMAL,false_optimal,119.544,3600,22,node3607
+neos-1171448_ub,DUAL_INFEASIBLE,solved,7.228,3600,31,node3607
+neos-1354092_if,OPTIMAL,false_optimal,40.293,3600,22,node3607
+neos-1367061_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,230.552,3600,0,node3607
+neos-1593097_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,11.729,3600,0,node3607
+neos-1593097_ub,DUAL_INFEASIBLE,solved,9.939,3600,36,node3607
+neos-2669500-cust_if,TIME_LIMIT,timeout,1969.444,3600,25,node3607
+neos-2987310-joes_ub,TIME_LIMIT,timeout,4500.111,3600,0,node3607
+neos-2991472-kalu_if,PRIMAL_INFEASIBLE,solved,5.544,3600,34,node3607
+neos-2991472-kalu_ub,TIME_LIMIT,timeout,3952.840,3600,16,node2523
+neos-3025225-shelon_if,PRIMAL_INFEASIBLE,solved,933.807,3600,40,node3607
+neos-3209462-rhin_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,199.391,3600,0,node2511
+neos-3229051-yass_ub,DUAL_INFEASIBLE,solved,0.000,3600,0,node2511
+neos-3230511-yuna_ub,DUAL_INFEASIBLE,solved,0.000,3600,0,node2511
+neos-3237086-abava_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,49.787,3600,0,node2511
+neos-3352863-ancoa_ub,OPTIMAL,false_optimal,2544.843,3600,24,node2523
+neos-3354841-apure_ub,OPTIMAL,false_optimal,678.630,3600,20,node2523
+neos-3372571-onahau_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,15.946,3600,0,node2511
+neos-3372571-onahau_ub,DUAL_INFEASIBLE,solved,3.685,3600,24,node2523
+neos-3402294-bobin_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+neos-3555904-turama_if,OPTIMAL,false_optimal,2.452,3600,18,node2511
+neos-3695882-vesdre_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,2346.239,3600,0,node2511
+neos-3740487-motru_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,589.385,3600,0,node3607
+neos-4260495-otere_if,TIME_LIMIT,timeout,4500.107,3600,0,node3607
+neos-4295773-pissa_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,856.369,3600,0,node2511
+neos-4300652-rahue_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,4.595,3600,0,node2511
+neos-4306827-ravan_if,OPTIMAL,false_optimal,1169.169,3600,22,node2511
+neos-4321076-ruwer_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,51.243,3600,0,node2511
+neos-4322846-ryton_if,OPTIMAL,false_optimal,340.190,3600,21,node2511
+neos-4322846-ryton_ub,DUAL_INFEASIBLE,solved,4.343,3600,23,node2523
+neos-4332801-seret_if,TIME_LIMIT,timeout,4500.147,3600,0,node2511
+neos-4355351-swalm_if,TIME_LIMIT,timeout,4500.106,3600,0,node3607
+neos-4355351-swalm_ub,DUAL_INFEASIBLE,solved,45.489,3600,31,node2523
+neos-4359986-taipa_if,PRIMAL_INFEASIBLE,solved,10.537,3600,37,node3606
+neos-4360552-sangro_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,13.840,3600,0,node3606
+neos-4391920-timok_if,OPTIMAL,false_optimal,1184.026,3600,23,node4415
+neos-4408804-prosna_if,PRIMAL_INFEASIBLE,solved,0.010,3600,42,node4415
+neos-4409277-trave_if,TIME_LIMIT,timeout,4034.365,3600,24,node4415
+neos-4413714-turia_if,OPTIMAL,false_optimal,258.014,3600,19,node4415
+neos-4533806-waima_if,TIME_LIMIT,timeout,4500.112,3600,0,node4415
+neos-4555749-wards_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,707.017,3600,0,node4415
+neos-4562542-watut_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,2334.146,3600,0,node4415
+neos-4647027-thurso_if,TIME_LIMIT,timeout,4500.110,3600,0,node4415
+neos-4647030-tutaki_if,OPTIMAL,false_optimal,83.725,3600,18,node4415
+neos-4647032-veleka_if,TIME_LIMIT,timeout,4500.109,3600,0,node4415
+neos-4722843-widden_if,TIME_LIMIT,timeout,4500.113,3600,0,node4415
+neos-4724674-aorere_if,TIME_LIMIT,timeout,4500.107,3600,0,node3606
+neos-4797081-pakoka_if,OPTIMAL,false_optimal,15.206,3600,15,node3606
+neos-4805882-barwon_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+neos-4954274-beardy_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,128.841,3600,0,node3606
+neos-4954274-beardy_ub,DUAL_INFEASIBLE,solved,4.615,3600,22,node2523
+neos-4966258-blicks_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,56.081,3600,0,node3606
+neos-4972437-bojana_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,234.728,3600,0,node3606
+neos-4972461-bolong_if,TIME_LIMIT,timeout,4500.049,3600,0,node3606
+neos-4976951-bunnoo_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,178.294,3600,0,node3606
+neos-498623_if,PRIMAL_INFEASIBLE,solved,0.108,3600,31,node3606
+neos-498623_ub,DUAL_INFEASIBLE,solved,4.256,3600,26,node2523
+neos-5041822-cockle_if,TIME_LIMIT,timeout,4500.106,3600,0,node3606
+neos-5049753-cuanza_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,992.099,3600,0,node3606
+neos-5104907-jarama_if,TIME_LIMIT,timeout,4500.122,3600,0,node3606
+neos-5106984-jizera_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,420.011,3600,0,node3606
+neos-5108386-kalang_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,670.265,3600,0,node3606
+neos-5116085-kenana_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,4257.390,3600,0,node3606
+neos-5118834-korana_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,524.809,3600,0,node3606
+neos-5118851-kowhai_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1126.756,3600,0,node3606
+neos-5123665-limmat_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1010.185,3600,0,node3606
+neos-5129192-manaia_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,56.815,3600,0,node3606
+neos-5138690-middle_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,729.973,3600,0,node3606
+neos-5188808-nattai_if,PRIMAL_INFEASIBLE,solved,1.692,3600,39,node3606
+neos-5193246-nerang_if,PRIMAL_INFEASIBLE,solved,6.957,3600,37,node3606
+neos-5195221-niemur_if,PRIMAL_INFEASIBLE,solved,6.207,3600,37,node3606
+neos-5196530-nuhaka_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,7.102,3600,0,node3606
+neos-5221106-oparau_if,PRIMAL_INFEASIBLE,solved,0.520,3600,38,node3606
+neos-525149_ub,DUAL_INFEASIBLE,solved,0.775,3600,26,node2523
+neos-5266653-tugela_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,313.908,3600,0,node3606
+neos-5266653-tugela_ub,DUAL_INFEASIBLE,solved,10.758,3600,26,node2523
+neos-578379_if,PRIMAL_INFEASIBLE,solved,1.857,3600,39,node3606
+neos-662469_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,617.613,3600,0,node3606
+neos-662469_ub,DUAL_INFEASIBLE,solved,49.632,3600,22,node2523
+neos-738098_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,91.446,3600,0,node3606
+neos-848589_ub,TIME_LIMIT,timeout,4500.123,3600,0,node2523
+neos-860300_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,12.353,3600,0,node3606
+neos-860300_ub,DUAL_INFEASIBLE,solved,12.896,3600,30,node2523
+neos-872648_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,164.527,3600,0,node3606
+neos-873061_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,254.330,3600,0,node3606
+neos-876808_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,399.951,3600,0,node4415
+neos-876808_ub,DUAL_INFEASIBLE,solved,62.507,3600,31,node2523
+neos-885086_ub,DUAL_INFEASIBLE,solved,128.499,3600,36,node2523
+neos-885524_if,TIME_LIMIT,timeout,2577.005,3600,25,node4415
+neos-948346_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,185.309,3600,0,node4415
+neos-948346_ub,DUAL_INFEASIBLE,solved,43.265,3600,31,node2523
+neos-950242_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,4.958,3600,0,node4415
+neos-953928_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,26.698,3600,0,node4415
+neos-953928_ub,DUAL_INFEASIBLE,solved,187.958,3600,34,node2523
+neos-954925_ub,DUAL_INFEASIBLE,solved,121.770,3600,37,node2523
+neos-956971_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,8.867,3600,0,node4415
+neos-956971_ub,DUAL_INFEASIBLE,solved,107.488,3600,31,node2523
+neos-957143_ub,DUAL_INFEASIBLE,solved,20.328,3600,30,node2523
+neos-957323_ub,DUAL_INFEASIBLE,solved,21.543,3600,31,node2523
+neos6_if,PRIMAL_INFEASIBLE,solved,126.166,3600,41,node4415
+neos6_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,201.115,3600,0,node2523
+neos8_if,PRIMAL_INFEASIBLE,solved,0.021,3600,34,node4415
+neos9_ub,DUAL_INFEASIBLE,solved,4.928,3600,25,node2523
+netdiversion_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,100.949,3600,0,node4415
+ns1111636_if,OPTIMAL,false_optimal,366.722,3600,21,node4415
+ns1111636_ub,DUAL_INFEASIBLE,solved,13.743,3600,33,node3607
+ns1116954_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+ns1430538_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,196.452,3600,0,node4415
+ns1456591_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,503.778,3600,0,node4415
+ns1456591_ub,OPTIMAL,false_optimal,62.509,3600,21,node3607
+ns1631475_if,OPTIMAL,false_optimal,1145.312,3600,24,node4415
+ns1690781_ub,DUAL_INFEASIBLE,solved,7.283,3600,30,node3607
+ns1760995_if,OPTIMAL,false_optimal,652.792,3600,22,node2511
+ns1828997_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,6.505,3600,0,node2511
+ns1830653_if,PRIMAL_INFEASIBLE,solved,0.060,3600,37,node2511
+ns1856153_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+ns1905797_if,OPTIMAL,false_optimal,3.980,3600,17,node2511
+ns1905797_ub,DUAL_INFEASIBLE,solved,1.687,3600,27,node3607
+ns1952667_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,339.987,3600,0,node2511
+ns2122698_if,PRIMAL_INFEASIBLE,solved,25.635,3600,31,node4415
+ns2124243_if,PRIMAL_INFEASIBLE,solved,19.926,3600,33,node4415
+ns2124243_ub,DUAL_INFEASIBLE,solved,3.598,3600,22,node3607
+ns930473_if,TIME_LIMIT,timeout,2011.885,3600,26,node4415
+nsrand-ipx_if,PRIMAL_INFEASIBLE,solved,0.033,3600,37,node2511
+nsrand-ipx_ub,DUAL_INFEASIBLE,solved,6.964,3600,32,node3607
+nucorsav_if,TIME_LIMIT,timeout,4500.432,3600,0,node2511
+nursesched-medium-hint03_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,7.738,3600,0,node3607
+nursesched-medium-hint03_ub,DUAL_INFEASIBLE,solved,6.378,3600,21,node3607
+nursesched-medium04_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,22.994,3600,0,node3607
+nursesched-medium04_ub,DUAL_INFEASIBLE,solved,66.853,3600,30,node3607
+nursesched-sprint-hidden09_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,6.941,3600,0,node3607
+nursesched-sprint-hidden09_ub,DUAL_INFEASIBLE,solved,7.491,3600,26,node3607
+nursesched-sprint-late03_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,3.194,3600,0,node3607
+nursesched-sprint-late03_ub,DUAL_INFEASIBLE,solved,20.065,3600,31,node3607
+nursesched-sprint02_if,PRIMAL_INFEASIBLE,solved,1.204,3600,38,node3607
+nursesched-sprint02_ub,DUAL_INFEASIBLE,solved,24.574,3600,26,node3607
+nw04_if,PRIMAL_INFEASIBLE,solved,0.001,3600,26,node3607
+nw04_ub,DUAL_INFEASIBLE,solved,144.498,3600,30,node3607
+opm2-z8-s0_ub,OPTIMAL,false_optimal,1786.459,3600,21,node3607
+pb-fit2d_if,OPTIMAL,false_optimal,236.525,3600,20,node3607
+pb-fit2d_ub,OPTIMAL,false_optimal,184.782,3600,18,node3607
+pb-grow22_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,126.796,3600,0,node3607
+pb-grow22_ub,TIME_LIMIT,timeout,2059.843,3600,36,node3607
+physiciansched3-3_if,OPTIMAL,false_optimal,1096.717,3600,20,node3607
+physiciansched3-4_if,OPTIMAL,false_optimal,449.898,3600,19,node3607
+physiciansched5-3_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,68.771,3600,0,node4415
+physiciansched6-1_if,TIME_LIMIT,timeout,2451.993,3600,36,node4415
+physiciansched6-2_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,242.217,3600,0,node3606
+piperout-d20_if,TIME_LIMIT,timeout,2308.174,3600,29,node3607
+piperout-d20_ub,DUAL_INFEASIBLE,solved,2.110,3600,26,node3607
+piperout-d27_if,OPTIMAL,false_optimal,98.692,3600,20,node3607
+proteindesign121hz512p9_if,TIME_LIMIT,timeout,4286.549,3600,21,node3607
+proteindesign121hz512p9_ub,TIME_LIMIT,timeout,4500.117,3600,0,node3607
+proteindesign121pgb11p9_if,TIME_LIMIT,timeout,4493.673,3600,22,node3607
+proteindesign121pgb11p9_ub,TIME_LIMIT,timeout,4500.127,3600,0,node4415
+proteindesign122trx11p8_if,TIME_LIMIT,timeout,4500.116,3600,0,node3607
+proteindesign122trx11p8_ub,TIME_LIMIT,timeout,4500.124,3600,0,node4415
+radiationm40-10-02_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+rail01_if,TIME_LIMIT,timeout,4470.327,3600,23,node3607
+rail507_ub,DUAL_INFEASIBLE,solved,224.251,3600,32,node4415
+rd-rplusc-21_if,OPTIMAL,false_optimal,2566.100,3600,23,node3607
+reblock420_if,PRIMAL_INFEASIBLE,solved,0.917,3600,39,node3607
+rmine11_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,23.137,3600,0,node3607
+rmine13_if,OPTIMAL,false_optimal,1.964,3600,16,node3607
+rmine15_if,OPTIMAL,false_optimal,48.950,3600,16,node3607
+rocII-10-11_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,397.270,3600,0,node3607
+rocII-5-11_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+rocII-8-11_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,40.580,3600,0,node3607
+roi2alpha3n4_ub,DUAL_INFEASIBLE,solved,10.288,3600,30,node4415
+rvb-sub_if,TIME_LIMIT,timeout,4021.575,3600,22,node3607
+rvb-sub_ub,DUAL_INFEASIBLE,solved,72.156,3600,28,node4415
+s100_if,TIME_LIMIT,timeout,4085.497,3600,22,node3607
+s250r10_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,65.313,3600,0,node3607
+s55_ub,OPTIMAL,false_optimal,426.489,3600,20,node4415
+satellites2-25_if,TIME_LIMIT,timeout,4500.106,3600,0,node3607
+satellites2-40_if,TIME_LIMIT,timeout,4500.091,3600,0,node3607
+satellites2-60-fs_if,TIME_LIMIT,timeout,3443.401,3600,22,node3607
+satellites3-25_if,TIME_LIMIT,timeout,4233.646,3600,24,node3607
+satellites4-25_if,TIME_LIMIT,timeout,4500.116,3600,0,node3607
+sct32_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,72.791,3600,0,node3607
+sct5_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,203.241,3600,0,node3607
+seqsolve1_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,313.354,3600,0,node3607
+seqsolve2short4288_if,OPTIMAL,false_optimal,444.659,3600,20,node3607
+seqsolve3short4288excess384_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,1485.252,3600,0,node3607
+shipsched_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,37.257,3600,0,node3607
+shipsched_ub,DUAL_INFEASIBLE,solved,4.630,3600,25,node4415
+shs1014_if,TIME_LIMIT,timeout,4500.124,3600,0,node3607
+shs1023_if,TIME_LIMIT,timeout,4500.124,3600,0,node3607
+shs1042_if,TIME_LIMIT,timeout,4500.064,3600,0,node3607
+sing326_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,25.588,3600,0,node3607
+sing44_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,17.114,3600,0,node3607
+snp-02-004-104_ub,DUAL_INFEASIBLE,solved,1372.354,3600,37,node4415
+sp97ar_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,5.660,3600,0,node3607
+sp97ar_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,132.800,3600,0,node4415
+sp97ic_ub,DUAL_INFEASIBLE,solved,23.022,3600,30,node4415
+sp98ar_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,15.304,3600,0,node3607
+sp98ar_ub,DUAL_INFEASIBLE,solved,29.386,3600,27,node4415
+sp98ic_ub,DUAL_INFEASIBLE,solved,36.407,3600,30,node4415
+splice1k1_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,5.620,3600,0,node3607
+square23_if,PRIMAL_INFEASIBLE,solved,11.712,3600,42,node3607
+square31_if,PRIMAL_INFEASIBLE,solved,0.018,3600,30,node3607
+square37_if,TIME_LIMIT,timeout,630.919,3600,31,node3607
+square41_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,244.194,3600,0,node3607
+square47_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,89.439,3600,0,node3607
+stockholm_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,59.513,3600,0,node3607
+stockholm_ub,DUAL_INFEASIBLE,solved,18.906,3600,26,node4415
+supportcase23_if,OPTIMAL,false_optimal,10.118,3600,18,node3607
+supportcase33_if,OPTIMAL,false_optimal,439.344,3600,23,node3607
+supportcase37_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,78.687,3600,0,node3607
+supportcase39_if,OPTIMAL,false_optimal,8.398,3600,18,node3607
+supportcase39_ub,DUAL_INFEASIBLE,solved,2.466,3600,20,node4415
+supportcase41_if,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node2511
+supportcase42_ub,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,283.987,3600,0,node4415
+supportcase6_if,TIME_LIMIT,timeout,4500.116,3600,0,node3607
+supportcase6_ub,DUAL_INFEASIBLE,solved,16.461,3600,24,node4415
+supportcase7_if,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,22.036,3600,0,node3606
+supportcase7_ub,DUAL_INFEASIBLE,solved,774.021,3600,32,node4415
+t1717_if,PRIMAL_INFEASIBLE,solved,8.442,3600,43,node3606
+t1717_ub,DUAL_INFEASIBLE,solved,3.994,3600,27,node4415
+t1722_if,PRIMAL_INFEASIBLE,solved,26.235,3600,43,node3606
+t1722_ub,DUAL_INFEASIBLE,solved,2.231,3600,23,node4415
+tbfp-network_if,TIME_LIMIT,timeout,4500.113,3600,0,node4415
+tbfp-network_ub,DUAL_INFEASIBLE,solved,11.212,3600,27,node4415
+thor50dday_if,PRIMAL_INFEASIBLE,solved,2886.260,3600,46,node2523
+thor50dday_ub,DUAL_INFEASIBLE,solved,7.343,3600,27,node4415
+triptim1_if,OPTIMAL,false_optimal,273.940,3600,21,node2523
+triptim2_if,OPTIMAL,false_optimal,1215.332,3600,22,node4415
+triptim4_if,OPTIMAL,false_optimal,1196.410,3600,21,node2523
+triptim7_if,TIME_LIMIT,timeout,4500.106,3600,0,node3606
+triptim8_if,TIME_LIMIT,timeout,4386.838,3600,22,node4415
+uccase7_if,TIME_LIMIT,timeout,4500.111,3600,0,node2523
+uccase8_if,OPTIMAL,false_optimal,10.457,3600,16,node2523
+uccase9_if,OPTIMAL,false_optimal,14.256,3600,16,node2523
+unitcal_7_if,TIME_LIMIT,timeout,4333.177,3600,24,node4415
+var-smallemery-m6j6_ub,DUAL_INFEASIBLE,solved,27.954,3600,25,node4415
+vpphard2_if,PRIMAL_INFEASIBLE,solved,0.005,3600,23,node4415
+vpphard_if,PRIMAL_INFEASIBLE,solved,0.035,3600,36,node4415
