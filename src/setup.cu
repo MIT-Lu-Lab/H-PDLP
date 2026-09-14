@@ -165,11 +165,11 @@ void check_params_validity(const pdhg_parameters_t *params)
         param_error("active_set window_iterations must be >= 1",
                     params->active_set_params.window_iterations);
     }
-    if (!(params->active_set_params.relative_active_set_tol >= 0.0 &&
-          isfinite(params->active_set_params.relative_active_set_tol)))
+    if (!(params->active_set_params.relative_tol >= 0.0 &&
+          isfinite(params->active_set_params.relative_tol)))
     {
-        param_error("active_set relative_active_set_tol must be finite and >= 0",
-                    params->active_set_params.relative_active_set_tol);
+        param_error("active_set relative_tol must be finite and >= 0",
+                    params->active_set_params.relative_tol);
     }
     if (!(params->active_set_params.safety_factor > 0.0 &&
           params->active_set_params.safety_factor < 1.0))

@@ -212,7 +212,7 @@ void set_default_parameters(pdhg_parameters_t *params)
 
     params->active_set_params.step_size_boost = true;
     params->active_set_params.window_iterations = 10000;
-    params->active_set_params.relative_active_set_tol = 1e-8;
+    params->active_set_params.relative_tol = 1e-8;
     params->active_set_params.safety_factor = 0.9;
     params->active_set_params.min_raise_ratio = 1.1;
     params->active_set_params.reestimate_change_ratio = 0.01;

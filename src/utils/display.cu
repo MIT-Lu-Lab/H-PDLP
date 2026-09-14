@@ -164,8 +164,8 @@ void print_initial_info(
                    params->active_set_params.window_iterations,
                    default_params.active_set_params.window_iterations);
     PRINT_DIFF_DBL("active_set_relative_tol",
-                   params->active_set_params.relative_active_set_tol,
-                   default_params.active_set_params.relative_active_set_tol);
+                   params->active_set_params.relative_tol,
+                   default_params.active_set_params.relative_tol);
     PRINT_DIFF_DBL("active_set_safety_factor",
                    params->active_set_params.safety_factor,
                    default_params.active_set_params.safety_factor);

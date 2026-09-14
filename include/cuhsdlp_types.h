@@ -112,7 +112,7 @@ extern "C"
     {
         bool step_size_boost;
         int window_iterations;
-        double relative_active_set_tol;
+        double relative_tol;
         double safety_factor;
         double min_raise_ratio;
         double reestimate_change_ratio;

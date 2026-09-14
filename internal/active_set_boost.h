@@ -49,7 +49,7 @@ extern "C"
         pdhg_solver_state_t *state,
         const pdhg_parameters_t *params);
 
-    void revert_active_set_boost(
+    void revert_active_set_step_size(
         pdhg_solver_state_t *state,
         const pdhg_parameters_t *params);
 

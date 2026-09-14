@@ -22,7 +22,7 @@ limitations under the License.
 #include "utils.h"
 #include <math.h>
 
-static bool is_active_set_boost_available(
+static bool has_active_set_revert_budget(
     const pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 __global__ void update_binding_constraint_mask_kernel(
@@ -33,7 +33,7 @@ __global__ void update_binding_constraint_mask_kernel(
     int *__restrict__ constraint_last_binding_iter,
     bool *__restrict__ binding_constraint_mask,
     active_set_mask_changes_t *mask_changes,
-    double relative_active_set_tol,
+    double relative_tol,
     int current_iter,
     int window_start_iter,
     int num_constraints);
@@ -46,15 +46,29 @@ __global__ void update_free_variable_mask_kernel(
     int *__restrict__ variable_last_free_iter,
     bool *__restrict__ free_variable_mask,
     active_set_mask_changes_t *mask_changes,
-    double relative_active_set_tol,
+    double relative_tol,
     double step_size_primal,
     int current_iter,
     int window_start_iter,
     int num_variables);
+static __device__ __forceinline__ bool is_safely_between_bounds(
+    double dual_projection_input,
+    double lower,
+    double upper,
+    double relative_tol);
+static __device__ __forceinline__ void update_window_mask_entry(
+    bool observed_in_mask,
+    int current_iter,
+    int window_start_iter,
+    int *last_observed_iter,
+    bool *mask,
+    int *entries_added,
+    int *entries_removed);
 static bool is_raise_possible(
     double target_step_size,
     double current_step_size,
     double min_raise_ratio);
+static void mark_raise_checked(active_set_state_t *active_set);
 static sv_estimator_result_t estimate_masked_constraint_norm(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
@@ -91,8 +105,6 @@ void initialize_active_set(
     allocate_zeroed_device_buffer(
         (void **)&active_set->binding_constraint_mask_d,
         num_constraints * sizeof(bool));
-    CUDA_CHECK(cudaMemset(active_set->free_variable_mask_d, 1, num_variables * sizeof(bool)));
-    CUDA_CHECK(cudaMemset(active_set->binding_constraint_mask_d, 1, num_constraints * sizeof(bool)));
     allocate_zeroed_device_buffer(
         (void **)&active_set->mask_changes_d,
         sizeof(active_set_mask_changes_t));
@@ -108,6 +120,9 @@ void initialize_active_set(
     allocate_zeroed_device_buffer(
         (void **)&active_set->anchor.constraint_cone_scale_d,
         sizeof(double));
+
+    CUDA_CHECK(cudaMemset(active_set->free_variable_mask_d, 1, num_variables * sizeof(bool)));
+    CUDA_CHECK(cudaMemset(active_set->binding_constraint_mask_d, 1, num_constraints * sizeof(bool)));
     active_set->free_variable_count = state->num_variables;
     active_set->binding_constraint_count = state->num_constraints;
     active_set->step_size_ceiling = INFINITY;
@@ -146,7 +161,7 @@ void update_active_set_masks(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
-    if (!is_active_set_boost_available(state, params))
+    if (!has_active_set_revert_budget(state, params))
     {
         return;
     }
@@ -173,7 +188,7 @@ void update_active_set_masks(
         active_set->constraint_last_binding_iter_d,
         active_set->binding_constraint_mask_d,
         active_set->mask_changes_d,
-        params->active_set_params.relative_active_set_tol,
+        params->active_set_params.relative_tol,
         current_iter,
         window_start_iter,
         state->num_constraints);
@@ -190,7 +205,7 @@ void update_active_set_masks(
         active_set->variable_last_free_iter_d,
         active_set->free_variable_mask_d,
         active_set->mask_changes_d,
-        params->active_set_params.relative_active_set_tol,
+        params->active_set_params.relative_tol,
         state->control.step_size_primal,
         current_iter,
         window_start_iter,
@@ -213,7 +228,7 @@ void update_active_set_masks(
         mask_changes.constraints_added + mask_changes.constraints_removed;
 }
 
-static bool is_active_set_boost_available(
+static bool has_active_set_revert_budget(
     const pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
@@ -229,7 +244,7 @@ __global__ void update_binding_constraint_mask_kernel(
     int *__restrict__ constraint_last_binding_iter,
     bool *__restrict__ binding_constraint_mask,
     active_set_mask_changes_t *mask_changes,
-    double relative_active_set_tol,
+    double relative_tol,
     int current_iter,
     int window_start_iter,
     int num_constraints)
@@ -243,44 +258,22 @@ __global__ void update_binding_constraint_mask_kernel(
     const double lower = constraint_lower_bound[i];
     const double upper = constraint_upper_bound[i];
     const double cone_scale = *constraint_cone_scale;
-    bool binding = lower == upper || !(cone_scale > 0.0);
-    if (!binding)
-    {
-        const double dual_projection_input =
-            constraint_dual_projection_input[i] / cone_scale;
-        bool safely_inside = true;
-        if (isfinite(upper))
-        {
-            const double margin =
-                relative_active_set_tol *
-                fmax(1.0, fmax(fabs(dual_projection_input), fabs(upper)));
-            safely_inside =
-                safely_inside && (upper + dual_projection_input > margin);
-        }
-        if (isfinite(lower))
-        {
-            const double margin =
-                relative_active_set_tol *
-                fmax(1.0, fmax(fabs(dual_projection_input), fabs(lower)));
-            safely_inside =
-                safely_inside && (-lower - dual_projection_input > margin);
-        }
-        binding = !safely_inside;
-    }
-    if (binding)
-    {
-        constraint_last_binding_iter[i] = current_iter;
-    }
-    const bool retained =
-        constraint_last_binding_iter[i] >= window_start_iter;
-    if (retained != binding_constraint_mask[i])
-    {
-        binding_constraint_mask[i] = retained;
-        atomicAdd(
-            retained ? &mask_changes->constraints_added
-                     : &mask_changes->constraints_removed,
-            1);
-    }
+    const bool is_binding =
+        lower == upper ||
+        !(cone_scale > 0.0) ||
+        !is_safely_between_bounds(
+            constraint_dual_projection_input[i] / cone_scale,
+            lower,
+            upper,
+            relative_tol);
+    update_window_mask_entry(
+        is_binding,
+        current_iter,
+        window_start_iter,
+        &constraint_last_binding_iter[i],
+        &binding_constraint_mask[i],
+        &mask_changes->constraints_added,
+        &mask_changes->constraints_removed);
 }
 
 __global__ void update_free_variable_mask_kernel(
@@ -292,7 +285,7 @@ __global__ void update_free_variable_mask_kernel(
     int *__restrict__ variable_last_free_iter,
     bool *__restrict__ free_variable_mask,
     active_set_mask_changes_t *mask_changes,
-    double relative_active_set_tol,
+    double relative_tol,
     double step_size_primal,
     int current_iter,
     int window_start_iter,
@@ -307,36 +300,71 @@ __global__ void update_free_variable_mask_kernel(
     const double lower = variable_lower_bound[j];
     const double upper = variable_upper_bound[j];
     const double projection_residual_tolerance =
-        relative_active_set_tol *
+        relative_tol *
         fmax(1.0, fabs(objective_vector[j])) *
         (*primal_scale_pdhg);
     const double projection_input_margin =
         step_size_primal * projection_residual_tolerance;
     const double projection_input = variable_primal_projection_input[j];
-    const bool fixed_at_zero = lower == upper && lower == 0.0;
+    const bool input_is_finite = isfinite(projection_input);
+    const bool fixed_at_zero = lower == 0.0 && upper == 0.0;
     const bool clamped_at_lower =
-        isfinite(projection_input) &&
         lower == 0.0 &&
+        input_is_finite &&
         projection_input < -projection_input_margin;
     const bool clamped_at_upper =
-        isfinite(projection_input) &&
         upper == 0.0 &&
+        input_is_finite &&
         projection_input > projection_input_margin;
-    const bool clamped_at_zero =
-        fixed_at_zero || clamped_at_lower || clamped_at_upper;
-    if (!clamped_at_zero)
+    const bool is_free =
+        !(fixed_at_zero || clamped_at_lower || clamped_at_upper);
+    update_window_mask_entry(
+        is_free,
+        current_iter,
+        window_start_iter,
+        &variable_last_free_iter[j],
+        &free_variable_mask[j],
+        &mask_changes->variables_added,
+        &mask_changes->variables_removed);
+}
+
+static __device__ __forceinline__ bool is_safely_between_bounds(
+    double dual_projection_input,
+    double lower,
+    double upper,
+    double relative_tol)
+{
+    const bool below_upper =
+        !isfinite(upper) ||
+        upper + dual_projection_input >
+            relative_tol *
+                fmax(1.0, fmax(fabs(dual_projection_input), fabs(upper)));
+    const bool above_lower =
+        !isfinite(lower) ||
+        -lower - dual_projection_input >
+            relative_tol *
+                fmax(1.0, fmax(fabs(dual_projection_input), fabs(lower)));
+    return below_upper && above_lower;
+}
+
+static __device__ __forceinline__ void update_window_mask_entry(
+    bool observed_in_mask,
+    int current_iter,
+    int window_start_iter,
+    int *last_observed_iter,
+    bool *mask,
+    int *entries_added,
+    int *entries_removed)
+{
+    if (observed_in_mask)
     {
-        variable_last_free_iter[j] = current_iter;
+        *last_observed_iter = current_iter;
     }
-    const bool retained =
-        variable_last_free_iter[j] >= window_start_iter;
-    if (retained != free_variable_mask[j])
+    const bool retained = *last_observed_iter >= window_start_iter;
+    if (retained != *mask)
     {
-        free_variable_mask[j] = retained;
-        atomicAdd(
-            retained ? &mask_changes->variables_added
-                     : &mask_changes->variables_removed,
-            1);
+        *mask = retained;
+        atomicAdd(retained ? entries_added : entries_removed, 1);
     }
 }
 
@@ -344,7 +372,9 @@ bool should_revert_active_set_boost(
     const pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
-    if (state->control.step_size <= state->control.step_size_base)
+    const bool is_boosted =
+        state->control.step_size > state->control.step_size_base;
+    if (!is_boosted)
     {
         return false;
     }
@@ -353,17 +383,21 @@ bool should_revert_active_set_boost(
     {
         return true;
     }
-    if (reason != TERMINATION_REASON_UNSPECIFIED &&
-        reason != TERMINATION_REASON_TIME_LIMIT &&
-        reason != TERMINATION_REASON_ITERATION_LIMIT)
+    const bool is_uncertified =
+        reason == TERMINATION_REASON_UNSPECIFIED ||
+        reason == TERMINATION_REASON_TIME_LIMIT ||
+        reason == TERMINATION_REASON_ITERATION_LIMIT;
+    if (!is_uncertified)
     {
         return false;
     }
     const double fixed_point_error = *state->control.fixed_point_error_mp;
-    if (!isfinite(state->metrics_h->relative_primal_residual) ||
-        !isfinite(state->metrics_h->relative_dual_residual) ||
-        !isfinite(state->metrics_h->relative_objective_gap) ||
-        !isfinite(fixed_point_error))
+    const bool metrics_are_finite =
+        isfinite(state->metrics_h->relative_primal_residual) &&
+        isfinite(state->metrics_h->relative_dual_residual) &&
+        isfinite(state->metrics_h->relative_objective_gap) &&
+        isfinite(fixed_point_error);
+    if (!metrics_are_finite)
     {
         return true;
     }
@@ -378,15 +412,24 @@ void try_raise_active_set_step_size(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
-    if (!is_active_set_boost_available(state, params))
+    if (!has_active_set_revert_budget(state, params))
     {
         return;
     }
 
     active_set_state_t *active_set = &state->active_set;
-    if (active_set->free_variable_count == state->num_variables &&
+    const bool a_mask_is_empty =
+        active_set->free_variable_count == 0 ||
+        active_set->binding_constraint_count == 0;
+    if (a_mask_is_empty)
+    {
+        return;
+    }
+    const bool masks_are_full_and_unchanged =
+        active_set->free_variable_count == state->num_variables &&
         active_set->binding_constraint_count == state->num_constraints &&
-        active_set->mask_changes_since_estimate == 0)
+        active_set->mask_changes_since_estimate == 0;
+    if (masks_are_full_and_unchanged)
     {
         return;
     }
@@ -402,38 +445,40 @@ void try_raise_active_set_step_size(
     }
 
     const double step_size_base = state->control.step_size_base;
-    const double previous_step_size = state->control.step_size;
+    const double current_step_size = state->control.step_size;
     const double min_raise_ratio = params->active_set_params.min_raise_ratio;
+    const double largest_allowed_step_size =
+        fmax(step_size_base, active_set->step_size_ceiling);
     if (!is_raise_possible(
-            fmax(step_size_base, active_set->step_size_ceiling),
-            previous_step_size,
+            largest_allowed_step_size,
+            current_step_size,
             min_raise_ratio))
     {
-        active_set->raise_checked = true;
-        active_set->mask_changes_since_estimate = 0;
+        mark_raise_checked(active_set);
         return;
     }
 
     const sv_estimator_result_t estimate =
         estimate_masked_constraint_norm(state, params);
-    if (estimate.status != SV_ESTIMATOR_EARLY_EXIT &&
-        estimate.status != SV_ESTIMATOR_CONVERGED)
+    const bool estimate_is_trusted =
+        estimate.status == SV_ESTIMATOR_CONVERGED ||
+        estimate.status == SV_ESTIMATOR_EARLY_EXIT;
+    if (!estimate_is_trusted)
     {
         return;
     }
-    active_set->raise_checked = true;
-    active_set->mask_changes_since_estimate = 0;
+    mark_raise_checked(active_set);
     if (estimate.status == SV_ESTIMATOR_EARLY_EXIT)
     {
         return;
     }
 
     const double target_step_size =
-        fmax(step_size_base,
-             fmin(params->active_set_params.safety_factor /
-                      estimate.max_singular_value,
-                  active_set->step_size_ceiling));
-    if (!is_raise_possible(target_step_size, previous_step_size, min_raise_ratio))
+        fmin(fmax(step_size_base,
+                  params->active_set_params.safety_factor /
+                      estimate.max_singular_value),
+             largest_allowed_step_size);
+    if (!is_raise_possible(target_step_size, current_step_size, min_raise_ratio))
     {
         return;
     }
@@ -441,7 +486,7 @@ void try_raise_active_set_step_size(
     active_set->raise_count++;
     save_active_set_anchor(state);
     display_active_set_boost_raise(
-        params, previous_step_size, target_step_size,
+        params, current_step_size, target_step_size,
         estimate.max_singular_value);
 }
 
@@ -452,6 +497,12 @@ static bool is_raise_possible(
 {
     return target_step_size > current_step_size &&
            target_step_size >= min_raise_ratio * current_step_size;
+}
+
+static void mark_raise_checked(active_set_state_t *active_set)
+{
+    active_set->raise_checked = true;
+    active_set->mask_changes_since_estimate = 0;
 }
 
 static sv_estimator_result_t estimate_masked_constraint_norm(
@@ -518,13 +569,14 @@ static void save_active_set_anchor(pdhg_solver_state_t *state)
     active_set->anchor.pid = state->control.pid;
 }
 
-void revert_active_set_boost(
+void revert_active_set_step_size(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
     active_set_state_t *active_set = &state->active_set;
+    const double failed_step_size = state->control.step_size;
     active_set->step_size_ceiling =
-        params->active_set_params.divergence_ceiling_ratio * state->control.step_size;
+        params->active_set_params.divergence_ceiling_ratio * failed_step_size;
     state->control.step_size = state->control.step_size_base;
     restore_active_set_anchor(state);
     active_set->raise_checked = false;

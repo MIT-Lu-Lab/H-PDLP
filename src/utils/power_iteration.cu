@@ -33,12 +33,12 @@ struct sv_estimator_ctx
     int num_columns;
     int num_blocks_row;
     int num_blocks_column;
-    double *eigenvector_d;
-    double *next_eigenvector_d;
+    double *iterate_d;
+    double *normalized_iterate_d;
     double *transpose_product_d;
-    double *vector_norm_d;
-    cusparseDnVecDescr_t spmv_eigenvector;
-    cusparseDnVecDescr_t spmv_next_eigenvector;
+    double *iterate_norm_d;
+    cusparseDnVecDescr_t spmv_iterate;
+    cusparseDnVecDescr_t spmv_normalized_iterate;
     cusparseDnVecDescr_t spmv_transpose_product;
     double *sigma_squared_mp;
     double *residual_norm_mp;
@@ -63,10 +63,9 @@ static __global__ void normalize_power_iteration_vector_kernel(
     const double *vector_d,
     const double *vector_norm_d,
     int n);
-static __global__ void compute_power_iteration_residual_kernel(
-    double *residual_d,
-    const double *vector_d,
-    const double *normalized_vector_d,
+static __global__ void replace_normalized_iterate_with_residual_kernel(
+    double *normalized_iterate_d,
+    const double *iterate_d,
     const double *sigma_squared_d,
     int n);
 static sv_estimator_status_t classify_power_iteration_outcome(
@@ -122,29 +121,29 @@ sv_estimator_ctx_t *sv_estimator_create(
         CUDA_R_64F));
 
     allocate_zeroed_device_buffer(
-        (void **)&ctx->eigenvector_d,
+        (void **)&ctx->iterate_d,
         (((size_t)num_rows + 1) & ~(size_t)1) * sizeof(double));
     allocate_zeroed_device_buffer(
-        (void **)&ctx->next_eigenvector_d,
+        (void **)&ctx->normalized_iterate_d,
         (size_t)num_rows * sizeof(double));
     allocate_zeroed_device_buffer(
         (void **)&ctx->transpose_product_d,
         (size_t)num_columns * sizeof(double));
-    allocate_zeroed_device_buffer((void **)&ctx->vector_norm_d, sizeof(double));
+    allocate_zeroed_device_buffer((void **)&ctx->iterate_norm_d, sizeof(double));
     CUDA_CHECK(cudaHostAlloc(&ctx->sigma_squared_mp, sizeof(double), cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&ctx->residual_norm_mp, sizeof(double), cudaHostAllocMapped));
     CUSPARSE_CHECK(cusparseCreateDnVec(
-        &ctx->spmv_eigenvector, num_rows, ctx->eigenvector_d, CUDA_R_64F));
+        &ctx->spmv_iterate, num_rows, ctx->iterate_d, CUDA_R_64F));
     CUSPARSE_CHECK(cusparseCreateDnVec(
-        &ctx->spmv_next_eigenvector, num_rows, ctx->next_eigenvector_d, CUDA_R_64F));
+        &ctx->spmv_normalized_iterate, num_rows, ctx->normalized_iterate_d, CUDA_R_64F));
     CUSPARSE_CHECK(cusparseCreateDnVec(
         &ctx->spmv_transpose_product, num_columns, ctx->transpose_product_d, CUDA_R_64F));
     create_spmv_plan(
-        sparse_handle, ctx->transpose, ctx->spmv_next_eigenvector,
+        sparse_handle, ctx->transpose, ctx->spmv_normalized_iterate,
         ctx->spmv_transpose_product, &ctx->transpose_plan);
     create_spmv_plan(
         sparse_handle, ctx->matrix, ctx->spmv_transpose_product,
-        ctx->spmv_eigenvector, &ctx->matrix_plan);
+        ctx->spmv_iterate, &ctx->matrix_plan);
     return ctx;
 }
 
@@ -167,18 +166,18 @@ sv_estimator_result_t sv_estimator_run(
             ctx->num_blocks_row,
             THREADS_PER_BLOCK,
             0,
-            ctx->stream>>>(ctx->eigenvector_d, opts->row_mask_d, ctx->num_rows);
+            ctx->stream>>>(ctx->iterate_d, opts->row_mask_d, ctx->num_rows);
 
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             ctx->blas_handle,
             ctx->num_rows,
-            ctx->eigenvector_d,
+            ctx->iterate_d,
             1,
-            ctx->vector_norm_d));
+            ctx->iterate_norm_d));
         double warm_start_norm = 0.0;
         CUDA_CHECK(cudaMemcpyAsync(
             &warm_start_norm,
-            ctx->vector_norm_d,
+            ctx->iterate_norm_d,
             sizeof(double),
             cudaMemcpyDeviceToHost,
             ctx->stream));
@@ -193,7 +192,7 @@ sv_estimator_result_t sv_estimator_run(
                 THREADS_PER_BLOCK,
                 0,
                 ctx->stream>>>(
-                ctx->eigenvector_d,
+                ctx->iterate_d,
                 opts->row_mask_d,
                 perturbation_amplitude,
                 ctx->num_rows);
@@ -209,7 +208,7 @@ sv_estimator_result_t sv_estimator_run(
             ((size_t)ctx->num_rows + 1) & ~(size_t)1;
         CURAND_CHECK(curandGenerateNormalDouble(
             ctx->curand_gen,
-            ctx->eigenvector_d,
+            ctx->iterate_d,
             curand_sample_count,
             0.0,
             1.0));
@@ -220,7 +219,7 @@ sv_estimator_result_t sv_estimator_run(
                 THREADS_PER_BLOCK,
                 0,
                 ctx->stream>>>(
-                ctx->eigenvector_d,
+                ctx->iterate_d,
                 opts->row_mask_d,
                 ctx->num_rows);
         }
@@ -335,21 +334,21 @@ static void run_power_iteration_step(
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         ctx->blas_handle,
         num_rows,
-        ctx->eigenvector_d,
+        ctx->iterate_d,
         1,
-        ctx->vector_norm_d));
+        ctx->iterate_norm_d));
     normalize_power_iteration_vector_kernel<<<
         ctx->num_blocks_row,
         THREADS_PER_BLOCK,
         0,
         ctx->stream>>>(
-        ctx->next_eigenvector_d,
-        ctx->eigenvector_d,
-        ctx->vector_norm_d,
+        ctx->normalized_iterate_d,
+        ctx->iterate_d,
+        ctx->iterate_norm_d,
         num_rows);
     execute_spmv(
         ctx->sparse_handle,
-        ctx->spmv_next_eigenvector,
+        ctx->spmv_normalized_iterate,
         ctx->spmv_transpose_product,
         &ctx->transpose_plan);
     if (opts->column_mask_d)
@@ -366,7 +365,7 @@ static void run_power_iteration_step(
     execute_spmv(
         ctx->sparse_handle,
         ctx->spmv_transpose_product,
-        ctx->spmv_eigenvector,
+        ctx->spmv_iterate,
         &ctx->matrix_plan);
     if (opts->row_mask_d)
     {
@@ -374,32 +373,31 @@ static void run_power_iteration_step(
             ctx->num_blocks_row,
             THREADS_PER_BLOCK,
             0,
-            ctx->stream>>>(ctx->eigenvector_d, opts->row_mask_d, num_rows);
+            ctx->stream>>>(ctx->iterate_d, opts->row_mask_d, num_rows);
     }
     CUBLAS_CHECK(cublasDdot(
         ctx->blas_handle,
         num_rows,
-        ctx->next_eigenvector_d,
+        ctx->normalized_iterate_d,
         1,
-        ctx->eigenvector_d,
+        ctx->iterate_d,
         1,
         ctx->sigma_squared_mp));
     if (evaluate_residual)
     {
-        compute_power_iteration_residual_kernel<<<
+        replace_normalized_iterate_with_residual_kernel<<<
             ctx->num_blocks_row,
             THREADS_PER_BLOCK,
             0,
             ctx->stream>>>(
-            ctx->next_eigenvector_d,
-            ctx->eigenvector_d,
-            ctx->next_eigenvector_d,
+            ctx->normalized_iterate_d,
+            ctx->iterate_d,
             ctx->sigma_squared_mp,
             num_rows);
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             ctx->blas_handle,
             num_rows,
-            ctx->next_eigenvector_d,
+            ctx->normalized_iterate_d,
             1,
             ctx->residual_norm_mp));
     }
@@ -419,10 +417,9 @@ static __global__ void normalize_power_iteration_vector_kernel(
     normalized_vector_d[i] = (vector_norm > 0.0) ? (vector_d[i] / vector_norm) : 0.0;
 }
 
-static __global__ void compute_power_iteration_residual_kernel(
-    double *residual_d,
-    const double *vector_d,
-    const double *normalized_vector_d,
+static __global__ void replace_normalized_iterate_with_residual_kernel(
+    double *normalized_iterate_d,
+    const double *iterate_d,
     const double *sigma_squared_d,
     int n)
 {
@@ -431,7 +428,7 @@ static __global__ void compute_power_iteration_residual_kernel(
         return;
 
     double sigma_squared = *sigma_squared_d;
-    residual_d[i] = vector_d[i] - sigma_squared * normalized_vector_d[i];
+    normalized_iterate_d[i] = iterate_d[i] - sigma_squared * normalized_iterate_d[i];
 }
 
 static sv_estimator_status_t classify_power_iteration_outcome(
@@ -470,13 +467,13 @@ void sv_estimator_free(sv_estimator_ctx_t *ctx)
     destroy_spmv_plan(&ctx->matrix_plan);
     CUSPARSE_CHECK(cusparseDestroySpMat(ctx->transpose));
     CUSPARSE_CHECK(cusparseDestroySpMat(ctx->matrix));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->spmv_eigenvector));
-    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->spmv_next_eigenvector));
+    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->spmv_iterate));
+    CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->spmv_normalized_iterate));
     CUSPARSE_CHECK(cusparseDestroyDnVec(ctx->spmv_transpose_product));
-    CUDA_CHECK(cudaFree(ctx->eigenvector_d));
-    CUDA_CHECK(cudaFree(ctx->next_eigenvector_d));
+    CUDA_CHECK(cudaFree(ctx->iterate_d));
+    CUDA_CHECK(cudaFree(ctx->normalized_iterate_d));
     CUDA_CHECK(cudaFree(ctx->transpose_product_d));
-    CUDA_CHECK(cudaFree(ctx->vector_norm_d));
+    CUDA_CHECK(cudaFree(ctx->iterate_norm_d));
     CUDA_CHECK(cudaFreeHost(ctx->sigma_squared_mp));
     CUDA_CHECK(cudaFreeHost(ctx->residual_norm_mp));
     free(ctx);

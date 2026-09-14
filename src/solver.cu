@@ -80,8 +80,12 @@ static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 static void compute_step_sizes(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params);
+    double step_size,
+    double primal_weight,
+    const step_size_parameters_t *step_size_params,
+    double *step_size_primal,
+    double *step_size_dual,
+    double *step_size_homogeneous);
 static void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -425,20 +429,26 @@ static void initialize_step_size_and_primal_weight(
 
     initialize_pid_state(&state->control.pid);
 
-    compute_step_sizes(state, &params->step_size_params);
+    compute_step_sizes(
+        state->control.step_size,
+        state->control.primal_weight,
+        &params->step_size_params,
+        &state->control.step_size_primal,
+        &state->control.step_size_dual,
+        &state->control.step_size_homogeneous);
 }
 
 static void compute_step_sizes(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params)
+    double step_size,
+    double primal_weight,
+    const step_size_parameters_t *step_size_params,
+    double *step_size_primal,
+    double *step_size_dual,
+    double *step_size_homogeneous)
 {
-    state->control.step_size_primal =
-        state->control.step_size / state->control.primal_weight;
-    state->control.step_size_dual =
-        state->control.primal_weight * state->control.step_size;
-    state->control.step_size_homogeneous =
-        0.99 * step_size_params->step_size_factor /
-        state->control.step_size_dual;
+    *step_size_primal = step_size / primal_weight;
+    *step_size_dual = primal_weight * step_size;
+    *step_size_homogeneous = 0.99 * step_size_params->step_size_factor / *step_size_dual;
 }
 
 static void hsd_run_iteration_step(
@@ -592,12 +602,16 @@ static void compute_fixed_point_error(
         1,
         state->fixed_point_operator_cross_d));
 
-    const double metric_step_size_primal =
-        state->control.step_size_base / state->control.primal_weight;
-    const double metric_step_size_dual =
-        state->control.primal_weight * state->control.step_size_base;
-    const double metric_step_size_homogeneous =
-        0.99 * step_size_params->step_size_factor / metric_step_size_dual;
+    double metric_step_size_primal = 0.0;
+    double metric_step_size_dual = 0.0;
+    double metric_step_size_homogeneous = 0.0;
+    compute_step_sizes(
+        state->control.step_size_base,
+        state->control.primal_weight,
+        step_size_params,
+        &metric_step_size_primal,
+        &metric_step_size_dual,
+        &metric_step_size_homogeneous);
 
     compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
         state->control.fixed_point_error_mp,
@@ -620,12 +634,19 @@ static void perform_active_set_boost_revert(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
+    revert_active_set_step_size(state, params);
+
     state->control.restart_count++;
-    revert_active_set_boost(state, params);
     state->control.inner_count = 0;
     state->control.last_trial_fixed_point_error = INFINITY;
 
-    compute_step_sizes(state, &params->step_size_params);
+    compute_step_sizes(
+        state->control.step_size,
+        state->control.primal_weight,
+        &params->step_size_params,
+        &state->control.step_size_primal,
+        &state->control.step_size_dual,
+        &state->control.step_size_homogeneous);
     compute_termination_metrics(state, params);
     display_iteration_stats(state, params->verbose, true);
     display_active_set_boost_revert(state, params);
@@ -759,7 +780,13 @@ static void perform_restart(
 
     try_raise_active_set_step_size(state, params);
 
-    compute_step_sizes(state, step_size_params);
+    compute_step_sizes(
+        state->control.step_size,
+        state->control.primal_weight,
+        step_size_params,
+        &state->control.step_size_primal,
+        &state->control.step_size_dual,
+        &state->control.step_size_homogeneous);
 }
 
 static void update_primal_weight_via_restart_pid(
