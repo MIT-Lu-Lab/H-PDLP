@@ -5,7 +5,7 @@ from pathlib import Path
 
 LP_ROOT = Path("/nfs/sloanlab007/projects/pdopt_proj/instances/lp")
 MIPLIB_INFEAS_ROOT = Path("/home/botang/src/miplib-infeas")
-INSTANCE_LISTS = Path("/home/botang/src/cuHSDLP/instances")
+INSTANCE_LISTS = Path(__file__).resolve().parents[1] / "instances"
 
 
 @dataclass(frozen=True)
@@ -46,26 +46,26 @@ def is_unbounded(tag: str) -> bool:
     return tag.endswith("_ub")
 
 
-# Class-based limits are looked up by the source MIPLIB name, without the _if/_ub sample suffix.
-def instance_time_limit(spec: DatasetSpec, tag: str) -> float:
-    if spec.time_limit is None:
-        from lp_utils import instance_tl
-        return instance_tl(tag.removesuffix("_if").removesuffix("_ub"), True)
-    return spec.time_limit
-
-
-# The suite's instance names, the first token per line (miplib lists carry class/nnz too), or None for every file.
-def instance_names(spec: DatasetSpec) -> set[str] | None:
+# The suite's instance list as {name: fields after the name}, where miplib lists carry class and nnz; None for every file.
+def read_instance_list(spec: DatasetSpec) -> dict[str, list[str]] | None:
     if spec.instance_list is None:
         return None
-    return {line.split()[0] for line in read_nonempty_lines(spec.instance_list)}
+    return {fields[0]: fields[1:] for fields in map(str.split, read_nonempty_lines(spec.instance_list))}
+
+
+# MIPLIB Large instances get 18000s and every other class 3600s; the _if/_ub sample suffix is not part of the name.
+def instance_time_limit(spec: DatasetSpec, tag: str) -> float:
+    if spec.time_limit is not None:
+        return spec.time_limit
+    fields = read_instance_list(spec).get(tag.removesuffix("_if").removesuffix("_ub"), [])
+    return 18000.0 if fields[:1] == ["Large"] else 3600.0
 
 
 def dataset_files(spec: DatasetSpec, mode: str) -> list[Path]:
     """Instance files of the raw or PSLP-reduced arm, limited to the suite's instance list."""
     root = spec.pslp_root if mode == "pslp" else spec.raw_root
     files = sorted(Path(path) for path in glob.glob(str(root / spec.pattern)))
-    names = instance_names(spec)
+    names = read_instance_list(spec)
     return files if names is None else [path for path in files if instance_tag(path) in names]
 
 
@@ -78,7 +78,7 @@ def seeded_status(spec: DatasetSpec, tag: str) -> str:
 
 def manifest_tags(spec: DatasetSpec) -> list[tuple[str, str]]:
     """(tag, status) of the instances PSLP settled in presolve, from the manifests beside the reduced files."""
-    names = instance_names(spec)
+    names = read_instance_list(spec)
     seeded = []
     # Only the feasible suites can have presolve-solved instances.
     for outcome in ("infeasible", "solved") if spec.kind == "opt" else ("infeasible",):

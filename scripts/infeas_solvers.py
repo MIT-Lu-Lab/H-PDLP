@@ -14,7 +14,7 @@ from pathlib import Path
 # CPU baselines get 16 threads as in the cuPDLP.jl experiments, or SLURM_CPUS_PER_TASK when set.
 THREADS = int(os.environ.get("SLURM_CPUS_PER_TASK", "16"))
 
-# ABIP overruns its time limit and can crash, so it runs in a subprocess killed after TL + slack for model reading.
+# ABIP overruns its time limit and can abort the process, so it runs in a child killed after TL + slack for reading.
 ABIP_KILL_SLACK = 900.0
 
 
@@ -185,12 +185,11 @@ def mosek_objective(task) -> float | None:
 
 def solve_scs(tmp_path: str, time_limit: float, eps: float | None, started_at: float) -> SolveResult:
     import scs
-    from lp_utils import highs_to_scs
+    from infeas_conic import conic_form
 
     highs = make_highs(time_limit)
     read_model(highs, tmp_path)
-    data, cones = highs_to_scs(highs)
-    obj_offset = data.pop("obj_offset")
+    data, cones, offset, sign = conic_form(highs)
     remaining = max(5.0, time_limit - (time.time() - started_at))
     tol = {} if eps is None else {"eps_abs": eps, "eps_rel": eps}
     solve_started = time.perf_counter()
@@ -204,13 +203,12 @@ def solve_scs(tmp_path: str, time_limit: float, eps: float | None, started_at: f
         status = f"{base}_INACCURATE" if base in ("PRIMAL_INFEASIBLE", "DUAL_INFEASIBLE") else "TIME_LIMIT"
     else:
         status = status_map.get(raw_status, raw_status)
-    objective = info["pobj"] + obj_offset if status == "OPTIMAL" else None
+    objective = sign * (info["pobj"] + offset) if status == "OPTIMAL" else None
     return SolveResult(status, max(info["iter"], 0), objective, solve_elapsed)   # iter is -1 on failure
 
 
 def solve_abip(tmp_path: str, time_limit: float, eps: float | None, started_at: float) -> SolveResult:
-    cmd = [sys.executable, str(Path(__file__).resolve().parents[1] / "abip" / "solve_one.py"),
-           tmp_path, str(time_limit)]
+    cmd = [sys.executable, str(Path(__file__).resolve()), tmp_path, str(time_limit)]
     if eps is not None:
         cmd.append(str(eps))
     solve_started = time.perf_counter()
@@ -227,6 +225,19 @@ def solve_abip(tmp_path: str, time_limit: float, eps: float | None, started_at: 
     return SolveResult(out["status"], out["iters"], out["objective"], out["solve_time"])
 
 
+def abip_child(tmp_path: str, time_limit: float, eps: float | None) -> None:
+    """Solve one MPS file with ABIP and print the result as a JSON line prefixed with @@ for solve_abip."""
+    import infeas_abip
+    from infeas_conic import conic_form
+
+    highs = make_highs(time_limit)
+    read_model(highs, tmp_path)
+    data, cones, offset, sign = conic_form(highs)
+    status, iters, objective, solve_time = infeas_abip.solve(data, cones, time_limit, eps)
+    print("@@" + json.dumps({"status": status, "iters": iters, "solve_time": solve_time,
+                             "objective": None if objective is None else sign * (objective + offset)}))
+
+
 SOLVERS = {
     "abip": solve_abip,
     "gurobi_ds": partial(solve_gurobi, method=1, crossover=-1),
@@ -237,3 +248,7 @@ SOLVERS = {
     "mosek": solve_mosek,
     "scs": solve_scs,
 }
+
+# Run as a script, this module is the ABIP child process that solve_abip starts and can kill.
+if __name__ == "__main__":
+    abip_child(sys.argv[1], float(sys.argv[2]), float(sys.argv[3]) if len(sys.argv) > 3 else None)
