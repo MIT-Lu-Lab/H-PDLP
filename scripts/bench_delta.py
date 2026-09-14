@@ -1,63 +1,23 @@
 #!/usr/bin/env python3
-"""Diff two cuHSDLP result dates for one benchmark suite.
-
-Reads summary files from result/{suite}_{new} and result/{suite}_{old} and writes
-result/delta_HSD_{suite}_{new}_vs_{old}.csv with per-instance iters/time deltas.
-
-Usage:
-    python delta_dates.py --suite miplib --new 20260605 --old 20260602
-"""
-
+"""Diff the per-instance iterations and time of two cuHSDLP result dates for one suite."""
 import argparse
 import csv
-import os
-import sys
+from pathlib import Path
 
-RESULT_DIR = os.path.join(os.path.dirname(__file__), "..", "result")
-
-
-def load(suite, date):
-    """Parse {suite}_{date} summaries into {instance: {status, iters, time}}."""
-    folder = os.path.join(RESULT_DIR, f"{suite}_{date}")
-    if not os.path.isdir(folder):
-        sys.exit(f"Error: {folder} not found")
-    out = {}
-    for fname in os.listdir(folder):
-        if not fname.endswith("_summary.txt"):
-            continue
-        inst = fname[: -len("_summary.txt")]
-        raw = {}
-        with open(os.path.join(folder, fname)) as f:
-            for line in f:
-                if ":" in line:
-                    k, v = line.split(":", 1)
-                    raw[k.strip()] = v.strip()
-        out[inst] = {
-            "status": raw.get("Termination Reason", ""),
-            "iters": int(raw.get("Iterations Count", 0)),
-            "time": float(raw.get("Runtime (sec)", 0.0)),
-        }
-    return out
+from bench_compare import load_hsd
+from common import RESULT_DIR
 
 
 def ratio(a, b):
     return f"{a / b:.3f}" if b else ""
 
 
-def main():
-    p = argparse.ArgumentParser(description="Diff two cuHSDLP result dates.")
-    p.add_argument("--suite", required=True, help="e.g. miplib, mittelmann, netlib_infeas")
-    p.add_argument("--new", required=True, help="newer date, e.g. 20260605")
-    p.add_argument("--old", required=True, help="older date, e.g. 20260602")
-    p.add_argument("--output", default=None)
-    args = p.parse_args()
-
-    new = load(args.suite, args.new)
-    old = load(args.suite, args.old)
+def run(suite, new_date, old_date, output=None):
+    new, _ = load_hsd(suite, new_date)
+    old, _ = load_hsd(suite, old_date)
     insts = sorted(set(new) & set(old))
 
-    out = args.output or os.path.join(
-        RESULT_DIR, f"delta_HSD_{args.suite}_{args.new}_vs_{args.old}.csv")
+    out = output or RESULT_DIR / f"delta_HSD_{suite}_{new_date}_vs_{old_date}.csv"
     fields = ["instance", "new_status", "old_status", "new_iters", "old_iters",
               "iters_delta", "iters_ratio", "new_time", "old_time",
               "time_delta", "time_ratio"]
@@ -85,20 +45,30 @@ def main():
                 "time_delta": f"{dt:+.4f}", "time_ratio": ratio(n["time"], o["time"]),
             })
 
-    # Aggregate over instances OPTIMAL in both dates (the comparable subset)
+    # Aggregates cover the instances OPTIMAL on both dates.
     both_opt = [i for i in insts
                 if new[i]["status"] == "OPTIMAL" and old[i]["status"] == "OPTIMAL"]
     nt = sum(new[i]["time"] for i in both_opt)
     ot = sum(old[i]["time"] for i in both_opt)
     ni = sum(new[i]["iters"] for i in both_opt)
     oi = sum(old[i]["iters"] for i in both_opt)
-    print(f"{args.suite}: {len(insts)} shared instances -> {out}")
+    print(f"{suite}: {len(insts)} shared instances -> {out}")
     print(f"  status changes: {n_status_change}   "
           f"faster(>3%): {n_faster}   slower(>3%): {n_slower}")
     if both_opt:
         print(f"  both OPTIMAL ({len(both_opt)}): "
               f"iters {ni:,} vs {oi:,} (x{ni/max(oi,1):.3f}), "
               f"time {nt:.1f}s vs {ot:.1f}s (x{nt/max(ot,1e-9):.3f})")
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--suite", required=True, help="e.g. miplib, mittelmann, netlib_infeas")
+    p.add_argument("--new", required=True, help="newer date, e.g. 20260605")
+    p.add_argument("--old", required=True, help="older date, e.g. 20260602")
+    p.add_argument("--output", type=Path, default=None)
+    args = p.parse_args()
+    run(args.suite, args.new, args.old, args.output)
 
 
 if __name__ == "__main__":
