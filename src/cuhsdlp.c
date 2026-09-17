@@ -222,7 +222,7 @@ void set_default_parameters(pdhg_parameters_t *params)
 }
 
 cuhsdlp_result_t *solve_lp_problem(
-    lp_problem_t *prob,
+    const lp_problem_t *prob,
     const pdhg_parameters_t *params)
 {
     if (!prob)

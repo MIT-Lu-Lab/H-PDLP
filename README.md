@@ -154,7 +154,7 @@ void               set_objective_sense(lp_problem_t *prob,
                                       objective_sense_t sense);
 void               set_start_values(lp_problem_t *prob,
                                    const double *primal, const double *dual);
-cuhsdlp_result_t  *solve_lp_problem(lp_problem_t *prob,
+cuhsdlp_result_t  *solve_lp_problem(const lp_problem_t *prob,
                                     const pdhg_parameters_t *params);
 void               cuhsdlp_result_free(cuhsdlp_result_t *result);
 void               lp_problem_free(lp_problem_t *prob);
