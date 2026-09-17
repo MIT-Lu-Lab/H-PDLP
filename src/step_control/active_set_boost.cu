@@ -122,8 +122,14 @@ void initialize_active_set(
         (void **)&active_set->anchor.constraint_cone_scale_d,
         sizeof(double));
 
-    CUDA_CHECK(cudaMemset(active_set->free_variable_mask_d, 1, num_variables * sizeof(bool)));
-    CUDA_CHECK(cudaMemset(active_set->binding_constraint_mask_d, 1, num_constraints * sizeof(bool)));
+    CUDA_CHECK(cudaMemset(
+        active_set->free_variable_mask_d,
+        1,
+        num_variables * sizeof(bool)));
+    CUDA_CHECK(cudaMemset(
+        active_set->binding_constraint_mask_d,
+        1,
+        num_constraints * sizeof(bool)));
     active_set->free_variable_count = state->num_variables;
     active_set->binding_constraint_count = state->num_constraints;
     active_set->step_size_ceiling = INFINITY;
@@ -381,7 +387,8 @@ bool should_revert_active_set_boost(
     {
         return true;
     }
-    const double initial_fixed_point_error = state->control.initial_fixed_point_error;
+    const double initial_fixed_point_error =
+        state->control.initial_fixed_point_error;
     return initial_fixed_point_error > 0.0 &&
            fixed_point_error >
                (1.0 + params->active_set_params.divergence_margin) *
@@ -400,10 +407,10 @@ void try_raise_active_set_step_size(
     collect_active_set_mask_changes(state);
 
     active_set_state_t *active_set = &state->active_set;
-    const bool a_mask_is_empty =
+    const bool either_mask_is_empty =
         active_set->free_variable_count == 0 ||
         active_set->binding_constraint_count == 0;
-    if (a_mask_is_empty)
+    if (either_mask_is_empty)
     {
         return;
     }
