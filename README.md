@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-**cuHSDLP** is a GPU-accelerated linear programming solver based on a Primal-Dual Hybrid Gradient (PDHG) method applied to a **Homogeneous Self-Dual (HSD) embedding** of the LP. The HSD formulation lets a single first-order loop detect optimality, primal infeasibility, and dual infeasibility simultaneously, while retaining the massive parallelism of PDHG on GPU. It combines a reflected Halpern-style update, adaptive restart, PID-controlled primal weight, active-set step-size boosting, and standard rescaling (geometric-mean + Ruiz + Pock-Chambolle + bound-objective) to deliver robust convergence across a wide range of LP benchmarks.
+**cuHSDLP** is a GPU-accelerated linear programming solver based on a Primal-Dual Hybrid Gradient (PDHG) method applied to a **Homogeneous Self-Dual (HSD) embedding**. It detects optimality, primal infeasibility, and dual infeasibility, and combines reflected Halpern updates, adaptive restart, PID-controlled primal weight, active-set step-size boosting, and rescaling.
 
 cuHSDLP solves linear programs of the form
 ```math
@@ -20,7 +20,7 @@ Maximization is supported through MPS `OBJSENSE` or `set_objective_sense` in the
 ### Requirements
 * **GPU:** NVIDIA GPU with CUDA 12.4+ (cuBLAS, cuSPARSE, cuRAND).
 * **Build Tools:** CMake (≥ 3.24), a C99 / C++17 compiler, NVCC.
-* **Target architectures:** CMake defaults to `all-major`, covering the major architectures supported by the selected CUDA compiler. Override `CMAKE_CUDA_ARCHITECTURES` to select a specific target.
+* **Target architectures:** `all-major` by default; configurable with `CMAKE_CUDA_ARCHITECTURES`.
 
 The SpMV backend is selected automatically at compile time: `cusparseSpMVOp` for cuSPARSE ≥ 12.8.1 with experimental APIs enabled (the default build), and `cusparseSpMV` otherwise.
 
@@ -73,7 +73,7 @@ After building the project, the `./build/cuhsdlp` binary can be invoked from the
 
 #### Arguments
 - `<mps_file>`: The path to the input linear programming problem. Both plain (`.mps`) and gzipped (`.mps.gz`) files are supported.
-- `<output_directory>`: An existing directory where the output files will be saved; the CLI does not create it.
+- `<output_directory>`: An existing directory where the output files will be saved.
 
 For MPS inputs with integer variables, cuHSDLP solves the LP relaxation; integrality is not enforced.
 
@@ -84,9 +84,7 @@ For MPS inputs with integer variables, cuHSDLP solves the LP relaxation; integra
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
-| `-v`, `--verbose` | `flag` | Enable verbose logging (already enabled by default). | `true` |
-
-The current CLI has no quiet flag. C callers can set `params.verbose = false` to disable regular progress logging.
+| `-v`, `--verbose` | `flag` | Enable verbose logging. | `true` |
 
 **Preprocessing / Scaling**
 
@@ -97,8 +95,6 @@ The current CLI has no quiet flag. C callers can set `params.verbose = false` to
 | `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling. | enabled |
 | `--pock_chambolle_alpha` | `float` | Pock-Chambolle α. | `1.0` |
 | `--no_bound_obj_rescaling` | `flag` | Disable bound / objective rescaling. | enabled |
-
-Geometric-mean scaling also runs for 12 iterations by default; its iteration count is configurable through `scaling_params.geometric_mean_iterations` in the C API. Input cleaning defaults to `matrix_zero_tol = 1e-9` and `infinite_bound = 1e20`: entries with magnitude at most the former are dropped, and lower/upper bounds beyond `-infinite_bound`/`+infinite_bound` (inclusive) become infinite. These operations can change the model.
 
 **Solver algorithm**
 
@@ -115,16 +111,14 @@ Geometric-mean scaling also runs for 12 iterations by default; its iteration cou
 
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--time_limit` | `double` | Iteration-phase time limit; see timing semantics below. | `3600.0` |
-| `--iter_limit` | `int` | Iteration limit, checked at batch boundaries. | `2147483647` |
+| `--time_limit` | `double` | Iteration time limit in CPU seconds. | `3600.0` |
+| `--iter_limit` | `int` | Iteration limit. | `2147483647` |
 | `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
 | `--eps_farkas_homogeneous` | `double` | Residual-to-margin tolerance for homogeneous infeasibility certificates. | `1e-9` |
 | `--eps_farkas_displacement` | `double` | Residual-to-margin tolerance for displacement infeasibility certificates. | `1e-10` |
 | `--eval_freq` | `int` | Termination-check frequency (iterations), at least 3. | `200` |
 | `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf`. | `l2` |
-
-`Runtime (sec)` and `--time_limit` currently measure the main iteration phase using C `clock()` (process CPU time on Linux/WSL); presolve and preconditioning are reported separately. Limits are checked at batch boundaries, so the iteration count may exceed `--iter_limit` by up to `--eval_freq - 1`.
 
 #### Output Files
 The solver writes a summary and any available primal/dual vectors to `<output_directory>`. For an input `INSTANCE.mps.gz`, the filenames are:
@@ -135,9 +129,7 @@ The solver writes a summary and any available primal/dual vectors to `<output_di
 └── INSTANCE_dual_solution.txt    # Candidate dual solution or dual ray, when available
 ```
 
-The summary file reports the termination reason (`OPTIMAL`, `PRIMAL_INFEASIBLE`, `DUAL_INFEASIBLE`, `INFEASIBLE_OR_UNBOUNDED`, `TIME_LIMIT`, `ITERATION_LIMIT`, or `NUMERICAL_FAILURE`), presolve statistics, runtime, iteration count, primal/dual objective values, relative residuals, objective gap, and restart count.
-
-Solution files are written only when the corresponding vectors are available. Check the termination reason before using them: limit statuses return candidates, while infeasibility statuses may return rays. Presolve can prove infeasibility without returning a ray.
+The summary reports termination status, timing, iteration count, objective values, and residuals. Vector files are written when available; check the termination status to distinguish solution candidates from infeasibility rays.
 
 ### C Interface
 
@@ -160,25 +152,26 @@ void               cuhsdlp_result_free(cuhsdlp_result_t *result);
 void               lp_problem_free(lp_problem_t *prob);
 ```
 
-The matrix descriptor `matrix_desc_t` accepts CSR, CSC, COO, or dense input. Dense matrices are row-major; sparse indices are zero-based, and duplicate entries are summed. For an m-by-n matrix, objective and variable-bound arrays have n entries, and constraint-bound arrays have m entries. Use finite coefficients and no NaN values.
+Basic usage:
 
-`create_lp_problem` copies its inputs and minimizes by default. NULL objective coefficients and objective offset default to zero; NULL lower and upper bounds default to negative and positive infinity. In particular, omitted variable bounds create **free variables**, not nonnegative variables. Use `set_objective_sense` to request maximization.
+- **Matrix formats:** CSR, CSC, COO, and dense. Dense matrices use row-major storage; sparse indices are zero-based.
+- **Objective and bounds:** Problems minimize by default; use `set_objective_sense` for maximization. Omitted variable bounds leave variables free.
+- **Parameters:** Initialize with `set_default_parameters`, then customize before calling `solve_lp_problem`.
+- **Warm starts:** Use `set_start_values` in original problem coordinates with presolve disabled.
 
-Initialize parameters with `set_default_parameters` before changing individual fields, or pass NULL to `solve_lp_problem` for defaults. `set_start_values` copies primal/dual starts in original, unscaled coordinates and replaces both previous starts; NULL clears the corresponding start. Set `params.presolve = false` to use warm starts, which are otherwise ignored.
+Interpret the returned vectors according to `termination_reason`:
 
-The result struct exposes primal/dual vectors, reduced costs, residuals, objective values, timing breakdown, restart count, and the final HSD homogeneous scale τ. Interpret its vectors according to `termination_reason`:
+| Status                    | Returned vectors                         | Interpretation                           |
+| :------------------------ | :--------------------------------------- | :--------------------------------------- |
+| `OPTIMAL`                 | Primal/dual solutions and reduced costs  | Optimality conditions satisfied.         |
+| `TIME_LIMIT`              | Primal/dual candidates and reduced costs | Time limit reached.                      |
+| `ITERATION_LIMIT`         | Primal/dual candidates and reduced costs | Iteration limit reached.                 |
+| `PRIMAL_INFEASIBLE`       | Dual and reduced-cost rays               | Primal infeasibility detected.           |
+| `DUAL_INFEASIBLE`         | Primal ray                               | Dual infeasibility detected.             |
+| `INFEASIBLE_OR_UNBOUNDED` | None                                     | Infeasibility or unboundedness detected. |
+| `NUMERICAL_FAILURE`       | None                                     | Numerical failure detected.              |
 
-| Status | Available vectors and meaning |
-| :--- | :--- |
-| `OPTIMAL` | Primal/dual solution and reduced costs accepted by the solver |
-| `TIME_LIMIT`, `ITERATION_LIMIT` | Current primal/dual candidate and reduced costs; feasibility and optimality are not guaranteed |
-| `PRIMAL_INFEASIBLE` | Dual and reduced-cost rays after iterative detection; may be absent after presolve |
-| `DUAL_INFEASIBLE` | Primal recession ray; implies primal unboundedness if the primal is feasible |
-| `INFEASIBLE_OR_UNBOUNDED`, `NUMERICAL_FAILURE` | No solution vectors |
-
-Check both the termination reason and pointer availability before accessing arrays. Returned vectors use the original variable/constraint indexing after postsolve. For minimization candidates, the dual convention is `A^T y + z = c`, where `y` is `dual_solution` and `z` is `reduced_cost`; maximization candidates are converted back to the requested objective sense. The CLI does not write reduced costs.
-
-The problem and result own separate host arrays. Free them with `lp_problem_free` and `cuhsdlp_result_free`; do not free their fields individually. Both free functions accept NULL. Some input errors return NULL, while invalid parameters, allocation failures, and CUDA-library errors can currently terminate the calling process.
+Limit statuses do not guarantee feasibility or optimality. Presolve may detect infeasibility without returning a ray.
 
 ## License
 cuHSDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
