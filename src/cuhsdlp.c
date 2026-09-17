@@ -249,12 +249,5 @@ cuhsdlp_result_t *solve_lp_problem(
     else
         set_default_parameters(&local_params);
 
-    cuhsdlp_result_t *res = optimize(&local_params, prob);
-    if (!res)
-    {
-        fprintf(stderr, "[interface] optimize returned NULL.\n");
-        return NULL;
-    }
-
-    return res;
+    return optimize(&local_params, prob);
 }
