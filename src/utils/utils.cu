@@ -237,6 +237,72 @@ void *safe_realloc(void *ptr, size_t new_size)
     return tmp;
 }
 
+void allocate_zeroed_device_buffer(void **dst, size_t bytes)
+{
+    const size_t allocation_bytes = bytes > 0 ? bytes : 1;
+    CUDA_CHECK(cudaMalloc(dst, allocation_bytes));
+    CUDA_CHECK(cudaMemset(*dst, 0, allocation_bytes));
+}
+
+void allocate_and_copy_to_device(
+    void **dst,
+    const void *src,
+    size_t bytes)
+{
+    const size_t allocation_bytes = bytes > 0 ? bytes : 1;
+    CUDA_CHECK(cudaMalloc(dst, allocation_bytes));
+    if (bytes > 0)
+    {
+        CUDA_CHECK(cudaMemcpy(
+            *dst,
+            src,
+            bytes,
+            cudaMemcpyHostToDevice));
+    }
+}
+
+void allocate_cub_reduce_workspace(pdhg_solver_state_t *state)
+{
+    const int max_reduction_length =
+        state->num_variables + state->num_constraints;
+    size_t sum_bytes = 0;
+    size_t max_bytes = 0;
+    size_t abs_max_bytes = 0;
+    double *null_values = NULL;
+    auto absolute_values =
+        thrust::make_transform_iterator(
+            null_values,
+            absolute_value_transform_t{});
+
+    CUDA_CHECK(cub::DeviceReduce::Sum(
+        NULL,
+        sum_bytes,
+        null_values,
+        null_values,
+        max_reduction_length));
+    CUDA_CHECK(cub::DeviceReduce::Max(
+        NULL,
+        max_bytes,
+        null_values,
+        null_values,
+        max_reduction_length));
+    CUDA_CHECK(cub::DeviceReduce::Max(
+        NULL,
+        abs_max_bytes,
+        absolute_values,
+        null_values,
+        max_reduction_length));
+
+    size_t workspace_bytes =
+        sum_bytes > max_bytes ? sum_bytes : max_bytes;
+    if (abs_max_bytes > workspace_bytes)
+        workspace_bytes = abs_max_bytes;
+    state->cub_reduce_workspace_bytes = workspace_bytes;
+    CUDA_CHECK(cudaMalloc(
+        &state->cub_reduce_workspace_d,
+        state->cub_reduce_workspace_bytes));
+}
+
 void compute_lp_problem_norms(
     const lp_problem_t *problem,
     norm_type_t optimality_norm,

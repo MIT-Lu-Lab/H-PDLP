@@ -176,6 +176,7 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
     fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: 0.998).\n");
+    fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
     fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 100).\n");
@@ -206,6 +207,7 @@ int main(int argc, char *argv[])
         {"pock_chambolle_alpha", required_argument, 0, 1004},
         {"no_bound_obj_rescaling", no_argument, 0, 1005},
         {"step_size_factor", required_argument, 0, 1006},
+        {"no_active_set_step_size_boost", no_argument, 0, 1007},
         {"singular_value_max_iter", required_argument, 0, 1008},
         {"singular_value_tol", required_argument, 0, 1009},
         {"cone_newton_max_iter", required_argument, 0, 1010},
@@ -214,10 +216,10 @@ int main(int argc, char *argv[])
         {"iter_limit", required_argument, 0, 1013},
         {"eps_opt", required_argument, 0, 1014},
         {"eps_feas", required_argument, 0, 1015},
-        {"eps_farkas_homogeneous", required_argument, 0, 1019},
-        {"eps_farkas_displacement", required_argument, 0, 1016},
-        {"eval_freq", required_argument, 0, 1017},
-        {"opt_norm", required_argument, 0, 1018},
+        {"eps_farkas_homogeneous", required_argument, 0, 1016},
+        {"eps_farkas_displacement", required_argument, 0, 1017},
+        {"eval_freq", required_argument, 0, 1018},
+        {"opt_norm", required_argument, 0, 1019},
         {"verbose", no_argument, 0, 'v'},
         {0, 0, 0, 0}};
 
@@ -255,6 +257,9 @@ int main(int argc, char *argv[])
             if (!parse_double_arg("--step_size_factor", optarg,
                                   &params.step_size_params.step_size_factor))
                 return 1;
+            break;
+        case 1007:
+            params.active_set_params.step_size_boost = false;
             break;
         case 1008:
             if (!parse_int_arg("--singular_value_max_iter", optarg,
@@ -296,22 +301,22 @@ int main(int argc, char *argv[])
                                   &params.termination_criteria.eps_feasible_relative))
                 return 1;
             break;
-        case 1019:
+        case 1016:
             if (!parse_double_arg("--eps_farkas_homogeneous", optarg,
                                   &params.termination_criteria.eps_farkas_homogeneous))
                 return 1;
             break;
-        case 1016:
+        case 1017:
             if (!parse_double_arg("--eps_farkas_displacement", optarg,
                                   &params.termination_criteria.eps_farkas_displacement))
                 return 1;
             break;
-        case 1017:
+        case 1018:
             if (!parse_int_arg("--eval_freq", optarg,
                                &params.termination_evaluation_frequency))
                 return 1;
             break;
-        case 1018:
+        case 1019:
         {
             const char *norm_str = optarg;
             if (strcmp(norm_str, "l2") == 0)

@@ -15,19 +15,19 @@ limitations under the License.
 */
 
 #include "setup.h"
+#include "active_set_boost.h"
 #include "cone_projector.h"
 #include "cuhsdlp.h"
 #include "display.h"
+#include "matrix_formats.h"
 #include "preconditioner.h"
 #include "spmv_backend.h"
 #include "termination_checker.h"
 #include "utils.h"
-#include <cub/cub.cuh>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <thrust/iterator/transform_iterator.h>
 
 static constexpr int COOP_NEWTON_THRESHOLD = 4 * THREADS_PER_BLOCK;
 
@@ -37,12 +37,6 @@ __global__ void build_row_ind_kernel(
     int *__restrict__ row_ind);
 __global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
 static void param_error(const char *requirement, double value);
-static void transpose_csr_and_build_map(
-    const lp_problem_t *problem,
-    int **transpose_row_ptr,
-    int **transpose_col_ind,
-    double **transpose_val,
-    int **transpose_map);
 static void create_csr_descriptor(
     cusparseSpMatDescr_t *descriptor,
     int num_rows,
@@ -53,20 +47,11 @@ static void create_dense_vector_descriptor(
     int length,
     double *values);
 static void setup_sparse_resources(pdhg_solver_state_t *state);
-static void allocate_and_copy_to_device(
-    void **dst,
-    const void *src,
-    size_t bytes);
-static void allocate_zeroed_device_buffer(
-    void **dst,
-    size_t bytes);
-static void allocate_cub_reduce_workspace(pdhg_solver_state_t *state);
 static void upload_problem_data(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
 static void allocate_solver_work_vectors(pdhg_solver_state_t *state);
 static void initialize_homogeneous_scalars(pdhg_solver_state_t *state);
-static void initialize_power_iteration_buffers(pdhg_solver_state_t *state);
 static void allocate_host_staging_buffers(pdhg_solver_state_t *state);
 static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void apply_warm_starts(
@@ -174,6 +159,52 @@ void check_params_validity(const pdhg_parameters_t *params)
     {
         param_error("cone_newton_tol must be finite and > 0",
                     params->cone_params.tol);
+    }
+    if (params->active_set_params.window_iterations < 1)
+    {
+        param_error("active_set window_iterations must be >= 1",
+                    params->active_set_params.window_iterations);
+    }
+    if (!(params->active_set_params.relative_tol >= 0.0 &&
+          isfinite(params->active_set_params.relative_tol)))
+    {
+        param_error("active_set relative_tol must be finite and >= 0",
+                    params->active_set_params.relative_tol);
+    }
+    if (!(params->active_set_params.safety_factor > 0.0 &&
+          params->active_set_params.safety_factor < 1.0))
+    {
+        param_error("active_set safety_factor must be in (0, 1)",
+                    params->active_set_params.safety_factor);
+    }
+    if (!(params->active_set_params.min_raise_ratio >= 1.0 &&
+          isfinite(params->active_set_params.min_raise_ratio)))
+    {
+        param_error("active_set min_raise_ratio must be finite and >= 1",
+                    params->active_set_params.min_raise_ratio);
+    }
+    if (!(params->active_set_params.reestimate_change_ratio >= 0.0 &&
+          isfinite(params->active_set_params.reestimate_change_ratio)))
+    {
+        param_error("active_set reestimate_change_ratio must be finite and >= 0",
+                    params->active_set_params.reestimate_change_ratio);
+    }
+    if (!(params->active_set_params.divergence_ceiling_ratio > 0.0 &&
+          params->active_set_params.divergence_ceiling_ratio <= 1.0))
+    {
+        param_error("active_set divergence_ceiling_ratio must be in (0, 1]",
+                    params->active_set_params.divergence_ceiling_ratio);
+    }
+    if (!(params->active_set_params.divergence_margin >= 0.0 &&
+          isfinite(params->active_set_params.divergence_margin)))
+    {
+        param_error("active_set divergence_margin must be finite and >= 0",
+                    params->active_set_params.divergence_margin);
+    }
+    if (params->active_set_params.max_reverts < 0)
+    {
+        param_error("active_set max_reverts must be >= 0",
+                    params->active_set_params.max_reverts);
     }
     if (!(params->termination_criteria.eps_optimal_relative > 0.0 &&
           isfinite(params->termination_criteria.eps_optimal_relative)))
@@ -286,7 +317,7 @@ pdhg_solver_state_t *initialize_solver_state(
     allocate_solver_work_vectors(state);
     allocate_host_staging_buffers(state);
     initialize_homogeneous_scalars(state);
-    initialize_power_iteration_buffers(state);
+    initialize_active_set(state, params);
     allocate_device_scalars(state);
     initialize_newton_structure(state, working_problem);
     initialize_newton_workspaces(state);
@@ -320,52 +351,6 @@ pdhg_solver_state_t *initialize_solver_state(
     print_iteration_header(params->verbose);
 
     return state;
-}
-
-static void transpose_csr_and_build_map(
-    const lp_problem_t *problem,
-    int **transpose_row_ptr,
-    int **transpose_col_ind,
-    double **transpose_val,
-    int **transpose_map)
-{
-    const int num_rows = problem->num_constraints;
-    const int num_cols = problem->num_variables;
-    const int nnz = problem->constraint_matrix_num_nonzeros;
-    const int *row_ptr = problem->constraint_matrix_row_pointers;
-    const int *col_ind = problem->constraint_matrix_col_indices;
-    const double *val = problem->constraint_matrix_values;
-    const size_t alloc_nnz = (nnz > 0) ? (size_t)nnz : 1;
-    const size_t alloc_cols = (num_cols > 0) ? (size_t)num_cols : 1;
-
-    *transpose_row_ptr = (int *)safe_calloc((size_t)(num_cols + 1), sizeof(int));
-    *transpose_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    *transpose_val = (double *)safe_malloc(alloc_nnz * sizeof(double));
-    *transpose_map = (int *)safe_malloc(alloc_nnz * sizeof(int));
-
-    for (int k = 0; k < nnz; ++k)
-        (*transpose_row_ptr)[col_ind[k] + 1]++;
-
-    for (int j = 0; j < num_cols; ++j)
-        (*transpose_row_ptr)[j + 1] += (*transpose_row_ptr)[j];
-
-    int *next = (int *)safe_malloc(alloc_cols * sizeof(int));
-    if (num_cols > 0)
-        memcpy(next, *transpose_row_ptr, (size_t)num_cols * sizeof(int));
-
-    for (int i = 0; i < num_rows; ++i)
-    {
-        for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
-        {
-            int j = col_ind[k];
-            int pos = next[j]++;
-            (*transpose_col_ind)[pos] = i;
-            (*transpose_val)[pos] = val[k];
-            (*transpose_map)[k] = pos;
-        }
-    }
-
-    free(next);
 }
 
 static void create_csr_descriptor(
@@ -442,10 +427,6 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         &state->spmv_dual_product,
         state->num_variables,
         state->dual_product_d);
-    create_dense_vector_descriptor(
-        &state->spmv_power_iteration_normalized_vector,
-        state->num_constraints,
-        state->power_iteration_normalized_vector_d);
 }
 
 void initialize_spmv_plans(pdhg_solver_state_t *state)
@@ -462,74 +443,6 @@ void initialize_spmv_plans(pdhg_solver_state_t *state)
         state->spmv_reflected_dual_solution,
         state->spmv_dual_product,
         &state->matAt_spmv_plan);
-}
-
-static void allocate_and_copy_to_device(
-    void **dst,
-    const void *src,
-    size_t bytes)
-{
-    const size_t allocation_bytes = (bytes > 0) ? bytes : 1;
-    CUDA_CHECK(cudaMalloc(dst, allocation_bytes));
-    if (bytes > 0)
-    {
-        CUDA_CHECK(cudaMemcpy(
-            *dst,
-            src,
-            bytes,
-            cudaMemcpyHostToDevice));
-    }
-}
-
-static void allocate_zeroed_device_buffer(
-    void **dst,
-    size_t bytes)
-{
-    const size_t allocation_bytes = (bytes > 0) ? bytes : 1;
-    CUDA_CHECK(cudaMalloc(dst, allocation_bytes));
-    CUDA_CHECK(cudaMemset(*dst, 0, allocation_bytes));
-}
-
-static void allocate_cub_reduce_workspace(pdhg_solver_state_t *state)
-{
-    const int max_reduction_length =
-        state->num_variables + state->num_constraints;
-    size_t sum_bytes = 0;
-    size_t max_bytes = 0;
-    size_t abs_max_bytes = 0;
-    double *null_values = NULL;
-    auto absolute_values =
-        thrust::make_transform_iterator(
-            null_values,
-            absolute_value_transform_t{});
-
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        NULL,
-        sum_bytes,
-        null_values,
-        null_values,
-        max_reduction_length));
-    CUDA_CHECK(cub::DeviceReduce::Max(
-        NULL,
-        max_bytes,
-        null_values,
-        null_values,
-        max_reduction_length));
-    CUDA_CHECK(cub::DeviceReduce::Max(
-        NULL,
-        abs_max_bytes,
-        absolute_values,
-        null_values,
-        max_reduction_length));
-
-    size_t workspace_bytes =
-        (sum_bytes > max_bytes) ? sum_bytes : max_bytes;
-    if (abs_max_bytes > workspace_bytes)
-        workspace_bytes = abs_max_bytes;
-    state->cub_reduce_workspace_bytes = workspace_bytes;
-    CUDA_CHECK(cudaMalloc(
-        &state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes));
 }
 
 static void upload_problem_data(
@@ -613,17 +526,13 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
 {
     const size_t var_bytes = state->var_bytes;
     const size_t con_bytes = state->con_bytes;
-    const size_t padded_constraint_count =
-        ((size_t)state->num_constraints + 1) & ~(size_t)1;
 
     allocate_zeroed_device_buffer((void **)&state->initial_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->current_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->pdhg_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->reflected_primal_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->delta_primal_solution_d, var_bytes);
-    allocate_zeroed_device_buffer(
-        (void **)&state->primal_product_d,
-        padded_constraint_count * sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->primal_product_d, con_bytes);
     allocate_zeroed_device_buffer(
         (void **)&state->variable_reduction_entries_d,
         var_bytes);
@@ -658,18 +567,6 @@ static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
     state->metrics_h->pdhg_dual_scale = 1.0;
 }
 
-static void initialize_power_iteration_buffers(pdhg_solver_state_t *state)
-{
-    const size_t vector_bytes =
-        (state->con_bytes > 0)
-            ? state->con_bytes
-            : sizeof(double);
-    CUDA_CHECK(cudaMalloc(
-        &state->power_iteration_normalized_vector_d,
-        vector_bytes));
-    CUDA_CHECK(cudaMalloc(&state->power_iteration_vector_norm_scalar_d, sizeof(double)));
-}
-
 static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaMallocHost(&state->metrics_h, sizeof(pdhg_metrics_t)));
@@ -682,8 +579,6 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
         &state->objective_norm_workspace_mp,
         sizeof(double),
         cudaHostAllocMapped));
-    CUDA_CHECK(cudaHostAlloc(&state->power_iter_sigma_squared_mp, sizeof(double), cudaHostAllocMapped));
-    CUDA_CHECK(cudaHostAlloc(&state->power_iter_residual_norm_mp, sizeof(double), cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&state->control.fixed_point_error_mp, sizeof(double), cudaHostAllocMapped));
 }
 
@@ -699,8 +594,9 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->hsd_dual_scale_pdhg_d      = state->hsd_scalars_d + HSD_DUAL_SCALE_PDHG;
     state->hsd_dual_scale_reflected_d = state->hsd_scalars_d + HSD_DUAL_SCALE_REFLECTED;
 
-    CUDA_CHECK(cudaMalloc(&state->pdhg_reduce_d, PDHG_COUNT * sizeof(double)));
-    CUDA_CHECK(cudaMemset(state->pdhg_reduce_d, 0, PDHG_COUNT * sizeof(double)));
+    allocate_zeroed_device_buffer(
+        (void **)&state->pdhg_reduce_d,
+        PDHG_COUNT * sizeof(double));
     state->pdhg_primal_norm_d     = state->pdhg_reduce_d + PDHG_PRIMAL_NORM;
     state->pdhg_dual_norm_d       = state->pdhg_reduce_d + PDHG_DUAL_NORM;
     state->objective_dot_primal_d =
@@ -708,10 +604,9 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->fixed_point_operator_cross_d =
         state->pdhg_reduce_d + PDHG_OPERATOR_CROSS_TERM;
 
-    CUDA_CHECK(cudaMalloc(&state->termination_reductions_d,
-                          sizeof(termination_reductions_t)));
-    CUDA_CHECK(cudaMemset(state->termination_reductions_d, 0,
-                          sizeof(termination_reductions_t)));
+    allocate_zeroed_device_buffer(
+        (void **)&state->termination_reductions_d,
+        sizeof(termination_reductions_t));
 
     CUDA_CHECK(cudaMalloc(&state->metrics_d, sizeof(pdhg_metrics_t)));
     CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
@@ -832,22 +727,6 @@ static void initialize_newton_workspaces(pdhg_solver_state_t *state)
 static void release_preprocessing_resources(
     pdhg_solver_state_t *state)
 {
-    if (state->spmv_power_iteration_normalized_vector)
-    {
-        CUSPARSE_CHECK(cusparseDestroyDnVec(
-            state->spmv_power_iteration_normalized_vector));
-        state->spmv_power_iteration_normalized_vector = NULL;
-    }
-    CUDA_CHECK(cudaFree(state->power_iteration_normalized_vector_d));
-    state->power_iteration_normalized_vector_d = NULL;
-    CUDA_CHECK(cudaFree(
-        state->power_iteration_vector_norm_scalar_d));
-    state->power_iteration_vector_norm_scalar_d = NULL;
-
-    CUDA_CHECK(cudaFreeHost(state->power_iter_sigma_squared_mp));
-    state->power_iter_sigma_squared_mp = NULL;
-    CUDA_CHECK(cudaFreeHost(state->power_iter_residual_norm_mp));
-    state->power_iter_residual_norm_mp = NULL;
     CUDA_CHECK(cudaFreeHost(state->bound_norm_workspace_mp));
     state->bound_norm_workspace_mp = NULL;
     CUDA_CHECK(cudaFreeHost(state->objective_norm_workspace_mp));
@@ -906,6 +785,7 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         state->graphExec = NULL;
     }
 
+    active_set_free(&state->active_set);
     free_sparse_resources(state);
     free_solver_device_buffers(state);
     free_device_sparse_matrix(state->constraint_matrix);
@@ -958,8 +838,6 @@ static void free_sparse_resources(pdhg_solver_state_t *state)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_product));
     if (state->spmv_dual_product)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_product));
-    if (state->spmv_power_iteration_normalized_vector)
-        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_power_iteration_normalized_vector));
 }
 
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix)
@@ -1024,9 +902,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 
     FREE_DEVICE_BUFFER(state->hsd_scalars_d);
     FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
-    FREE_DEVICE_BUFFER(state->power_iteration_normalized_vector_d);
-    FREE_DEVICE_BUFFER(state->power_iteration_vector_norm_scalar_d);
-
     FREE_DEVICE_BUFFER(state->primal_residual_d);
     FREE_DEVICE_BUFFER(state->dual_residual_d);
     FREE_DEVICE_BUFFER(state->primal_infeasibility_stationarity_residual_d);
@@ -1058,8 +933,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_HOST_BUFFER(state->metrics_h);
     FREE_HOST_BUFFER(state->bound_norm_workspace_mp);
     FREE_HOST_BUFFER(state->objective_norm_workspace_mp);
-    FREE_HOST_BUFFER(state->power_iter_sigma_squared_mp);
-    FREE_HOST_BUFFER(state->power_iter_residual_norm_mp);
     FREE_HOST_BUFFER(state->control.fixed_point_error_mp);
 
 #undef FREE_HOST_BUFFER

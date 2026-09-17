@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "display.h"
+#include "active_set_boost.h"
 #include "cuhsdlp.h"
 #include "spmv_backend.h"
 #include "termination_checker.h"
@@ -156,6 +157,33 @@ void print_initial_info(
     PRINT_DIFF_DBL("cone_newton_tol",
                    params->cone_params.tol,
                    default_params.cone_params.tol);
+    PRINT_DIFF_BOOL("active_set_step_size_boost",
+                    params->active_set_params.step_size_boost,
+                    default_params.active_set_params.step_size_boost);
+    PRINT_DIFF_INT("active_set_window_iterations",
+                   params->active_set_params.window_iterations,
+                   default_params.active_set_params.window_iterations);
+    PRINT_DIFF_DBL("active_set_relative_tol",
+                   params->active_set_params.relative_tol,
+                   default_params.active_set_params.relative_tol);
+    PRINT_DIFF_DBL("active_set_safety_factor",
+                   params->active_set_params.safety_factor,
+                   default_params.active_set_params.safety_factor);
+    PRINT_DIFF_DBL("active_set_min_raise_ratio",
+                   params->active_set_params.min_raise_ratio,
+                   default_params.active_set_params.min_raise_ratio);
+    PRINT_DIFF_DBL("active_set_reestimate_change_ratio",
+                   params->active_set_params.reestimate_change_ratio,
+                   default_params.active_set_params.reestimate_change_ratio);
+    PRINT_DIFF_DBL("active_set_divergence_ceiling_ratio",
+                   params->active_set_params.divergence_ceiling_ratio,
+                   default_params.active_set_params.divergence_ceiling_ratio);
+    PRINT_DIFF_DBL("active_set_divergence_margin",
+                   params->active_set_params.divergence_margin,
+                   default_params.active_set_params.divergence_margin);
+    PRINT_DIFF_INT("active_set_max_reverts",
+                   params->active_set_params.max_reverts,
+                   default_params.active_set_params.max_reverts);
 }
 
 #undef PRINT_DIFF_INT
@@ -243,6 +271,36 @@ void display_iteration_stats(
     }
 }
 
+void display_active_set_boost_raise(
+    const pdhg_parameters_t *params,
+    double previous_step_size,
+    double updated_step_size,
+    double masked_constraint_norm)
+{
+    if (!params->verbose)
+    {
+        return;
+    }
+    printf("  active-set boost: step size %.3e -> %.3e (masked norm %.3e)\n",
+           previous_step_size,
+           updated_step_size,
+           masked_constraint_norm);
+}
+
+void display_active_set_boost_revert(
+    const pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params)
+{
+    if (!params->verbose)
+    {
+        return;
+    }
+    printf("  active-set boost: boosted epoch diverged, step size reverted "
+           "(%d of %d)\n",
+           state->active_set.revert_count,
+           params->active_set_params.max_reverts);
+}
+
 void pdhg_final_log(
     const cuhsdlp_result_t *result,
     const pdhg_parameters_t *params)
@@ -267,6 +325,14 @@ void pdhg_final_log(
         printf("  Objective gap          : %.3e\n", result->relative_objective_gap);
         printf("  Primal infeas          : %.3e\n", result->relative_primal_residual);
         printf("  Dual infeas            : %.3e\n", result->relative_dual_residual);
+        if (is_active_set_boost_enabled(params) && result->total_count > 0)
+        {
+            printf("  Active-set boost       : %d raises, %d reverts, "
+                   "%d power iterations\n",
+                   result->active_set_raise_count,
+                   result->active_set_revert_count,
+                   result->active_set_power_iteration_count);
+        }
         if (result->termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE ||
             result->termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
         {

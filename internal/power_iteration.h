@@ -17,15 +17,52 @@ limitations under the License.
 #pragma once
 
 #include "internal_types.h"
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-    double estimate_maximum_singular_value(
-        pdhg_solver_state_t *state,
-        const power_iteration_parameters_t *power_iter_params);
+    typedef enum
+    {
+        SV_ESTIMATOR_CONVERGED  = 0,
+        SV_ESTIMATOR_EARLY_EXIT = 1,
+        SV_ESTIMATOR_MAX_ITER   = 2,
+        SV_ESTIMATOR_DEGENERATE = 3,
+    } sv_estimator_status_t;
+
+    typedef struct
+    {
+        int max_iter;
+        double tol;
+        const bool *row_mask_d;
+        const bool *column_mask_d;
+        double early_exit_singular_value_threshold;
+    } sv_estimator_opts_t;
+
+    typedef struct
+    {
+        sv_estimator_status_t status;
+        double max_singular_value;
+        int iterations;
+    } sv_estimator_result_t;
+
+    sv_estimator_ctx_t *sv_estimator_create(
+        cusparseHandle_t sparse_handle,
+        cublasHandle_t blas_handle,
+        cudaStream_t stream,
+        curandGenerator_t curand_gen,
+        const cu_sparse_matrix_csr_t *matrix,
+        const cu_sparse_matrix_csr_t *transpose,
+        int num_rows,
+        int num_columns);
+
+    sv_estimator_result_t sv_estimator_run(
+        sv_estimator_ctx_t *ctx,
+        const sv_estimator_opts_t *opts);
+
+    void sv_estimator_free(sv_estimator_ctx_t *ctx);
 
 #ifdef __cplusplus
 }

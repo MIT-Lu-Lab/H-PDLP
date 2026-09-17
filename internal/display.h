@@ -33,6 +33,16 @@ extern "C"
 
     void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, bool is_restart);
 
+    void display_active_set_boost_raise(
+        const pdhg_parameters_t *params,
+        double previous_step_size,
+        double updated_step_size,
+        double masked_constraint_norm);
+
+    void display_active_set_boost_revert(
+        const pdhg_solver_state_t *state,
+        const pdhg_parameters_t *params);
+
     void pdhg_final_log(
         const cuhsdlp_result_t *result,
         const pdhg_parameters_t *params);
