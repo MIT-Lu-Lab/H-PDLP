@@ -123,7 +123,8 @@ cuhsdlp_result_t *optimize(
     const pdhg_parameters_t *params,
     const lp_problem_t *original_problem)
 {
-    check_params_validity(params);
+    if (!check_params_validity(params))
+        return NULL;
 
     lp_problem_t working_problem = create_working_problem(original_problem, params);
     print_initial_info(params, &working_problem);
