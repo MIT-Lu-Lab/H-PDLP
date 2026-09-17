@@ -137,12 +137,20 @@ bool check_params_validity(const pdhg_parameters_t *params)
         return param_error("step_size_factor must be in (0, 1)",
                            params->step_size_params.step_size_factor);
     }
-    if (!isfinite(params->step_size_params.k_p) ||
-        !isfinite(params->step_size_params.k_i) ||
-        !isfinite(params->step_size_params.k_d))
+    if (!isfinite(params->step_size_params.k_p))
     {
-        return param_error("PID gains k_p, k_i, k_d must be finite",
+        return param_error("k_p must be finite",
                            params->step_size_params.k_p);
+    }
+    if (!isfinite(params->step_size_params.k_i))
+    {
+        return param_error("k_i must be finite",
+                           params->step_size_params.k_i);
+    }
+    if (!isfinite(params->step_size_params.k_d))
+    {
+        return param_error("k_d must be finite",
+                           params->step_size_params.k_d);
     }
     if (!(params->step_size_params.i_smooth >= 0.0 &&
           params->step_size_params.i_smooth < 1.0))
