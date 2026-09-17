@@ -128,6 +128,19 @@ cuhsdlp_result_t *optimize(
     lp_problem_t working_problem = create_working_problem(original_problem, params);
     print_initial_info(params, &working_problem);
 
+    if (working_problem.num_variables == 0 && working_problem.num_constraints == 0)
+    {
+        cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+        result->termination_reason = TERMINATION_REASON_OPTIMAL;
+        result->primal_objective_value = working_problem.objective_constant;
+        result->dual_objective_value = working_problem.objective_constant;
+        result->homogeneous_scale = 1.0;
+        restore_original_objective_sense(result, original_problem->objective_sense);
+        pdhg_final_log(result, params);
+        working_problem_free(&working_problem, original_problem);
+        return result;
+    }
+
     cuhsdlp_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
     {
