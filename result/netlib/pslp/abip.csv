@@ -7,7 +7,7 @@ box1,PRIMAL_INFEASIBLE,solved,0.001,3600,16,node4416
 ceria3d,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416
 chemcom,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416
 cplex1,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416
-cplex2,OPTIMAL,false_optimal,0.043,3600,20,node4416
+cplex2,OPTIMAL,optimal,0.043,3600,20,node4416
 ex72a,PRIMAL_INFEASIBLE,solved,0.001,3600,19,node4416
 ex73a,PRIMAL_INFEASIBLE,solved,0.001,3600,18,node4416
 forest6,PRIMAL_INFEASIBLE,solved,0.015,3600,37,node4416
@@ -23,8 +23,8 @@ klein3,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' 
 mondou2,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416
 pang,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,4.220,3600,0,node3611
 pilot4i,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416
-qual,OPTIMAL,false_optimal,0.236,3600,19,node3611
+qual,OPTIMAL,optimal,0.236,3600,19,node3611
 reactor,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416
 refinery,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,5.065,3600,0,node3611
-vol1,OPTIMAL,false_optimal,0.200,3600,19,node3611
+vol1,OPTIMAL,optimal,0.200,3600,19,node3611
 woodinfe,PRIMAL_INFEASIBLE,solved,0.000,3600,0,node4416

@@ -1,5 +1,5 @@
 instance,status,outcome,solve_time,time_limit,iters,node
-Dual2_5000,TIME_LIMIT,timeout,15901.820,15000,0,node4415
+Dual2_5000,TIME_LIMIT,timeout,15901.820,15000,0,
 L1_sixm1000obs,ERROR: malloc(): invalid size (unsorted),crash,13.589,15000,0,node3610
 L1_sixm250obs,ERROR: malloc(): invalid size (unsorted),crash,4.690,15000,0,node3610
 L2CTA3D,OPTIMAL,solved,1697.316,15000,16,node3610
@@ -10,11 +10,11 @@ bdry2,OPTIMAL,solved,276.084,15000,18,node4415
 cont1,OPTIMAL,solved,165.265,15000,17,node4415
 cont11,OPTIMAL,solved,132.430,15000,19,node4415
 datt256_lp,OPTIMAL,solved,52.763,15000,18,node4415
-degme,TIME_LIMIT,timeout,15900.112,15000,0,node4415
-dlr1,TIME_LIMIT,timeout,15900.129,15000,0,node3605
-dlr2,TIME_LIMIT,timeout,15900.168,15000,0,node3605
+degme,TIME_LIMIT,timeout,15900.110,15000,0,
+dlr1,TIME_LIMIT,timeout,15900.130,15000,0,
+dlr2,TIME_LIMIT,timeout,15900.170,15000,0,
 ex10,OPTIMAL,solved,21.280,15000,15,node3605
-fhnw-binschedule1,TIME_LIMIT,timeout,15900.121,15000,0,node2507
+fhnw-binschedule1,TIME_LIMIT,timeout,15900.120,15000,0,
 fome13,OPTIMAL,solved,316.244,15000,21,node2507
 graph40-40,OPTIMAL,solved,25.937,15000,20,node2507
 irish-electricity,OPTIMAL,solved,1228.695,15000,23,node2507
@@ -24,7 +24,7 @@ neos-5052403-cygnet,OPTIMAL,solved,177.604,15000,18,node3605
 neos-5251015,OPTIMAL,solved,32.775,15000,17,node3605
 neos3,OPTIMAL,solved,163.931,15000,20,node3605
 ns1687037,ERROR: python3.12: src/abip.c:969: update_barrier_dynamic: Assertion `0' failed.,crash,7945.081,15000,0,node3605
-ns1688926,TIME_LIMIT,timeout,13419.011,15000,28,node2507
+ns1688926,TIME_LIMIT,timeout,15900.108,15000,0,node3610
 nug08-3rd,OPTIMAL,solved,66.628,15000,18,node3605
 pds-100,OPTIMAL,solved,1764.835,15000,21,node3605
 physiciansched3-3,OPTIMAL,solved,2757.307,15000,23,node3605
@@ -32,19 +32,19 @@ qap15,OPTIMAL,solved,9.550,15000,16,node3605
 rail02,OPTIMAL,solved,4946.762,15000,25,node3605
 rail4284,OPTIMAL,solved,796.697,15000,18,node3605
 rmine15,OPTIMAL,solved,339.329,15000,18,node2507
-s100,TIME_LIMIT,timeout,15900.108,15000,0,node2507
+s100,TIME_LIMIT,timeout,15900.110,15000,0,
 s250r10,OPTIMAL,solved,12899.518,15000,27,node3610
-s82,TIME_LIMIT,timeout,15900.137,15000,0,node4416
+s82,TIME_LIMIT,timeout,15900.140,15000,0,
 savsched1,OPTIMAL,solved,51.933,15000,16,node4416
 scpm1,OPTIMAL,solved,467.274,15000,22,node3611
 set-cover-model,OPTIMAL,solved,352.311,15000,19,node3611
-shs1023,TIME_LIMIT,timeout,15900.110,15000,0,node3611
+shs1023,TIME_LIMIT,timeout,15900.110,15000,0,
 square41,OPTIMAL,solved,2124.893,15000,20,node4416
 stat96v2,OPTIMAL,solved,1399.221,15000,21,node4416
 stormG2_1000,OPTIMAL,solved,13440.409,15000,23,node4416
 stp3d,OPTIMAL,solved,91.211,15000,19,node4416
 supportcase10,OPTIMAL,solved,1051.907,15000,20,node3611
-thk_48,TIME_LIMIT,timeout,15901.378,15000,0,node3611
+thk_48,TIME_LIMIT,timeout,15901.380,15000,0,
 thk_63,OPTIMAL,solved,3962.374,15000,20,node3610
-tpl-tub-ws1617,TIME_LIMIT,timeout,15900.127,15000,0,node3610
+tpl-tub-ws1617,TIME_LIMIT,timeout,15900.130,15000,0,
 woodlands09,OPTIMAL,solved,61.812,15000,23,node3610

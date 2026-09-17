@@ -84,7 +84,7 @@ irish-electricity,kTimeLimit,timeout,3600.157,3600,534629,node3610
 ivu06,kOptimal,solved,462.238,3600,42768,node3610
 ivu06-big,kOptimal,solved,1375.376,18000,45587,node3610
 ivu52,kOptimal,solved,32.696,3600,21695,node3610
-ivu59,ERROR: HiGHS could not parse tmph7g3e52x.mps,crash,2.661,18000,0,node1607
+ivu59,kOptimal,solved,3821.865,18000,115041,node2513
 k1mushroom,kOptimal,solved,14.379,3600,8729,node3610
 kosova1,kTimeLimit,timeout,3600.086,3600,248169,node2524
 kottenpark09,kTimeLimit,timeout,18000.254,18000,450260,node2511
@@ -98,7 +98,7 @@ map10,kOptimal,solved,28.939,3600,25254,node3308
 map14860-20,kOptimal,solved,18.429,3600,21790,node3308
 map16715-04,kOptimal,solved,36.066,3600,26985,node3308
 map18,kOptimal,solved,20.250,3600,22535,node3308
-momentum1,ERROR: HiGHS could not parse tmp0_zi_bam.mps,crash,0.074,3600,0,node3308
+momentum1,kOptimal,solved,0.652,3600,3579,node1604
 mushroom-best,kOptimal,solved,0.129,3600,397,node3308
 mzzv11,kOptimal,solved,28.836,3600,70559,node3308
 mzzv42z,kOptimal,solved,4.970,3600,25629,node3308
@@ -291,7 +291,7 @@ rocII-5-11,kOptimal,solved,0.056,3600,780,node2511
 rocII-8-11,kOptimal,solved,0.077,3600,1211,node2511
 roi2alpha3n4,kOptimal,solved,0.733,3600,2805,node2511
 roi5alpha10n8,kOptimal,solved,32.102,3600,23094,node2511
-rvb-sub,ERROR: HiGHS could not parse tmpe3y0jhgi.mps,crash,0.068,3600,0,node2523
+rvb-sub,kOptimal,solved,0.125,3600,223,node3610
 rwth-timetable,kTimeLimit,timeout,3600.149,3600,312412,node3610
 s100,kOptimal,solved,3494.345,3600,1167271,node3610
 s250r10,kOptimal,solved,62.955,3600,186701,node3610

@@ -116,7 +116,7 @@ neos-3354841-apure_ub,DUAL_INFEASIBLE,solved,6.821,3600,62,node2504
 neos-3372571-onahau_if,PRIMAL_INFEASIBLE,solved,1.117,3600,23,node2504
 neos-3372571-onahau_ub,DUAL_INFEASIBLE,solved,0.870,3600,15,node2504
 neos-3402294-bobin_if,PRIMAL_INFEASIBLE,solved,5.100,3600,28,node2504
-neos-3555904-turama_if,OPTIMAL,false_optimal,5.448,3600,36,node2504
+neos-3555904-turama_if,OPTIMAL,optimal,5.448,3600,36,node2504
 neos-3695882-vesdre_if,PRIMAL_INFEASIBLE,solved,1.664,3600,19,node2504
 neos-3740487-motru_if,TIME_LIMIT,timeout,3840.718,3600,35,node2504
 neos-4260495-otere_if,PRIMAL_INFEASIBLE,solved,13.779,3600,81,node3604
@@ -126,7 +126,7 @@ neos-4306827-ravan_if,PRIMAL_INFEASIBLE,solved,16.086,3600,82,node3604
 neos-4321076-ruwer_if,PRIMAL_INFEASIBLE,solved,31.795,3600,38,node3604
 neos-4322846-ryton_if,PRIMAL_INFEASIBLE,solved,16.567,3600,32,node3604
 neos-4322846-ryton_ub,DUAL_INFEASIBLE,solved,12.622,3600,14,node2504
-neos-4332801-seret_if,OPTIMAL,false_optimal,3522.656,3600,252,node4414
+neos-4332801-seret_if,OPTIMAL,optimal,3522.656,3600,252,node4414
 neos-4355351-swalm_if,PRIMAL_INFEASIBLE,solved,5.488,3600,28,node4414
 neos-4355351-swalm_ub,DUAL_INFEASIBLE,solved,4.935,3600,12,node2504
 neos-4359986-taipa_if,PRIMAL_INFEASIBLE,solved,0.708,3600,20,node4414
@@ -144,7 +144,7 @@ neos-4647032-veleka_if,PRIMAL_INFEASIBLE,solved,11.525,3600,53,node4414
 neos-4722843-widden_if,PRIMAL_INFEASIBLE,solved,9.725,3600,121,node4414
 neos-4724674-aorere_if,PRIMAL_INFEASIBLE,solved,6.661,3600,61,node4414
 neos-4797081-pakoka_if,PRIMAL_INFEASIBLE,solved,1.095,3600,11,node4414
-neos-4805882-barwon_if,OPTIMAL,false_optimal,2.446,3600,93,node4414
+neos-4805882-barwon_if,OPTIMAL,optimal,2.446,3600,93,node4414
 neos-4954274-beardy_if,PRIMAL_INFEASIBLE,solved,0.755,3600,27,node4414
 neos-4954274-beardy_ub,DUAL_INFEASIBLE,solved,0.330,3600,7,node2504
 neos-4966258-blicks_if,PRIMAL_INFEASIBLE,solved,43.336,3600,33,node4414
