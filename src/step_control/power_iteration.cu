@@ -375,16 +375,16 @@ static void run_power_iteration_step(
             0,
             ctx->stream>>>(ctx->iterate_d, opts->row_mask_d, num_rows);
     }
-    CUBLAS_CHECK(cublasDdot(
-        ctx->blas_handle,
-        num_rows,
-        ctx->normalized_iterate_d,
-        1,
-        ctx->iterate_d,
-        1,
-        ctx->sigma_squared_mp));
     if (evaluate_residual)
     {
+        CUBLAS_CHECK(cublasDdot(
+            ctx->blas_handle,
+            num_rows,
+            ctx->normalized_iterate_d,
+            1,
+            ctx->iterate_d,
+            1,
+            ctx->sigma_squared_mp));
         replace_normalized_iterate_with_residual_kernel<<<
             ctx->num_blocks_row,
             THREADS_PER_BLOCK,
