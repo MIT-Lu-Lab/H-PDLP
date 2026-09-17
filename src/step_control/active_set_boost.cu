@@ -52,7 +52,7 @@ __global__ void update_free_variable_mask_kernel(
     int window_start_iter,
     int num_variables);
 static __device__ __forceinline__ bool is_safely_between_bounds(
-    double dual_projection_input,
+    double value,
     double lower,
     double upper,
     double relative_tol);
@@ -248,7 +248,7 @@ __global__ void update_binding_constraint_mask_kernel(
         lower == upper ||
         !(cone_scale > 0.0) ||
         !is_safely_between_bounds(
-            constraint_dual_projection_input[i] / cone_scale,
+            -(constraint_dual_projection_input[i] / cone_scale),
             lower,
             upper,
             relative_tol);
@@ -315,21 +315,21 @@ __global__ void update_free_variable_mask_kernel(
 }
 
 static __device__ __forceinline__ bool is_safely_between_bounds(
-    double dual_projection_input,
+    double value,
     double lower,
     double upper,
     double relative_tol)
 {
     const bool below_upper =
         !isfinite(upper) ||
-        upper + dual_projection_input >
+        upper - value >
             relative_tol *
-                fmax(1.0, fmax(fabs(dual_projection_input), fabs(upper)));
+                fmax(1.0, fmax(fabs(value), fabs(upper)));
     const bool above_lower =
         !isfinite(lower) ||
-        -lower - dual_projection_input >
+        value - lower >
             relative_tol *
-                fmax(1.0, fmax(fabs(dual_projection_input), fabs(lower)));
+                fmax(1.0, fmax(fabs(value), fabs(lower)));
     return below_upper && above_lower;
 }
 
