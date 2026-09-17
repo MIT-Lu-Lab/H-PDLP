@@ -54,6 +54,18 @@ lp_problem_t *create_lp_problem(
         return NULL;
     }
 
+    for (int k = 0; k < nnz; ++k)
+    {
+        if (!isfinite(vals[k]))
+        {
+            fprintf(stderr, "invalid input matrix: coefficients must be finite.\n");
+            free(row_ptr);
+            free(col_ind);
+            free(vals);
+            return NULL;
+        }
+    }
+
     lp_problem_t *prob = (lp_problem_t *)safe_calloc(1, sizeof(lp_problem_t));
     prob->num_variables = A_desc->n;
     prob->num_constraints = A_desc->m;
