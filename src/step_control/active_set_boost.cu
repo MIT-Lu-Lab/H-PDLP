@@ -449,15 +449,12 @@ void try_raise_active_set_step_size(
 
     const sv_estimator_result_t estimate =
         estimate_masked_constraint_norm(state, params);
-    const bool estimate_is_trusted =
-        estimate.status == SV_ESTIMATOR_CONVERGED ||
-        estimate.status == SV_ESTIMATOR_EARLY_EXIT;
-    if (!estimate_is_trusted)
+    if (estimate.status == SV_ESTIMATOR_MAX_ITER)
     {
         return;
     }
     mark_raise_checked(active_set);
-    if (estimate.status == SV_ESTIMATOR_EARLY_EXIT)
+    if (estimate.status != SV_ESTIMATOR_CONVERGED)
     {
         return;
     }
