@@ -216,7 +216,6 @@ cuhsdlp_result_t *optimize(
         if (terminated)
         {
             display_iteration_stats(state, params->verbose, false);
-            tau_trace_write_row(tau_trace, state, "final");
             break;
         }
 
@@ -237,8 +236,8 @@ cuhsdlp_result_t *optimize(
         state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_termination_metrics(state, params);
         display_iteration_stats(state, params->verbose, false);
-        tau_trace_write_row(tau_trace, state, "final");
     }
+    tau_trace_write_row(tau_trace, state, "final");
     tau_trace_close(tau_trace);
 
     cuhsdlp_result_t *result = create_result_from_state(state, &working_problem);
