@@ -64,6 +64,7 @@ static __device__ __forceinline__ void update_window_mask_entry(
     bool *mask,
     int *entries_added,
     int *entries_removed);
+static void collect_active_set_mask_changes(pdhg_solver_state_t *state);
 static bool is_raise_possible(
     double target_step_size,
     double current_step_size,
@@ -171,11 +172,6 @@ void update_active_set_masks(
     const int window_start_iter =
         current_iter - params->active_set_params.window_iterations;
 
-    CUDA_CHECK(cudaMemsetAsync(
-        active_set->mask_changes_d,
-        0,
-        sizeof(active_set_mask_changes_t),
-        state->stream_A));
     update_binding_constraint_mask_kernel<<<
         state->num_blocks_dual,
         THREADS_PER_BLOCK,
@@ -210,22 +206,6 @@ void update_active_set_masks(
         current_iter,
         window_start_iter,
         state->num_variables);
-    active_set_mask_changes_t mask_changes = {};
-    CUDA_CHECK(cudaMemcpyAsync(
-        &mask_changes,
-        active_set->mask_changes_d,
-        sizeof(mask_changes),
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-
-    active_set->free_variable_count +=
-        mask_changes.variables_added - mask_changes.variables_removed;
-    active_set->binding_constraint_count +=
-        mask_changes.constraints_added - mask_changes.constraints_removed;
-    active_set->mask_changes_since_estimate +=
-        mask_changes.variables_added + mask_changes.variables_removed +
-        mask_changes.constraints_added + mask_changes.constraints_removed;
 }
 
 static bool has_active_set_revert_budget(
@@ -417,6 +397,8 @@ void try_raise_active_set_step_size(
         return;
     }
 
+    collect_active_set_mask_changes(state);
+
     active_set_state_t *active_set = &state->active_set;
     const bool a_mask_is_empty =
         active_set->free_variable_count == 0 ||
@@ -488,6 +470,32 @@ void try_raise_active_set_step_size(
     display_active_set_boost_raise(
         params, current_step_size, target_step_size,
         estimate.max_singular_value);
+}
+
+static void collect_active_set_mask_changes(pdhg_solver_state_t *state)
+{
+    active_set_state_t *active_set = &state->active_set;
+    active_set_mask_changes_t mask_changes = {};
+    CUDA_CHECK(cudaMemcpyAsync(
+        &mask_changes,
+        active_set->mask_changes_d,
+        sizeof(mask_changes),
+        cudaMemcpyDeviceToHost,
+        state->stream_A));
+    CUDA_CHECK(cudaMemsetAsync(
+        active_set->mask_changes_d,
+        0,
+        sizeof(mask_changes),
+        state->stream_A));
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    active_set->free_variable_count +=
+        mask_changes.variables_added - mask_changes.variables_removed;
+    active_set->binding_constraint_count +=
+        mask_changes.constraints_added - mask_changes.constraints_removed;
+    active_set->mask_changes_since_estimate +=
+        mask_changes.variables_added + mask_changes.variables_removed +
+        mask_changes.constraints_added + mask_changes.constraints_removed;
 }
 
 static bool is_raise_possible(
