@@ -49,6 +49,7 @@ __global__ void compute_bound_norm_entries_kernel(
     double *__restrict__ entries,
     int n_cons,
     int use_linf);
+static bool entry_is_near_zero(double value, double matrix_zero_tol);
 
 void filter_constraint_matrix_entries(
     lp_problem_t *working_problem,
@@ -73,7 +74,7 @@ void filter_constraint_matrix_entries(
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
             const double abs_value = fabs(vals[k]);
-            if (abs_value > params->scaling_params.matrix_zero_tol)
+            if (!entry_is_near_zero(vals[k], params->scaling_params.matrix_zero_tol))
                 ++filtered_nnz;
             if (abs_value >= MATRIX_LARGE_VALUE)
             {
@@ -109,7 +110,7 @@ void filter_constraint_matrix_entries(
     {
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
-            if (fabs(vals[k]) <= params->scaling_params.matrix_zero_tol)
+            if (entry_is_near_zero(vals[k], params->scaling_params.matrix_zero_tol))
                 continue;
             new_col_ind[pos] = col_ind[k];
             new_vals[pos] = vals[k];
@@ -130,6 +131,11 @@ void filter_constraint_matrix_entries(
                (nnz - filtered_nnz == 1 ? "entry" : "entries"),
                params->scaling_params.matrix_zero_tol);
     }
+}
+
+static bool entry_is_near_zero(double value, double matrix_zero_tol)
+{
+    return fabs(value) <= matrix_zero_tol;
 }
 
 void warn_on_large_objective_coefficients(const lp_problem_t *problem)

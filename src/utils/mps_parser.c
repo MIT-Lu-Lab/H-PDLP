@@ -412,6 +412,12 @@ static double parse_mps_number(MpsParserState *state, const char *token)
                        "invalid numeric field '%s' treated as 0.\n", token);
         return 0.0;
     }
+    if (!isfinite(value))
+    {
+        fprintf(stderr, "ERROR: numeric field '%s' is not finite.\n", token);
+        state->error_flag = 1;
+        return 0.0;
+    }
     return value;
 }
 
