@@ -252,6 +252,7 @@ cuhsdlp_result_t *optimize(
 
     if (params->presolve && presolve_info)
     {
+        copy_presolve_stats(presolve_info, result);
         if (termination_has_solution(result->termination_reason))
         {
             pslp_postsolve(presolve_info, result, &working_problem);

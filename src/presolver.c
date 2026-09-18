@@ -127,8 +127,8 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool
     return info;
 }
 
-static void copy_presolve_stats(const cuhsdlp_presolve_info_t *info,
-                                cuhsdlp_result_t *result)
+void copy_presolve_stats(const cuhsdlp_presolve_info_t *info,
+                         cuhsdlp_result_t *result)
 {
     result->num_reduced_variables = info->presolver->reduced_prob->n;
     result->num_reduced_constraints = info->presolver->reduced_prob->m;
@@ -189,8 +189,6 @@ void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
               result->primal_solution,
               result->dual_solution,
               result->reduced_cost);
-
-    copy_presolve_stats(info, result);
 
     free(result->primal_solution);
     free(result->dual_solution);
@@ -309,8 +307,6 @@ void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info
     free(result->reduced_cost);
     result->dual_solution = dual_ray;
     result->reduced_cost = reduced_cost_ray;
-
-    copy_presolve_stats(info, result);
 }
 
 void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
@@ -339,8 +335,6 @@ void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
 
     free(result->primal_solution);
     result->primal_solution = primal_ray;
-
-    copy_presolve_stats(info, result);
 }
 
 void cuhsdlp_presolve_info_free(cuhsdlp_presolve_info_t *info)
