@@ -37,7 +37,7 @@ extern "C"
     void set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
 
     cuhsdlp_result_t *solve_lp_problem(
-        lp_problem_t *prob,
+        const lp_problem_t *prob,
         const pdhg_parameters_t *params);
 
     void set_default_parameters(pdhg_parameters_t *params);

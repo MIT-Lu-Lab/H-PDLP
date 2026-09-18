@@ -27,6 +27,12 @@ typedef struct
     double value;
 } CooEntry;
 
+static matrix_format_status_t validate_conversion_args(
+    const matrix_desc_t *desc,
+    int **row_ptr,
+    int **col_ind,
+    double **vals,
+    int *nnz_out);
 static int compare_coo_entries(const void *lhs, const void *rhs);
 static int build_coo_entries(int m, int n,
                              int nnz_in,
@@ -53,12 +59,6 @@ static void canonicalize_sorted_rows_csr(int m,
                                          const double *input_vals,
                                          int **row_ptr, int **col_ind,
                                          double **vals, int *nnz_out);
-static matrix_format_status_t validate_conversion_args(
-    const matrix_desc_t *desc,
-    int **row_ptr,
-    int **col_ind,
-    double **vals,
-    int *nnz_out);
 static void init_empty_csr(int m, int **row_ptr, int **col_ind,
                            double **vals, int *nnz_out);
 

@@ -22,9 +22,6 @@ limitations under the License.
 #include "utils.h"
 #include <math.h>
 
-static bool has_active_set_revert_budget(
-    const pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params);
 __global__ void update_binding_constraint_mask_kernel(
     const double *__restrict__ constraint_dual_projection_input,
     const double *constraint_cone_scale,
@@ -51,6 +48,9 @@ __global__ void update_free_variable_mask_kernel(
     int current_iter,
     int window_start_iter,
     int num_variables);
+static bool has_active_set_revert_budget(
+    const pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params);
 static __device__ __forceinline__ bool is_safely_between_bounds(
     double value,
     double lower,
@@ -220,98 +220,6 @@ static bool has_active_set_revert_budget(
 {
     return is_active_set_boost_enabled(params) &&
            state->active_set.revert_count < params->active_set_params.max_reverts;
-}
-
-__global__ void update_binding_constraint_mask_kernel(
-    const double *__restrict__ constraint_dual_projection_input,
-    const double *constraint_cone_scale,
-    const double *__restrict__ constraint_lower_bound,
-    const double *__restrict__ constraint_upper_bound,
-    int *__restrict__ constraint_last_binding_iter,
-    bool *__restrict__ binding_constraint_mask,
-    active_set_mask_changes_t *mask_changes,
-    double relative_tol,
-    int current_iter,
-    int window_start_iter,
-    int num_constraints)
-{
-    const int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= num_constraints)
-    {
-        return;
-    }
-
-    const double lower = constraint_lower_bound[i];
-    const double upper = constraint_upper_bound[i];
-    const double cone_scale = *constraint_cone_scale;
-    const bool is_binding =
-        lower == upper ||
-        !(cone_scale > 0.0) ||
-        !is_safely_between_bounds(
-            -(constraint_dual_projection_input[i] / cone_scale),
-            lower,
-            upper,
-            relative_tol);
-    update_window_mask_entry(
-        is_binding,
-        current_iter,
-        window_start_iter,
-        &constraint_last_binding_iter[i],
-        &binding_constraint_mask[i],
-        &mask_changes->constraints_added,
-        &mask_changes->constraints_removed);
-}
-
-__global__ void update_free_variable_mask_kernel(
-    const double *__restrict__ variable_primal_projection_input,
-    const double *__restrict__ objective_vector,
-    const double *primal_scale_pdhg,
-    const double *__restrict__ variable_lower_bound,
-    const double *__restrict__ variable_upper_bound,
-    int *__restrict__ variable_last_free_iter,
-    bool *__restrict__ free_variable_mask,
-    active_set_mask_changes_t *mask_changes,
-    double relative_tol,
-    double step_size_primal,
-    int current_iter,
-    int window_start_iter,
-    int num_variables)
-{
-    const int j = blockIdx.x * blockDim.x + threadIdx.x;
-    if (j >= num_variables)
-    {
-        return;
-    }
-
-    const double lower = variable_lower_bound[j];
-    const double upper = variable_upper_bound[j];
-    const double projection_residual_tolerance =
-        relative_tol *
-        fmax(1.0, fabs(objective_vector[j])) *
-        (*primal_scale_pdhg);
-    const double projection_input_margin =
-        step_size_primal * projection_residual_tolerance;
-    const double projection_input = variable_primal_projection_input[j];
-    const bool input_is_finite = isfinite(projection_input);
-    const bool fixed_at_zero = lower == 0.0 && upper == 0.0;
-    const bool clamped_at_lower =
-        lower == 0.0 &&
-        input_is_finite &&
-        projection_input < -projection_input_margin;
-    const bool clamped_at_upper =
-        upper == 0.0 &&
-        input_is_finite &&
-        projection_input > projection_input_margin;
-    const bool is_free =
-        !(fixed_at_zero || clamped_at_lower || clamped_at_upper);
-    update_window_mask_entry(
-        is_free,
-        current_iter,
-        window_start_iter,
-        &variable_last_free_iter[j],
-        &free_variable_mask[j],
-        &mask_changes->variables_added,
-        &mask_changes->variables_removed);
 }
 
 static __device__ __forceinline__ bool is_safely_between_bounds(
@@ -635,4 +543,96 @@ static void restore_active_set_anchor(pdhg_solver_state_t *state)
         state->stream_A));
     state->control.primal_weight = active_set->anchor.primal_weight;
     state->control.pid = active_set->anchor.pid;
+}
+
+__global__ void update_binding_constraint_mask_kernel(
+    const double *__restrict__ constraint_dual_projection_input,
+    const double *constraint_cone_scale,
+    const double *__restrict__ constraint_lower_bound,
+    const double *__restrict__ constraint_upper_bound,
+    int *__restrict__ constraint_last_binding_iter,
+    bool *__restrict__ binding_constraint_mask,
+    active_set_mask_changes_t *mask_changes,
+    double relative_tol,
+    int current_iter,
+    int window_start_iter,
+    int num_constraints)
+{
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= num_constraints)
+    {
+        return;
+    }
+
+    const double lower = constraint_lower_bound[i];
+    const double upper = constraint_upper_bound[i];
+    const double cone_scale = *constraint_cone_scale;
+    const bool is_binding =
+        lower == upper ||
+        !(cone_scale > 0.0) ||
+        !is_safely_between_bounds(
+            -(constraint_dual_projection_input[i] / cone_scale),
+            lower,
+            upper,
+            relative_tol);
+    update_window_mask_entry(
+        is_binding,
+        current_iter,
+        window_start_iter,
+        &constraint_last_binding_iter[i],
+        &binding_constraint_mask[i],
+        &mask_changes->constraints_added,
+        &mask_changes->constraints_removed);
+}
+
+__global__ void update_free_variable_mask_kernel(
+    const double *__restrict__ variable_primal_projection_input,
+    const double *__restrict__ objective_vector,
+    const double *primal_scale_pdhg,
+    const double *__restrict__ variable_lower_bound,
+    const double *__restrict__ variable_upper_bound,
+    int *__restrict__ variable_last_free_iter,
+    bool *__restrict__ free_variable_mask,
+    active_set_mask_changes_t *mask_changes,
+    double relative_tol,
+    double step_size_primal,
+    int current_iter,
+    int window_start_iter,
+    int num_variables)
+{
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (j >= num_variables)
+    {
+        return;
+    }
+
+    const double lower = variable_lower_bound[j];
+    const double upper = variable_upper_bound[j];
+    const double projection_residual_tolerance =
+        relative_tol *
+        fmax(1.0, fabs(objective_vector[j])) *
+        (*primal_scale_pdhg);
+    const double projection_input_margin =
+        step_size_primal * projection_residual_tolerance;
+    const double projection_input = variable_primal_projection_input[j];
+    const bool input_is_finite = isfinite(projection_input);
+    const bool fixed_at_zero = lower == 0.0 && upper == 0.0;
+    const bool clamped_at_lower =
+        lower == 0.0 &&
+        input_is_finite &&
+        projection_input < -projection_input_margin;
+    const bool clamped_at_upper =
+        upper == 0.0 &&
+        input_is_finite &&
+        projection_input > projection_input_margin;
+    const bool is_free =
+        !(fixed_at_zero || clamped_at_lower || clamped_at_upper);
+    update_window_mask_entry(
+        is_free,
+        current_iter,
+        window_start_iter,
+        &variable_last_free_iter[j],
+        &free_variable_mask[j],
+        &mask_changes->variables_added,
+        &mask_changes->variables_removed);
 }

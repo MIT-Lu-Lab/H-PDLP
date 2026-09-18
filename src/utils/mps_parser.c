@@ -412,6 +412,12 @@ static double parse_mps_number(MpsParserState *state, const char *token)
                        "invalid numeric field '%s' treated as 0.\n", token);
         return 0.0;
     }
+    if (!isfinite(value))
+    {
+        fprintf(stderr, "ERROR: numeric field '%s' is not finite.\n", token);
+        state->error_flag = 1;
+        return 0.0;
+    }
     return value;
 }
 
@@ -473,10 +479,9 @@ static bool ensure_column_capacity(MpsParserState *state)
     return true;
 }
 
-static void free_parser_state(MpsParserState *state);
-static int finalize_rows(MpsParserState *state);
 static int parse_rows_section(MpsParserState *state, char **tokens,
                               int n_tokens);
+static int finalize_rows(MpsParserState *state);
 static int parse_columns_section(MpsParserState *state, char **tokens,
                                  int n_tokens);
 static int parse_rhs_section(MpsParserState *state, char **tokens,
@@ -485,6 +490,7 @@ static int parse_ranges_section(MpsParserState *state, char **tokens,
                                 int n_tokens);
 static int parse_bounds_section(MpsParserState *state, char **tokens,
                                 int n_tokens);
+static void free_parser_state(MpsParserState *state);
 
 typedef enum
 {

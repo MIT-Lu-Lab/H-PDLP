@@ -36,7 +36,7 @@ __global__ void build_row_ind_kernel(
     int num_rows,
     int *__restrict__ row_ind);
 __global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
-static void param_error(const char *requirement, double value);
+static bool param_error(const char *requirement, double value);
 static void create_csr_descriptor(
     cusparseSpMatDescr_t *descriptor,
     int num_rows,
@@ -73,187 +73,196 @@ static void free_sparse_resources(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
 static void free_solver_device_buffers(pdhg_solver_state_t *state);
 
-static void param_error(const char *requirement, double value)
+static bool param_error(const char *requirement, double value)
 {
     fprintf(stderr, "Error: %s (got %g).\n", requirement, value);
-    exit(EXIT_FAILURE);
+    return false;
 }
 
-void check_params_validity(const pdhg_parameters_t *params)
+bool check_params_validity(const pdhg_parameters_t *params)
 {
     if (params->termination_evaluation_frequency < 3)
     {
-        param_error("termination_evaluation_frequency must be >= 3",
-                    params->termination_evaluation_frequency);
+        return param_error("termination_evaluation_frequency must be >= 3",
+                           params->termination_evaluation_frequency);
     }
     if (!(params->reflection_coefficient > 0.0 &&
           params->reflection_coefficient <= 1.0))
     {
-        param_error("reflection_coefficient must be in (0, 1]",
-                    params->reflection_coefficient);
+        return param_error("reflection_coefficient must be in (0, 1]",
+                           params->reflection_coefficient);
     }
     if (params->scaling_params.geometric_mean_iterations < 0)
     {
-        param_error("geometric_mean_iterations must be >= 0",
-                    params->scaling_params.geometric_mean_iterations);
+        return param_error("geometric_mean_iterations must be >= 0",
+                           params->scaling_params.geometric_mean_iterations);
     }
     if (params->scaling_params.l_inf_ruiz_iterations < 0)
     {
-        param_error("l_inf_ruiz_iterations must be >= 0",
-                    params->scaling_params.l_inf_ruiz_iterations);
+        return param_error("l_inf_ruiz_iterations must be >= 0",
+                           params->scaling_params.l_inf_ruiz_iterations);
     }
     if (params->scaling_params.has_pock_chambolle_alpha &&
         !(params->scaling_params.pock_chambolle_alpha >= 0.0 &&
           params->scaling_params.pock_chambolle_alpha <= 2.0))
     {
-        param_error("pock_chambolle_alpha must be in [0, 2]",
-                    params->scaling_params.pock_chambolle_alpha);
+        return param_error("pock_chambolle_alpha must be in [0, 2]",
+                           params->scaling_params.pock_chambolle_alpha);
     }
     if (!(params->scaling_params.matrix_zero_tol >= 0.0 &&
           isfinite(params->scaling_params.matrix_zero_tol)))
     {
-        param_error("matrix_zero_tol must be finite and >= 0",
-                    params->scaling_params.matrix_zero_tol);
+        return param_error("matrix_zero_tol must be finite and >= 0",
+                           params->scaling_params.matrix_zero_tol);
     }
     if (!(params->scaling_params.infinite_bound > 0.0))
     {
-        param_error("infinite_bound must be > 0",
-                    params->scaling_params.infinite_bound);
+        return param_error("infinite_bound must be > 0",
+                           params->scaling_params.infinite_bound);
     }
     if (params->power_iter_params.max_iter < 1)
     {
-        param_error("singular_value_max_iter must be >= 1",
-                    params->power_iter_params.max_iter);
+        return param_error("singular_value_max_iter must be >= 1",
+                           params->power_iter_params.max_iter);
     }
     if (!(params->power_iter_params.tol > 0.0 &&
           isfinite(params->power_iter_params.tol)))
     {
-        param_error("singular_value_tol must be finite and > 0",
-                    params->power_iter_params.tol);
+        return param_error("singular_value_tol must be finite and > 0",
+                           params->power_iter_params.tol);
     }
     if (!(params->step_size_params.step_size_factor > 0.0 &&
           params->step_size_params.step_size_factor < 1.0))
     {
-        param_error("step_size_factor must be in (0, 1)",
-                    params->step_size_params.step_size_factor);
+        return param_error("step_size_factor must be in (0, 1)",
+                           params->step_size_params.step_size_factor);
     }
-    if (!isfinite(params->step_size_params.k_p) ||
-        !isfinite(params->step_size_params.k_i) ||
-        !isfinite(params->step_size_params.k_d))
+    if (!isfinite(params->step_size_params.k_p))
     {
-        param_error("PID gains k_p, k_i, k_d must be finite",
-                    params->step_size_params.k_p);
+        return param_error("k_p must be finite",
+                           params->step_size_params.k_p);
+    }
+    if (!isfinite(params->step_size_params.k_i))
+    {
+        return param_error("k_i must be finite",
+                           params->step_size_params.k_i);
+    }
+    if (!isfinite(params->step_size_params.k_d))
+    {
+        return param_error("k_d must be finite",
+                           params->step_size_params.k_d);
     }
     if (!(params->step_size_params.i_smooth >= 0.0 &&
           params->step_size_params.i_smooth < 1.0))
     {
-        param_error("i_smooth must be in [0, 1)",
-                    params->step_size_params.i_smooth);
+        return param_error("i_smooth must be in [0, 1)",
+                           params->step_size_params.i_smooth);
     }
     if (params->cone_params.max_iter < 1)
     {
-        param_error("cone_newton_max_iter must be >= 1",
-                    params->cone_params.max_iter);
+        return param_error("cone_newton_max_iter must be >= 1",
+                           params->cone_params.max_iter);
     }
     if (!(params->cone_params.tol > 0.0 && isfinite(params->cone_params.tol)))
     {
-        param_error("cone_newton_tol must be finite and > 0",
-                    params->cone_params.tol);
+        return param_error("cone_newton_tol must be finite and > 0",
+                           params->cone_params.tol);
     }
     if (params->active_set_params.window_iterations < 1)
     {
-        param_error("active_set window_iterations must be >= 1",
-                    params->active_set_params.window_iterations);
+        return param_error("active_set window_iterations must be >= 1",
+                           params->active_set_params.window_iterations);
     }
     if (!(params->active_set_params.relative_tol >= 0.0 &&
           isfinite(params->active_set_params.relative_tol)))
     {
-        param_error("active_set relative_tol must be finite and >= 0",
-                    params->active_set_params.relative_tol);
+        return param_error("active_set relative_tol must be finite and >= 0",
+                           params->active_set_params.relative_tol);
     }
     if (!(params->active_set_params.safety_factor > 0.0 &&
           params->active_set_params.safety_factor < 1.0))
     {
-        param_error("active_set safety_factor must be in (0, 1)",
-                    params->active_set_params.safety_factor);
+        return param_error("active_set safety_factor must be in (0, 1)",
+                           params->active_set_params.safety_factor);
     }
     if (!(params->active_set_params.min_raise_ratio >= 1.0 &&
           isfinite(params->active_set_params.min_raise_ratio)))
     {
-        param_error("active_set min_raise_ratio must be finite and >= 1",
-                    params->active_set_params.min_raise_ratio);
+        return param_error("active_set min_raise_ratio must be finite and >= 1",
+                           params->active_set_params.min_raise_ratio);
     }
     if (!(params->active_set_params.reestimate_change_ratio >= 0.0 &&
           isfinite(params->active_set_params.reestimate_change_ratio)))
     {
-        param_error("active_set reestimate_change_ratio must be finite and >= 0",
-                    params->active_set_params.reestimate_change_ratio);
+        return param_error("active_set reestimate_change_ratio must be finite and >= 0",
+                           params->active_set_params.reestimate_change_ratio);
     }
     if (!(params->active_set_params.divergence_ceiling_ratio > 0.0 &&
           params->active_set_params.divergence_ceiling_ratio <= 1.0))
     {
-        param_error("active_set divergence_ceiling_ratio must be in (0, 1]",
-                    params->active_set_params.divergence_ceiling_ratio);
+        return param_error("active_set divergence_ceiling_ratio must be in (0, 1]",
+                           params->active_set_params.divergence_ceiling_ratio);
     }
     if (!(params->active_set_params.divergence_margin >= 0.0 &&
           isfinite(params->active_set_params.divergence_margin)))
     {
-        param_error("active_set divergence_margin must be finite and >= 0",
-                    params->active_set_params.divergence_margin);
+        return param_error("active_set divergence_margin must be finite and >= 0",
+                           params->active_set_params.divergence_margin);
     }
     if (params->active_set_params.max_reverts < 0)
     {
-        param_error("active_set max_reverts must be >= 0",
-                    params->active_set_params.max_reverts);
+        return param_error("active_set max_reverts must be >= 0",
+                           params->active_set_params.max_reverts);
     }
     if (!(params->termination_criteria.eps_optimal_relative > 0.0 &&
           isfinite(params->termination_criteria.eps_optimal_relative)))
     {
-        param_error("eps_opt must be finite and > 0",
-                    params->termination_criteria.eps_optimal_relative);
+        return param_error("eps_opt must be finite and > 0",
+                           params->termination_criteria.eps_optimal_relative);
     }
     if (!(params->termination_criteria.eps_feasible_relative > 0.0 &&
           isfinite(params->termination_criteria.eps_feasible_relative)))
     {
-        param_error("eps_feas must be finite and > 0",
-                    params->termination_criteria.eps_feasible_relative);
+        return param_error("eps_feas must be finite and > 0",
+                           params->termination_criteria.eps_feasible_relative);
     }
     if (!(params->termination_criteria.eps_farkas_homogeneous > 0.0 &&
           isfinite(params->termination_criteria.eps_farkas_homogeneous)))
     {
-        param_error("eps_farkas_homogeneous must be finite and > 0",
-                    params->termination_criteria.eps_farkas_homogeneous);
+        return param_error("eps_farkas_homogeneous must be finite and > 0",
+                           params->termination_criteria.eps_farkas_homogeneous);
     }
     if (!(params->termination_criteria.eps_farkas_displacement > 0.0 &&
           isfinite(params->termination_criteria.eps_farkas_displacement)))
     {
-        param_error("eps_farkas_displacement must be finite and > 0",
-                    params->termination_criteria.eps_farkas_displacement);
+        return param_error("eps_farkas_displacement must be finite and > 0",
+                           params->termination_criteria.eps_farkas_displacement);
     }
     if (!(params->termination_criteria.time_sec_limit > 0.0))
     {
-        param_error("time_limit must be > 0",
-                    params->termination_criteria.time_sec_limit);
+        return param_error("time_limit must be > 0",
+                           params->termination_criteria.time_sec_limit);
     }
     if (params->termination_criteria.iteration_limit < 1)
     {
-        param_error("iter_limit must be >= 1",
-                    params->termination_criteria.iteration_limit);
+        return param_error("iter_limit must be >= 1",
+                           params->termination_criteria.iteration_limit);
     }
     if (!(params->restart_params.artificial_restart_threshold > 0.0 &&
           params->restart_params.artificial_restart_threshold <= 1.0))
     {
-        param_error("artificial_restart_threshold must be in (0, 1]",
-                    params->restart_params.artificial_restart_threshold);
+        return param_error("artificial_restart_threshold must be in (0, 1]",
+                           params->restart_params.artificial_restart_threshold);
     }
     if (!(params->restart_params.sufficient_reduction_for_restart > 0.0 &&
           params->restart_params.sufficient_reduction_for_restart <=
               params->restart_params.necessary_reduction_for_restart &&
           params->restart_params.necessary_reduction_for_restart < 1.0))
     {
-        param_error("restart reductions must satisfy 0 < sufficient <= necessary < 1",
-                    params->restart_params.sufficient_reduction_for_restart);
+        return param_error("restart reductions must satisfy 0 < sufficient <= necessary < 1",
+                           params->restart_params.sufficient_reduction_for_restart);
     }
+    return true;
 }
 
 pdhg_solver_state_t *initialize_solver_state(

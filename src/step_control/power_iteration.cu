@@ -45,29 +45,29 @@ struct sv_estimator_ctx
     bool has_warm_start;
 };
 
-static __global__ void apply_mask_kernel(
+__global__ void apply_mask_kernel(
     double *__restrict__ vector_d,
     const bool *__restrict__ mask_d,
     int n);
-static __global__ void seed_zero_warm_start_entries_kernel(
+__global__ void seed_zero_warm_start_entries_kernel(
     double *__restrict__ vector_d,
     const bool *__restrict__ mask_d,
     double perturbation_amplitude,
+    int n);
+__global__ void normalize_power_iteration_vector_kernel(
+    double *normalized_vector_d,
+    const double *vector_d,
+    const double *vector_norm_d,
+    int n);
+__global__ void replace_normalized_iterate_with_residual_kernel(
+    double *normalized_iterate_d,
+    const double *iterate_d,
+    const double *sigma_squared_d,
     int n);
 static void run_power_iteration_step(
     sv_estimator_ctx_t *ctx,
     const sv_estimator_opts_t *opts,
     bool evaluate_residual);
-static __global__ void normalize_power_iteration_vector_kernel(
-    double *normalized_vector_d,
-    const double *vector_d,
-    const double *vector_norm_d,
-    int n);
-static __global__ void replace_normalized_iterate_with_residual_kernel(
-    double *normalized_iterate_d,
-    const double *iterate_d,
-    const double *sigma_squared_d,
-    int n);
 static sv_estimator_status_t classify_power_iteration_outcome(
     const sv_estimator_ctx_t *ctx,
     const sv_estimator_opts_t *opts);
@@ -289,40 +289,6 @@ sv_estimator_result_t sv_estimator_run(
     return result;
 }
 
-static __global__ void apply_mask_kernel(
-    double *__restrict__ vector_d,
-    const bool *__restrict__ mask_d,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-    if (!mask_d[i])
-        vector_d[i] = 0.0;
-}
-
-static __global__ void seed_zero_warm_start_entries_kernel(
-    double *__restrict__ vector_d,
-    const bool *__restrict__ mask_d,
-    double perturbation_amplitude,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-    if (!mask_d[i] || vector_d[i] != 0.0)
-        return;
-
-    unsigned long long hash =
-        (unsigned long long)i + 0x9E3779B97F4A7C15ULL;
-    hash = (hash ^ (hash >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    hash = (hash ^ (hash >> 27)) * 0x94D049BB133111EBULL;
-    hash = hash ^ (hash >> 31);
-    const double uniform_sample =
-        (double)(hash >> 11) * (1.0 / 9007199254740992.0);
-    vector_d[i] = perturbation_amplitude * (uniform_sample - 0.5);
-}
-
 static void run_power_iteration_step(
     sv_estimator_ctx_t *ctx,
     const sv_estimator_opts_t *opts,
@@ -403,34 +369,6 @@ static void run_power_iteration_step(
     }
 }
 
-static __global__ void normalize_power_iteration_vector_kernel(
-    double *normalized_vector_d,
-    const double *vector_d,
-    const double *vector_norm_d,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    double vector_norm = *vector_norm_d;
-    normalized_vector_d[i] = (vector_norm > 0.0) ? (vector_d[i] / vector_norm) : 0.0;
-}
-
-static __global__ void replace_normalized_iterate_with_residual_kernel(
-    double *normalized_iterate_d,
-    const double *iterate_d,
-    const double *sigma_squared_d,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n)
-        return;
-
-    double sigma_squared = *sigma_squared_d;
-    normalized_iterate_d[i] = iterate_d[i] - sigma_squared * normalized_iterate_d[i];
-}
-
 static sv_estimator_status_t classify_power_iteration_outcome(
     const sv_estimator_ctx_t *ctx,
     const sv_estimator_opts_t *opts)
@@ -477,4 +415,66 @@ void sv_estimator_free(sv_estimator_ctx_t *ctx)
     CUDA_CHECK(cudaFreeHost(ctx->sigma_squared_mp));
     CUDA_CHECK(cudaFreeHost(ctx->residual_norm_mp));
     free(ctx);
+}
+
+__global__ void apply_mask_kernel(
+    double *__restrict__ vector_d,
+    const bool *__restrict__ mask_d,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    if (!mask_d[i])
+        vector_d[i] = 0.0;
+}
+
+__global__ void seed_zero_warm_start_entries_kernel(
+    double *__restrict__ vector_d,
+    const bool *__restrict__ mask_d,
+    double perturbation_amplitude,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+    if (!mask_d[i] || vector_d[i] != 0.0)
+        return;
+
+    unsigned long long hash =
+        (unsigned long long)i + 0x9E3779B97F4A7C15ULL;
+    hash = (hash ^ (hash >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    hash = (hash ^ (hash >> 27)) * 0x94D049BB133111EBULL;
+    hash = hash ^ (hash >> 31);
+    const double uniform_sample =
+        (double)(hash >> 11) * (1.0 / 9007199254740992.0);
+    vector_d[i] = perturbation_amplitude * (uniform_sample - 0.5);
+}
+
+__global__ void normalize_power_iteration_vector_kernel(
+    double *normalized_vector_d,
+    const double *vector_d,
+    const double *vector_norm_d,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+
+    double vector_norm = *vector_norm_d;
+    normalized_vector_d[i] = (vector_norm > 0.0) ? (vector_d[i] / vector_norm) : 0.0;
+}
+
+__global__ void replace_normalized_iterate_with_residual_kernel(
+    double *normalized_iterate_d,
+    const double *iterate_d,
+    const double *sigma_squared_d,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n)
+        return;
+
+    double sigma_squared = *sigma_squared_d;
+    normalized_iterate_d[i] = iterate_d[i] - sigma_squared * normalized_iterate_d[i];
 }

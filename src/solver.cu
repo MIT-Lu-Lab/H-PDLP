@@ -38,6 +38,15 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
+__global__ void compute_delta_kernel(
+    const double *__restrict__ initial_primal,
+    const double *__restrict__ pdhg_primal,
+    double *__restrict__ delta_primal,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ pdhg_dual,
+    double *__restrict__ delta_dual,
+    int n_vars,
+    int n_cons);
 __global__ void compute_fixed_point_error_kernel(
     double *fixed_point_error_d,
     const double *primal_norm,
@@ -65,17 +74,17 @@ __global__ void scale_hsd_scalars_kernel(
     double *primal_scale_pdhg,
     double *dual_scale_pdhg,
     double  inv_scale);
-static void compute_fixed_point_error(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params);
-static void perform_active_set_boost_revert(
-    pdhg_solver_state_t *state,
+static lp_problem_t create_working_problem(
+    const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
-static void hsd_run_iteration_step(
-    pdhg_solver_state_t *state,
-    const pdhg_parameters_t *params,
-    int k_offset,
-    bool is_major);
+static void restore_original_objective_sense(
+    cuhsdlp_result_t *result,
+    objective_sense_t objective_sense);
+static void working_problem_free(
+    const lp_problem_t *working_problem,
+    const lp_problem_t *original_problem);
+static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
+static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
@@ -86,6 +95,11 @@ static void compute_step_sizes(
     double *step_size_primal,
     double *step_size_dual,
     double *step_size_homogeneous);
+static void hsd_run_iteration_step(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params,
+    int k_offset,
+    bool is_major);
 static void hsd_update_dual_solution(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -97,8 +111,12 @@ static void update_hsd_primal_block(
     const int k_offset,
     const double reflection_coefficient,
     bool is_major);
-static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
+static void compute_fixed_point_error(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params);
+static void perform_active_set_boost_revert(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params);
 static bool should_do_adaptive_restart(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
@@ -109,24 +127,29 @@ static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
 static double apply_gauge_control(pdhg_solver_state_t *state);
-static lp_problem_t create_working_problem(
-    const lp_problem_t *original_problem,
-    const pdhg_parameters_t *params);
-static void restore_original_objective_sense(
-    cuhsdlp_result_t *result,
-    objective_sense_t objective_sense);
-static void working_problem_free(
-    const lp_problem_t *working_problem,
-    const lp_problem_t *original_problem);
 
 cuhsdlp_result_t *optimize(
     const pdhg_parameters_t *params,
     const lp_problem_t *original_problem)
 {
-    check_params_validity(params);
+    if (!check_params_validity(params))
+        return NULL;
 
     lp_problem_t working_problem = create_working_problem(original_problem, params);
     print_initial_info(params, &working_problem);
+
+    if (working_problem.num_variables == 0 && working_problem.num_constraints == 0)
+    {
+        cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+        result->termination_reason = TERMINATION_REASON_OPTIMAL;
+        result->primal_objective_value = working_problem.objective_constant;
+        result->dual_objective_value = working_problem.objective_constant;
+        result->homogeneous_scale = 1.0;
+        restore_original_objective_sense(result, original_problem->objective_sense);
+        pdhg_final_log(result, params);
+        working_problem_free(&working_problem, original_problem);
+        return result;
+    }
 
     cuhsdlp_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
@@ -244,6 +267,7 @@ cuhsdlp_result_t *optimize(
 
     if (params->presolve && presolve_info)
     {
+        copy_presolve_stats(presolve_info, result);
         if (termination_has_solution(result->termination_reason))
         {
             pslp_postsolve(presolve_info, result, &working_problem);

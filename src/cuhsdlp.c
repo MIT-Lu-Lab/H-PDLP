@@ -54,6 +54,18 @@ lp_problem_t *create_lp_problem(
         return NULL;
     }
 
+    for (int k = 0; k < nnz; ++k)
+    {
+        if (!isfinite(vals[k]))
+        {
+            fprintf(stderr, "invalid input matrix: coefficients must be finite.\n");
+            free(row_ptr);
+            free(col_ind);
+            free(vals);
+            return NULL;
+        }
+    }
+
     lp_problem_t *prob = (lp_problem_t *)safe_calloc(1, sizeof(lp_problem_t));
     prob->num_variables = A_desc->n;
     prob->num_constraints = A_desc->m;
@@ -224,7 +236,7 @@ void set_default_parameters(pdhg_parameters_t *params)
 }
 
 cuhsdlp_result_t *solve_lp_problem(
-    lp_problem_t *prob,
+    const lp_problem_t *prob,
     const pdhg_parameters_t *params)
 {
     if (!prob)
@@ -239,12 +251,5 @@ cuhsdlp_result_t *solve_lp_problem(
     else
         set_default_parameters(&local_params);
 
-    cuhsdlp_result_t *res = optimize(&local_params, prob);
-    if (!res)
-    {
-        fprintf(stderr, "[interface] optimize returned NULL.\n");
-        return NULL;
-    }
-
-    return res;
+    return optimize(&local_params, prob);
 }

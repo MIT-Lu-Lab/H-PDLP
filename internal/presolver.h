@@ -40,6 +40,9 @@ extern "C"
     cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *working_problem);
     const char *get_presolve_status_str(int status);
 
+    void copy_presolve_stats(const cuhsdlp_presolve_info_t *info,
+                             cuhsdlp_result_t *result);
+
     void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
                         cuhsdlp_result_t *reduced_result,
                         const lp_problem_t *working_problem);
