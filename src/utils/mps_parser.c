@@ -473,10 +473,9 @@ static bool ensure_column_capacity(MpsParserState *state)
     return true;
 }
 
-static void free_parser_state(MpsParserState *state);
-static int finalize_rows(MpsParserState *state);
 static int parse_rows_section(MpsParserState *state, char **tokens,
                               int n_tokens);
+static int finalize_rows(MpsParserState *state);
 static int parse_columns_section(MpsParserState *state, char **tokens,
                                  int n_tokens);
 static int parse_rhs_section(MpsParserState *state, char **tokens,
@@ -485,6 +484,7 @@ static int parse_ranges_section(MpsParserState *state, char **tokens,
                                 int n_tokens);
 static int parse_bounds_section(MpsParserState *state, char **tokens,
                                 int n_tokens);
+static void free_parser_state(MpsParserState *state);
 
 typedef enum
 {

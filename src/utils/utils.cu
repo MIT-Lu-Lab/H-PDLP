@@ -29,12 +29,21 @@ const double HOST_ZERO = 0.0;
 #define MATRIX_LARGE_VALUE 1e15
 #define OBJECTIVE_LARGE_VALUE 1e20
 
-static __global__ void compute_objective_norm_entries_kernel(
+__global__ void compute_delta_kernel(
+    const double *__restrict__ initial_primal,
+    const double *__restrict__ pdhg_primal,
+    double *__restrict__ delta_primal,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ pdhg_dual,
+    double *__restrict__ delta_dual,
+    int n_vars,
+    int n_cons);
+__global__ void compute_objective_norm_entries_kernel(
     const double *__restrict__ obj_vec,
     double *__restrict__ entries,
     int n_vars,
     int use_linf);
-static __global__ void compute_bound_norm_entries_kernel(
+__global__ void compute_bound_norm_entries_kernel(
     const double *__restrict__ cons_lb,
     const double *__restrict__ cons_ub,
     double *__restrict__ entries,
@@ -397,67 +406,6 @@ void compute_lp_problem_norms_device(
     *out_bound_norm = *state->bound_norm_workspace_mp;
 }
 
-__global__ void compute_delta_kernel(
-    const double *__restrict__ initial_primal,
-    const double *__restrict__ pdhg_primal,
-    double *__restrict__ delta_primal,
-    const double *__restrict__ initial_dual,
-    const double *__restrict__ pdhg_dual,
-    double *__restrict__ delta_dual,
-    int n_vars,
-    int n_cons)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_vars)
-    {
-        delta_primal[i] = pdhg_primal[i] - initial_primal[i];
-    }
-    else if (i < n_vars + n_cons)
-    {
-        int idx = i - n_vars;
-        delta_dual[idx] = pdhg_dual[idx] - initial_dual[idx];
-    }
-}
-
-static __global__ void compute_objective_norm_entries_kernel(
-    const double *__restrict__ obj_vec,
-    double *__restrict__ entries,
-    int n_vars,
-    int use_linf)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_vars) return;
-
-    double v = obj_vec[i];
-    entries[i] = use_linf ? fabs(v) : (v * v);
-}
-
-static __global__ void compute_bound_norm_entries_kernel(
-    const double *__restrict__ cons_lb,
-    const double *__restrict__ cons_ub,
-    double *__restrict__ entries,
-    int n_cons,
-    int use_linf)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n_cons) return;
-
-    double Li = cons_lb[i];
-    double Ui = cons_ub[i];
-    double acc = 0.0;
-    if (use_linf)
-    {
-        if (isfinite(Li) && Li != Ui) acc = fmax(acc, fabs(Li));
-        if (isfinite(Ui)) acc = fmax(acc, fabs(Ui));
-    }
-    else
-    {
-        if (isfinite(Li) && Li != Ui) acc += Li * Li;
-        if (isfinite(Ui)) acc += Ui * Ui;
-    }
-    entries[i] = acc;
-}
-
 void reduce_device_sum(
     pdhg_solver_state_t *state,
     const double *input,
@@ -508,4 +456,65 @@ void reduce_device_abs_max(
         length,
         state->stream_A));
     CUDA_CHECK(cudaGetLastError());
+}
+
+__global__ void compute_delta_kernel(
+    const double *__restrict__ initial_primal,
+    const double *__restrict__ pdhg_primal,
+    double *__restrict__ delta_primal,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ pdhg_dual,
+    double *__restrict__ delta_dual,
+    int n_vars,
+    int n_cons)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_vars)
+    {
+        delta_primal[i] = pdhg_primal[i] - initial_primal[i];
+    }
+    else if (i < n_vars + n_cons)
+    {
+        int idx = i - n_vars;
+        delta_dual[idx] = pdhg_dual[idx] - initial_dual[idx];
+    }
+}
+
+__global__ void compute_objective_norm_entries_kernel(
+    const double *__restrict__ obj_vec,
+    double *__restrict__ entries,
+    int n_vars,
+    int use_linf)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_vars) return;
+
+    double v = obj_vec[i];
+    entries[i] = use_linf ? fabs(v) : (v * v);
+}
+
+__global__ void compute_bound_norm_entries_kernel(
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    double *__restrict__ entries,
+    int n_cons,
+    int use_linf)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_cons) return;
+
+    double Li = cons_lb[i];
+    double Ui = cons_ub[i];
+    double acc = 0.0;
+    if (use_linf)
+    {
+        if (isfinite(Li) && Li != Ui) acc = fmax(acc, fabs(Li));
+        if (isfinite(Ui)) acc = fmax(acc, fabs(Ui));
+    }
+    else
+    {
+        if (isfinite(Li) && Li != Ui) acc += Li * Li;
+        if (isfinite(Ui)) acc += Ui * Ui;
+    }
+    entries[i] = acc;
 }

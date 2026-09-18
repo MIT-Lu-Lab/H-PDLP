@@ -96,10 +96,6 @@ __global__ void scale_objective_kernel(
     const double *__restrict__ cons_scale_d,
     const double *__restrict__ obj_scale_d,
     int n_vars);
-static void scale_problem(
-    pdhg_solver_state_t *state,
-    double *constraint_rescaling,
-    double *variable_rescaling);
 __global__ void compute_csr_max_row_length_kernel(
     const int *__restrict__ row_ptr,
     int n_rows,
@@ -117,6 +113,10 @@ __global__ void finalize_geometric_mean_scaling_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
     int n);
+static void scale_problem(
+    pdhg_solver_state_t *state,
+    double *constraint_rescaling,
+    double *variable_rescaling);
 static void geometric_mean_rescaling(
     pdhg_solver_state_t *state,
     int num_iters,
@@ -495,16 +495,6 @@ static void bound_objective_rescaling(
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
-__global__ void compute_bound_objective_scales_kernel(
-    double *cons_scale_d,
-    double *obj_scale_d,
-    const double *bound_norm,
-    const double *objective_norm)
-{
-    *cons_scale_d = 1.0 / (bound_norm[0] + 1.0);
-    *obj_scale_d = 1.0 / (objective_norm[0] + 1.0);
-}
-
 void rescale_problem(
     const pdhg_parameters_t *params,
     pdhg_solver_state_t *state)
@@ -661,6 +651,19 @@ void rescale_problem(
     }
 }
 
+__device__ __forceinline__ double pow_fast(
+    double v, 
+    double p)
+{
+    if (p == 2.0)
+        return v * v;
+    if (p == 1.0)
+        return v;
+    if (p == 0.5)
+        return sqrt(v);
+    return pow(v, p);
+}
+
 __global__ void scale_variables_kernel(double *__restrict__ obj_vec,
                                        double *__restrict__ var_lb,
                                        double *__restrict__ var_ub,
@@ -739,19 +742,6 @@ __global__ void compute_csr_row_absmax_kernel(
     row_absmax_values[i] = m;
 }
 
-__device__ __forceinline__ double pow_fast(
-    double v, 
-    double p)
-{
-    if (p == 2.0)
-        return v * v;
-    if (p == 1.0)
-        return v;
-    if (p == 0.5)
-        return sqrt(v);
-    return pow(v, p);
-}
-
 __global__ void compute_csr_row_powsum_kernel(
     const int *__restrict__ row_ptr,
     const double *__restrict__ matrix_vals,
@@ -774,72 +764,14 @@ __global__ void compute_csr_row_powsum_kernel(
     row_powsum_values[i] = acc;
 }
 
-__global__ void compute_csr_max_row_length_kernel(
-    const int *__restrict__ row_ptr,
-    int n_rows,
-    int *__restrict__ max_row_length)
+__global__ void compute_bound_objective_scales_kernel(
+    double *cons_scale_d,
+    double *obj_scale_d,
+    const double *bound_norm,
+    const double *objective_norm)
 {
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_rows)
-        atomicMax(max_row_length, row_ptr[i + 1] - row_ptr[i]);
-}
-
-__global__ void update_geometric_mean_multiplier_kernel(
-    const int *__restrict__ row_ptr,
-    const int *__restrict__ col_ind,
-    const double *__restrict__ matrix_vals,
-    int n_rows,
-    int log2_width,
-    const double *__restrict__ other_multiplier,
-    double *__restrict__ multiplier)
-{
-    const int width = 1 << log2_width;
-    const int groups_per_block = blockDim.x >> log2_width;
-    const int row = blockIdx.x * groups_per_block + (threadIdx.x >> log2_width);
-    const int lane = threadIdx.x & (width - 1);
-
-    double lo = INFINITY;
-    double hi = 0.0;
-    if (row < n_rows)
-    {
-        const int s = row_ptr[row], e = row_ptr[row + 1];
-        for (int k = s + lane; k < e; k += width)
-        {
-            const double scaled = fabs(matrix_vals[k]) * other_multiplier[col_ind[k]];
-            if (!(scaled > 0.0 && isfinite(scaled)))
-                continue;
-            lo = fmin(lo, scaled);
-            hi = fmax(hi, scaled);
-        }
-    }
-
-    for (int offset = width >> 1; offset > 0; offset >>= 1)
-    {
-        lo = fmin(lo, __shfl_down_sync(0xffffffffu, lo, offset, width));
-        hi = fmax(hi, __shfl_down_sync(0xffffffffu, hi, offset, width));
-    }
-
-    if (lane != 0 || row >= n_rows || hi <= 0.0)
-        return;
-
-    const double updated = 1.0 / (sqrt(lo) * sqrt(hi));
-    multiplier[row] = fmin(
-        fmax(updated, 1.0 / GEOMETRIC_MEAN_MULTIPLIER_MAX),
-        GEOMETRIC_MEAN_MULTIPLIER_MAX);
-}
-
-__global__ void finalize_geometric_mean_scaling_kernel(
-    const double *__restrict__ multiplier,
-    double *__restrict__ scaling_factors,
-    double *__restrict__ cumulative_rescaling,
-    int n)
-{
-    for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n; t += blockDim.x * gridDim.x)
-    {
-        const double divisor = 1.0 / multiplier[t];
-        cumulative_rescaling[t] *= divisor;
-        scaling_factors[t] = divisor;
-    }
+    *cons_scale_d = 1.0 / (bound_norm[0] + 1.0);
+    *obj_scale_d = 1.0 / (objective_norm[0] + 1.0);
 }
 
 __global__ void clamp_sqrt_and_accum_kernel(
@@ -919,3 +851,70 @@ __global__ void scale_objective_kernel(
     init_primal_sol[j] *= cons_scale;
 }
 
+__global__ void compute_csr_max_row_length_kernel(
+    const int *__restrict__ row_ptr,
+    int n_rows,
+    int *__restrict__ max_row_length)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_rows)
+        atomicMax(max_row_length, row_ptr[i + 1] - row_ptr[i]);
+}
+
+__global__ void update_geometric_mean_multiplier_kernel(
+    const int *__restrict__ row_ptr,
+    const int *__restrict__ col_ind,
+    const double *__restrict__ matrix_vals,
+    int n_rows,
+    int log2_width,
+    const double *__restrict__ other_multiplier,
+    double *__restrict__ multiplier)
+{
+    const int width = 1 << log2_width;
+    const int groups_per_block = blockDim.x >> log2_width;
+    const int row = blockIdx.x * groups_per_block + (threadIdx.x >> log2_width);
+    const int lane = threadIdx.x & (width - 1);
+
+    double lo = INFINITY;
+    double hi = 0.0;
+    if (row < n_rows)
+    {
+        const int s = row_ptr[row], e = row_ptr[row + 1];
+        for (int k = s + lane; k < e; k += width)
+        {
+            const double scaled = fabs(matrix_vals[k]) * other_multiplier[col_ind[k]];
+            if (!(scaled > 0.0 && isfinite(scaled)))
+                continue;
+            lo = fmin(lo, scaled);
+            hi = fmax(hi, scaled);
+        }
+    }
+
+    for (int offset = width >> 1; offset > 0; offset >>= 1)
+    {
+        lo = fmin(lo, __shfl_down_sync(0xffffffffu, lo, offset, width));
+        hi = fmax(hi, __shfl_down_sync(0xffffffffu, hi, offset, width));
+    }
+
+    if (lane != 0 || row >= n_rows || hi <= 0.0)
+        return;
+
+    const double updated = 1.0 / (sqrt(lo) * sqrt(hi));
+    multiplier[row] = fmin(
+        fmax(updated, 1.0 / GEOMETRIC_MEAN_MULTIPLIER_MAX),
+        GEOMETRIC_MEAN_MULTIPLIER_MAX);
+}
+
+__global__ void finalize_geometric_mean_scaling_kernel(
+    const double *__restrict__ multiplier,
+    double *__restrict__ scaling_factors,
+    double *__restrict__ cumulative_rescaling,
+    int n)
+{
+    for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n; t += blockDim.x * gridDim.x)
+    {
+        const double divisor = 1.0 / multiplier[t];
+        cumulative_rescaling[t] *= divisor;
+        scaling_factors[t] = divisor;
+    }
+}
