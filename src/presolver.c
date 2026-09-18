@@ -174,6 +174,9 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
     else if (info->presolver->reduced_prob->n == 0)
     {
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
+        result->primal_solution = (double *)safe_calloc(info->presolver->reduced_prob->n, sizeof(double));
+        result->dual_solution = (double *)safe_calloc(info->presolver->reduced_prob->m, sizeof(double));
+        result->reduced_cost = (double *)safe_calloc(info->presolver->reduced_prob->n, sizeof(double));
         pslp_postsolve(info, result, working_problem);
         return result;
     }
