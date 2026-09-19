@@ -32,7 +32,7 @@ limitations under the License.
 
 #define PRINT_DIFF_DBL(name, current, default_val) \
     do { \
-        if (fabs((current) - (default_val)) > 1e-9) { \
+        if ((current) != (default_val)) { \
             printf("  %-18s : %.1e\n", name, (double)(current)); \
         } \
     } while(0)
