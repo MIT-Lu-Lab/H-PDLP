@@ -39,6 +39,15 @@ char *get_output_path(const char *output_dir, const char *instance_name,
     return full_path;
 }
 
+static void strip_suffix(char *name, const char *suffix)
+{
+    size_t name_len = strlen(name);
+    size_t suffix_len = strlen(suffix);
+    if (name_len > suffix_len &&
+        strcmp(name + name_len - suffix_len, suffix) == 0)
+        name[name_len - suffix_len] = '\0';
+}
+
 char *extract_instance_name(const char *filename)
 {
     char *filename_copy = strdup(filename);
@@ -49,11 +58,8 @@ char *extract_instance_name(const char *filename)
     }
 
     char *base = basename(filename_copy);
-    char *dot = strchr(base, '.');
-    if (dot)
-    {
-        *dot = '\0';
-    }
+    strip_suffix(base, ".gz");
+    strip_suffix(base, ".mps");
 
     char *instance_name = strdup(base);
     free(filename_copy);
@@ -107,30 +113,30 @@ static bool parse_double_arg(const char *option_name, const char *value, double 
     return true;
 }
 
-void save_solution(const double *data, int size, const char *output_dir,
+bool save_solution(const double *data, int size, const char *output_dir,
                    const char *instance_name, const char *suffix)
 {
     if (data == NULL)
-        return;
+        return true;
 
     FILE *outfile = open_output_file(output_dir, instance_name, suffix,
                                      "Error opening solution file");
     if (outfile == NULL)
-        return;
+        return false;
 
     for (int i = 0; i < size; ++i)
         fprintf(outfile, "%.10g\n", data[i]);
 
-    fclose(outfile);
+    return fclose(outfile) == 0;
 }
 
-void save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
+bool save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
                          const char *instance_name)
 {
     FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt",
                                      "Error opening summary file");
     if (outfile == NULL)
-        return;
+        return false;
 
     fprintf(outfile, "Termination Reason: %s\n",
             termination_reason_to_string(result->termination_reason));
@@ -155,7 +161,7 @@ void save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
     fprintf(outfile, "Rows: %d\n", result->num_constraints);
     fprintf(outfile, "Columns: %d\n", result->num_variables);
     fprintf(outfile, "Nonzeros: %d\n", result->num_nonzeros);
-    fclose(outfile);
+    return fclose(outfile) == 0;
 }
 
 void print_usage(const char *prog_name)
@@ -191,7 +197,9 @@ void print_usage(const char *prog_name)
     fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: 200).\n");
     fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
     fprintf(stderr, "\n  Output:\n");
-    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: false).\n");
+    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: true).\n");
+    fprintf(stderr, "  -q, --quiet                           Disable verbose logging.\n");
+    fprintf(stderr, "  -d, --diagnose                        Add HSD scale, step-size, weight and norm columns.\n");
 }
 
 int main(int argc, char *argv[])
@@ -221,10 +229,12 @@ int main(int argc, char *argv[])
         {"eval_freq", required_argument, 0, 1018},
         {"opt_norm", required_argument, 0, 1019},
         {"verbose", no_argument, 0, 'v'},
+        {"quiet", no_argument, 0, 'q'},
+        {"diagnose", no_argument, 0, 'd'},
         {0, 0, 0, 0}};
 
     int opt;
-    while ((opt = getopt_long(argc, argv, "hv", long_options, NULL)) != -1)
+    while ((opt = getopt_long(argc, argv, "hvqd", long_options, NULL)) != -1)
     {
         switch (opt)
         {
@@ -233,6 +243,12 @@ int main(int argc, char *argv[])
             return 0;
         case 'v':
             params.verbose = true;
+            break;
+        case 'q':
+            params.verbose = false;
+            break;
+        case 'd':
+            params.diagnose = true;
             break;
         case 1001:
             params.presolve = false;
@@ -368,13 +384,16 @@ int main(int argc, char *argv[])
     }
     else
     {
-        save_solver_summary(result, output_dir, instance_name);
-        if (result->primal_solution)
-            save_solution(result->primal_solution, problem->num_variables, output_dir,
-                          instance_name, "_primal_solution.txt");
-        if (result->dual_solution)
-            save_solution(result->dual_solution, problem->num_constraints, output_dir,
-                          instance_name, "_dual_solution.txt");
+        if (!save_solver_summary(result, output_dir, instance_name))
+            exit_code = 1;
+        if (!save_solution(result->primal_solution, problem->num_variables, output_dir,
+                           instance_name, "_primal_solution.txt"))
+            exit_code = 1;
+        if (!save_solution(result->dual_solution, problem->num_constraints, output_dir,
+                           instance_name, "_dual_solution.txt"))
+            exit_code = 1;
+        if (result->termination_reason == TERMINATION_REASON_NUMERICAL_FAILURE)
+            exit_code = 1;
         cuhsdlp_result_free(result);
     }
 
