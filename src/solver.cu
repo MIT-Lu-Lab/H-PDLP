@@ -155,6 +155,11 @@ cuhsdlp_result_t *optimize(
     if (params->presolve)
     {
         presolve_info = pslp_presolve(&working_problem, params->verbose);
+        if (!presolve_info)
+        {
+            working_problem_free(&working_problem, original_problem);
+            return NULL;
+        }
         if (presolve_info->problem_solved_during_presolve)
         {
             cuhsdlp_result_t *result = create_result_from_presolve(presolve_info, &working_problem);

@@ -83,6 +83,12 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool
     cuhsdlp_presolve_info_t *info = (cuhsdlp_presolve_info_t *)safe_calloc(1, sizeof(cuhsdlp_presolve_info_t));
 
     info->settings = default_settings();
+    if (!info->settings)
+    {
+        fprintf(stderr, "PSLP: failed to create settings.\n");
+        cuhsdlp_presolve_info_free(info);
+        return NULL;
+    }
     info->settings->verbose = false;
 
     info->presolver = new_presolver(
@@ -98,6 +104,13 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool
         working_problem->variable_upper_bound,
         working_problem->objective_vector,
         info->settings);
+
+    if (!info->presolver)
+    {
+        fprintf(stderr, "PSLP: failed to create presolver.\n");
+        cuhsdlp_presolve_info_free(info);
+        return NULL;
+    }
 
     PresolveStatus status = run_presolver(info->presolver);
     info->presolve_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
