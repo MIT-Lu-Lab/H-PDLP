@@ -24,6 +24,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+static bool validate_bounds(const double *lower, const double *upper,
+                            int n, const char *bound_type);
 static void fill_or_copy(
     double **dst, int n,
     const double *src,
@@ -54,18 +56,6 @@ lp_problem_t *create_lp_problem(
         return NULL;
     }
 
-    for (int k = 0; k < nnz; ++k)
-    {
-        if (!isfinite(vals[k]))
-        {
-            fprintf(stderr, "invalid input matrix: coefficients must be finite.\n");
-            free(row_ptr);
-            free(col_ind);
-            free(vals);
-            return NULL;
-        }
-    }
-
     lp_problem_t *prob = (lp_problem_t *)safe_calloc(1, sizeof(lp_problem_t));
     prob->num_variables = A_desc->n;
     prob->num_constraints = A_desc->m;
@@ -82,7 +72,69 @@ lp_problem_t *create_lp_problem(
     fill_or_copy(&prob->constraint_lower_bound, prob->num_constraints, con_lb, -INFINITY);
     fill_or_copy(&prob->constraint_upper_bound, prob->num_constraints, con_ub, INFINITY);
 
+    if (!validate_lp_problem_data(prob))
+    {
+        lp_problem_free(prob);
+        return NULL;
+    }
     return prob;
+}
+
+bool validate_lp_problem_data(const lp_problem_t *prob)
+{
+    if (!prob || prob->num_variables < 0 || prob->num_constraints < 0 ||
+        prob->constraint_matrix_num_nonzeros < 0 ||
+        (prob->num_variables > 0 &&
+         (!prob->objective_vector || !prob->variable_lower_bound || !prob->variable_upper_bound)) ||
+        (prob->num_constraints > 0 &&
+         (!prob->constraint_lower_bound || !prob->constraint_upper_bound)) ||
+        (prob->constraint_matrix_num_nonzeros > 0 && !prob->constraint_matrix_values))
+    {
+        fprintf(stderr, "invalid model: missing data or invalid dimensions.\n");
+        return false;
+    }
+    if (!isfinite(prob->objective_constant))
+    {
+        fprintf(stderr, "invalid model: objective constant must be finite.\n");
+        return false;
+    }
+    for (int j = 0; j < prob->num_variables; ++j)
+    {
+        if (!isfinite(prob->objective_vector[j]))
+        {
+            fprintf(stderr, "invalid model: objective coefficient at index %d must be finite.\n", j);
+            return false;
+        }
+    }
+    for (int k = 0; k < prob->constraint_matrix_num_nonzeros; ++k)
+    {
+        if (!isfinite(prob->constraint_matrix_values[k]))
+        {
+            fprintf(stderr, "invalid input matrix: coefficients must be finite.\n");
+            return false;
+        }
+    }
+    return validate_bounds(prob->variable_lower_bound, prob->variable_upper_bound,
+                           prob->num_variables, "variable") &&
+           validate_bounds(prob->constraint_lower_bound, prob->constraint_upper_bound,
+                           prob->num_constraints, "constraint");
+}
+
+static bool validate_bounds(const double *lower, const double *upper,
+                            int n, const char *bound_type)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        if (isnan(lower[i]) || isnan(upper[i]) ||
+            lower[i] == INFINITY || upper[i] == -INFINITY ||
+            lower[i] > upper[i])
+        {
+            fprintf(stderr, "invalid %s bounds at index %d: [%g, %g].\n",
+                    bound_type, i, lower[i], upper[i]);
+            return false;
+        }
+    }
+    return true;
 }
 
 static void fill_or_copy(

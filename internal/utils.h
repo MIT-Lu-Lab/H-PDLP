@@ -40,6 +40,8 @@ extern "C"
     void *safe_calloc(size_t num, size_t size);
     void *safe_realloc(void *ptr, size_t new_size);
 
+    bool validate_lp_problem_data(const lp_problem_t *prob);
+
     void allocate_zeroed_device_buffer(void **dst, size_t bytes);
 
     void allocate_and_copy_to_device(
