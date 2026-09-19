@@ -517,7 +517,8 @@ static bool certify_optimality(
     pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    if (state->metrics_h->relative_primal_residual < criteria->eps_feasible_relative &&
+    if (state->metrics_h->pdhg_primal_scale > 1e-50 &&
+        state->metrics_h->relative_primal_residual < criteria->eps_feasible_relative &&
         state->metrics_h->relative_dual_residual   < criteria->eps_feasible_relative &&
         state->metrics_h->relative_objective_gap   < criteria->eps_optimal_relative)
     {
