@@ -34,7 +34,7 @@ extern "C"
 
     void set_objective_sense(lp_problem_t *prob, objective_sense_t sense);
 
-    void set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
+    bool set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
 
     cuhsdlp_result_t *solve_lp_problem(
         const lp_problem_t *prob,

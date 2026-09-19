@@ -26,6 +26,8 @@ limitations under the License.
 
 static bool validate_bounds(const double *lower, const double *upper,
                             int n, const char *bound_type);
+static bool validate_start_vector(const double *values, int n,
+                                  const char *vector_type);
 static void fill_or_copy(
     double **dst, int n,
     const double *src,
@@ -196,16 +198,20 @@ void set_objective_sense(lp_problem_t *prob, objective_sense_t sense)
     prob->objective_sense = sense;
 }
 
-void set_start_values(
+bool set_start_values(
     lp_problem_t *prob,
     const double *primal,
     const double *dual)
 {
     if (!prob)
-        return;
+        return false;
 
     int n = prob->num_variables;
     int m = prob->num_constraints;
+
+    if (!validate_start_vector(primal, n, "primal") ||
+        !validate_start_vector(dual, m, "dual"))
+        return false;
 
     double *new_primal_start = NULL;
     double *new_dual_start = NULL;
@@ -221,6 +227,24 @@ void set_start_values(
     free(prob->dual_start);
     prob->primal_start = new_primal_start;
     prob->dual_start = new_dual_start;
+    return true;
+}
+
+static bool validate_start_vector(const double *values, int n,
+                                  const char *vector_type)
+{
+    if (!values)
+        return true;
+    for (int i = 0; i < n; ++i)
+    {
+        if (!isfinite(values[i]))
+        {
+            fprintf(stderr, "invalid %s start value at index %d: %g.\n",
+                    vector_type, i, values[i]);
+            return false;
+        }
+    }
+    return true;
 }
 
 static void copy_start_vector(double **dst, const double *src, int n)
