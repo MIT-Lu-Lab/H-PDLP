@@ -175,7 +175,7 @@ cuhsdlp_result_t *optimize(
         presolve_info ? presolve_info->reduced_problem : &working_problem,
         original_problem,
         params);
-    display_iteration_stats(state, params->verbose, false);
+    display_iteration_stats(state, params, false);
 
     initialize_step_size_and_primal_weight(state, params);
 
@@ -241,7 +241,7 @@ cuhsdlp_result_t *optimize(
 
         if (terminated)
         {
-            display_iteration_stats(state, params->verbose, false);
+            display_iteration_stats(state, params, false);
             break;
         }
 
@@ -252,14 +252,14 @@ cuhsdlp_result_t *optimize(
             continue;
         }
 
-        display_iteration_stats(state, params->verbose, false);
+        display_iteration_stats(state, params, false);
     }
 
     if (state->control.termination_reason == TERMINATION_REASON_UNSPECIFIED)
     {
         state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_termination_metrics(state, params);
-        display_iteration_stats(state, params->verbose, false);
+        display_iteration_stats(state, params, false);
     }
 
     cuhsdlp_result_t *result = create_result_from_state(state, &working_problem);
@@ -677,7 +677,7 @@ static void perform_active_set_boost_revert(
         &state->control.step_size_dual,
         &state->control.step_size_homogeneous);
     compute_termination_metrics(state, params);
-    display_iteration_stats(state, params->verbose, true);
+    display_iteration_stats(state, params, true);
     display_active_set_boost_revert(state, params);
     state->control.termination_reason = TERMINATION_REASON_UNSPECIFIED;
     check_termination_criteria(state, &params->termination_criteria);
@@ -733,7 +733,7 @@ static void perform_restart(
     const step_size_parameters_t *step_size_params = &params->step_size_params;
 
     state->control.restart_count++;
-    display_iteration_stats(state, params->verbose, true);
+    display_iteration_stats(state, params, true);
 
     compute_delta_kernel<<<
         state->num_blocks_primal_dual,

@@ -357,7 +357,7 @@ pdhg_solver_state_t *initialize_solver_state(
     initialize_iterates_from_starts(state);
     initialize_convergence_tracking(state);
 
-    print_iteration_header(params->verbose);
+    print_iteration_header(params);
 
     return state;
 }

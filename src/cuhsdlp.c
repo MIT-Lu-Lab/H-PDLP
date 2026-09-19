@@ -234,6 +234,7 @@ void set_default_parameters(pdhg_parameters_t *params)
 {
     params->presolve = true;
     params->verbose = true;
+    params->diagnose = false;
     params->optimality_norm = NORM_TYPE_L2;
     params->reflection_coefficient = 1.0;
     params->termination_evaluation_frequency = 200;
