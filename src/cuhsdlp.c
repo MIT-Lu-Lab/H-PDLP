@@ -108,13 +108,6 @@ static void fill_or_copy(
         (*dst)[i] = fill_val;
 }
 
-static void copy_start_vector(double **dst, const double *src, int n)
-{
-    size_t bytes = (size_t)n * sizeof(double);
-    *dst = (double *)safe_malloc(bytes);
-    memcpy(*dst, src, bytes);
-}
-
 void cuhsdlp_result_free(cuhsdlp_result_t *results)
 {
     if (results == NULL)
@@ -162,25 +155,27 @@ void set_start_values(
     int n = prob->num_variables;
     int m = prob->num_constraints;
 
-    if (prob->primal_start)
-    {
-        free(prob->primal_start);
-        prob->primal_start = NULL;
-    }
-    if (prob->dual_start)
-    {
-        free(prob->dual_start);
-        prob->dual_start = NULL;
-    }
-
+    double *new_primal_start = NULL;
+    double *new_dual_start = NULL;
     if (primal)
     {
-        copy_start_vector(&prob->primal_start, primal, n);
+        copy_start_vector(&new_primal_start, primal, n);
     }
     if (dual)
     {
-        copy_start_vector(&prob->dual_start, dual, m);
+        copy_start_vector(&new_dual_start, dual, m);
     }
+    free(prob->primal_start);
+    free(prob->dual_start);
+    prob->primal_start = new_primal_start;
+    prob->dual_start = new_dual_start;
+}
+
+static void copy_start_vector(double **dst, const double *src, int n)
+{
+    size_t bytes = (size_t)n * sizeof(double);
+    *dst = (double *)safe_malloc(bytes);
+    memcpy(*dst, src, bytes);
 }
 
 void set_default_parameters(pdhg_parameters_t *params)
