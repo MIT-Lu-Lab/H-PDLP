@@ -29,8 +29,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-char *get_output_path(const char *output_dir, const char *instance_name,
-                      const char *suffix)
+static char *get_output_path(const char *output_dir, const char *instance_name,
+                             const char *suffix)
 {
     size_t path_len =
         strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
@@ -48,7 +48,7 @@ static void strip_suffix(char *name, const char *suffix)
         name[name_len - suffix_len] = '\0';
 }
 
-char *extract_instance_name(const char *filename)
+static char *extract_instance_name(const char *filename)
 {
     char *filename_copy = strdup(filename);
     if (filename_copy == NULL)
@@ -113,8 +113,8 @@ static bool parse_double_arg(const char *option_name, const char *value, double 
     return true;
 }
 
-bool save_solution(const double *data, int size, const char *output_dir,
-                   const char *instance_name, const char *suffix)
+static bool save_solution(const double *data, int size, const char *output_dir,
+                          const char *instance_name, const char *suffix)
 {
     if (data == NULL)
         return true;
@@ -130,8 +130,8 @@ bool save_solution(const double *data, int size, const char *output_dir,
     return fclose(outfile) == 0;
 }
 
-bool save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
-                         const char *instance_name)
+static bool save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
+                                const char *instance_name)
 {
     FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt",
                                      "Error opening summary file");
@@ -164,7 +164,7 @@ bool save_solver_summary(const cuhsdlp_result_t *result, const char *output_dir,
     return fclose(outfile) == 0;
 }
 
-void print_usage(const char *prog_name)
+static void print_usage(const char *prog_name)
 {
     fprintf(stderr, "Usage: %s [OPTIONS] <mps_file> <output_dir>\n\n", prog_name);
 
