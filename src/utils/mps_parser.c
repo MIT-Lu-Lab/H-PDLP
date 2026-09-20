@@ -749,6 +749,13 @@ lp_problem_t *read_mps_file(const char *filename)
         return NULL;
     }
 
+    if (!validate_lp_problem_data(prob))
+    {
+        lp_problem_free(prob);
+        free_parser_state(&state);
+        return NULL;
+    }
+
     if ((size_t)prob->constraint_matrix_num_nonzeros < state.coo_matrix.nnz)
     {
         fprintf(stderr, "WARNING: %zu duplicate matrix entries were summed.\n",
@@ -1083,6 +1090,12 @@ static int parse_ranges_section(MpsParserState *state, char **tokens,
                 {
                     state->constraint_lower_bounds[row_idx] = rhs + range_val;
                 }
+            }
+            if (!isfinite(state->constraint_lower_bounds[row_idx]) ||
+                !isfinite(state->constraint_upper_bounds[row_idx]))
+            {
+                fprintf(stderr, "ERROR: Non-finite range bound for row '%s'.\n", row_name);
+                return -1;
             }
         }
     }

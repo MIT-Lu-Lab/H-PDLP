@@ -135,6 +135,7 @@ extern "C"
     {
         bool presolve;
         bool verbose;
+        bool diagnose;
         norm_type_t optimality_norm;
         double reflection_coefficient;
         int termination_evaluation_frequency;

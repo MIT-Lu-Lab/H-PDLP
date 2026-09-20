@@ -19,10 +19,6 @@ limitations under the License.
 #include <math.h>
 #include <thrust/iterator/transform_iterator.h>
 
-#ifndef CUHSDLP_VERSION
-#define CUHSDLP_VERSION "unknown"
-#endif
-
 const double HOST_ONE = 1.0;
 const double HOST_ZERO = 0.0;
 

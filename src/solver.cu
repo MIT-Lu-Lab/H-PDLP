@@ -155,6 +155,11 @@ cuhsdlp_result_t *optimize(
     if (params->presolve)
     {
         presolve_info = pslp_presolve(&working_problem, params->verbose);
+        if (!presolve_info)
+        {
+            working_problem_free(&working_problem, original_problem);
+            return NULL;
+        }
         if (presolve_info->problem_solved_during_presolve)
         {
             cuhsdlp_result_t *result = create_result_from_presolve(presolve_info, &working_problem);
@@ -171,7 +176,7 @@ cuhsdlp_result_t *optimize(
         original_problem,
         params);
     tau_trace_t *tau_trace = tau_trace_open(params->tau_trace_path);
-    display_iteration_stats(state, params->verbose, false);
+    display_iteration_stats(state, params, false);
 
     initialize_step_size_and_primal_weight(state, params);
 
@@ -238,7 +243,7 @@ cuhsdlp_result_t *optimize(
 
         if (terminated)
         {
-            display_iteration_stats(state, params->verbose, false);
+            display_iteration_stats(state, params, false);
             break;
         }
 
@@ -250,7 +255,7 @@ cuhsdlp_result_t *optimize(
             continue;
         }
 
-        display_iteration_stats(state, params->verbose, false);
+        display_iteration_stats(state, params, false);
         tau_trace_write_row(tau_trace, state, "iter");
     }
 
@@ -258,7 +263,7 @@ cuhsdlp_result_t *optimize(
     {
         state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         compute_termination_metrics(state, params);
-        display_iteration_stats(state, params->verbose, false);
+        display_iteration_stats(state, params, false);
     }
     tau_trace_write_row(tau_trace, state, "final");
     tau_trace_close(tau_trace);
@@ -678,7 +683,7 @@ static void perform_active_set_boost_revert(
         &state->control.step_size_dual,
         &state->control.step_size_homogeneous);
     compute_termination_metrics(state, params);
-    display_iteration_stats(state, params->verbose, true);
+    display_iteration_stats(state, params, true);
     display_active_set_boost_revert(state, params);
     state->control.termination_reason = TERMINATION_REASON_UNSPECIFIED;
     check_termination_criteria(state, &params->termination_criteria);
@@ -734,7 +739,7 @@ static void perform_restart(
     const step_size_parameters_t *step_size_params = &params->step_size_params;
 
     state->control.restart_count++;
-    display_iteration_stats(state, params->verbose, true);
+    display_iteration_stats(state, params, true);
 
     compute_delta_kernel<<<
         state->num_blocks_primal_dual,

@@ -85,23 +85,25 @@ For MPS inputs with integer variables, cuHSDLP solves the LP relaxation; integra
 | :--- | :--- | :--- | :--- |
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
 | `-v`, `--verbose` | `flag` | Enable verbose logging. | `true` |
+| `-q`, `--quiet` | `flag` | Disable verbose logging. | `false` |
+| `-d`, `--diagnose` | `flag` | Add HSD scale, step-size, primal-weight and block-norm columns to the iteration log. | `false` |
 
 **Preprocessing / Scaling**
 
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--no_presolve` | `flag` | Disable presolve (PSLP). | presolve enabled |
+| `--no_presolve` | `flag` | Disable presolve (PSLP). | `false` |
 | `--l_inf_ruiz_iter` | `int` | Iterations for L-∞ Ruiz rescaling. | `10` |
-| `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling. | enabled |
+| `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling. | `false` |
 | `--pock_chambolle_alpha` | `float` | Pock-Chambolle α. | `1.0` |
-| `--no_bound_obj_rescaling` | `flag` | Disable bound / objective rescaling. | enabled |
+| `--no_bound_obj_rescaling` | `flag` | Disable bound / objective rescaling. | `false` |
 
 **Solver algorithm**
 
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `--step_size_factor` | `float` | Step-size scaling factor in (0, 1). | `0.998` |
-| `--no_active_set_step_size_boost` | `flag` | Disable active-set step-size boosting. | enabled |
+| `--no_active_set_step_size_boost` | `flag` | Disable active-set step-size boosting. | `false` |
 | `--singular_value_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
 | `--singular_value_tol` | `float` | Power-iteration tolerance. | `1e-4` |
 | `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `100` |

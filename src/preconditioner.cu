@@ -639,13 +639,16 @@ void rescale_problem(
 
     if (verbose)
     {
-        printf("  %-20s %15s %15s\n", "", "original", "rescaled");
-        printf("  %-20s %15s %15.6e\n", "||A||",
-               "-", state->rescaled_constraint_norm);
-        printf("  %-20s %15.6e %15.6e\n", "||c||",
-               state->original_objective_norm, state->rescaled_objective_norm);
-        printf("  %-20s %15.6e %15.6e\n", "||b||",
-               state->original_bound_norm, state->rescaled_bound_norm);
+        if (params->diagnose)
+        {
+            printf("  %-20s %15s %15s\n", "", "original", "rescaled");
+            printf("  %-20s %15s %15.6e\n", "||A||",
+                   "-", state->rescaled_constraint_norm);
+            printf("  %-20s %15.6e %15.6e\n", "||c||",
+                   state->original_objective_norm, state->rescaled_objective_norm);
+            printf("  %-20s %15.6e %15.6e\n", "||b||",
+                   state->original_bound_norm, state->rescaled_bound_norm);
+        }
         printf("  %-20s : %.3g sec\n", "precondition time", state->rescaling_time_sec);
         printf("\n");
     }

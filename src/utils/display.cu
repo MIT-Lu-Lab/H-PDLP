@@ -33,7 +33,7 @@ limitations under the License.
 
 #define PRINT_DIFF_DBL(name, current, default_val) \
     do { \
-        if (fabs((current) - (default_val)) > 1e-9) { \
+        if ((current) != (default_val)) { \
             printf("  %-18s : %.1e\n", name, (double)(current)); \
         } \
     } while(0)
@@ -191,39 +191,42 @@ void print_initial_info(
 #undef PRINT_DIFF_DBL
 #undef PRINT_DIFF_BOOL
 
-void print_iteration_header(bool verbose)
+static const char iteration_header[] =
+    "   iter   time  |  pr obj    du obj "
+    " |  pr res  du res   gap   |  pr res  du res   gap  ";
+
+static const char diagnostic_header[] =
+    " |  scale     gap     ratio  "
+    " |  pr ss    du ss    sc ss  "
+    " |  omega     tau     alpha  "
+    " |   |x|      |y|   ";
+
+static void print_iteration_divider(bool diagnose)
 {
-    if (!verbose)
+    size_t width = sizeof(iteration_header) - 1;
+    if (diagnose)
+        width += sizeof(diagnostic_header) - 1;
+    for (size_t i = 0; i < width; ++i)
+        putchar('-');
+    putchar('\n');
+}
+
+void print_iteration_header(const pdhg_parameters_t *params)
+{
+    if (!params->verbose)
         return;
 
-    printf("------------------------------------------------------------"
-           "--------------------------------------------------------------------------------\n");
-    printf(" %s | %s | %s | %s | %s | %s\n",
+    print_iteration_divider(params->diagnose);
+    printf(" %s | %s | %s | %s",
            "   runtime    ",
            "    objective     ",
            "  absolute residuals   ",
-           "  relative residuals   ",
-           "          hsd          ",
-           "      step sizes       ");
-    printf(" %s %s | %s %s | %s %s %s | %s %s %s | %s %s %s | %s %s %s\n",
-           "  iter",
-           "  time ",
-           " pr obj ",
-           "  du obj ",
-           " pr res",
-           " du res",
-           "  gap  ",
-           " pr res",
-           " du res",
-           "  gap  ",
-           " scale ",
-           "  gap  ",
-           " ratio ",
-           " pr ss ",
-           " du ss ",
-           " sc ss ");
-    printf("------------------------------------------------------------"
-           "--------------------------------------------------------------------------------\n");
+           "  relative residuals   ");
+    if (params->diagnose)
+        printf(" |            hsd             |        step sizes         "
+               " |     weight and scales      |   block norms    ");
+    printf("\n%s%s\n", iteration_header, params->diagnose ? diagnostic_header : "");
+    print_iteration_divider(params->diagnose);
 }
 
 int get_print_frequency(int iter)
@@ -241,17 +244,17 @@ int get_print_frequency(int iter)
 
 void display_iteration_stats(
     const pdhg_solver_state_t *state,
-    bool verbose,
+    const pdhg_parameters_t *params,
     bool is_restart)
 {
-    if (!verbose)
+    if (!params->verbose)
     {
         return;
     }
     if (is_restart || state->control.total_count % get_print_frequency(state->control.total_count) == 0)
     {
         printf(
-            "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e | %7.1e %7.1e %7.1e | %.1e %.1e %.1e\n",
+            "%c%6d %.1e | %8.1e  %8.1e | %.1e %.1e %.1e | %.1e %.1e %.1e",
             is_restart ? 'R' : ' ',
             state->control.total_count,
             state->control.cumulative_time_sec,
@@ -262,13 +265,24 @@ void display_iteration_stats(
             state->metrics_h->objective_gap,
             state->metrics_h->relative_primal_residual,
             state->metrics_h->relative_dual_residual,
-            state->metrics_h->relative_objective_gap,
-            state->metrics_h->current_primal_scale,
-            state->metrics_h->normalized_homogeneous_gap,
-            state->metrics_h->normalized_homogeneous_ratio,
-            state->control.step_size_primal,
-            state->control.step_size_dual,
-            state->control.step_size_homogeneous);
+            state->metrics_h->relative_objective_gap);
+        if (params->diagnose)
+        {
+            printf(" | %8.1e %8.1e %8.1e | %8.1e %8.1e %8.1e"
+                   " | %8.1e %8.1e %8.1e | %8.1e %8.1e",
+                   state->metrics_h->current_primal_scale,
+                   state->metrics_h->normalized_homogeneous_gap,
+                   state->metrics_h->normalized_homogeneous_ratio,
+                   state->control.step_size_primal,
+                   state->control.step_size_dual,
+                   state->control.step_size_homogeneous,
+                   state->control.primal_weight,
+                   state->metrics_h->pdhg_primal_scale,
+                   state->metrics_h->pdhg_dual_scale,
+                   state->metrics_h->primal_solution_norm,
+                   state->metrics_h->dual_solution_norm);
+        }
+        printf("\n");
     }
 }
 
@@ -308,8 +322,7 @@ void pdhg_final_log(
 {
     if (params->verbose)
     {
-        printf("------------------------------------------------------------"
-           "--------------------------------------------------------------------------------\n");
+        print_iteration_divider(params->diagnose);
         printf("Solution Summary\n");
         printf(
             "  Status                 : %s\n",

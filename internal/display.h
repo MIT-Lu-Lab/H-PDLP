@@ -29,9 +29,11 @@ extern "C"
 
     void print_initial_info(const pdhg_parameters_t *params, const lp_problem_t *problem);
 
-    void print_iteration_header(bool verbose);
+    void print_iteration_header(const pdhg_parameters_t *params);
 
-    void display_iteration_stats(const pdhg_solver_state_t *state, bool verbose, bool is_restart);
+    void display_iteration_stats(const pdhg_solver_state_t *state,
+                                 const pdhg_parameters_t *params,
+                                 bool is_restart);
 
     void display_active_set_boost_raise(
         const pdhg_parameters_t *params,

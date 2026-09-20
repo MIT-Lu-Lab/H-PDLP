@@ -898,7 +898,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
 
     const double primal_step = *step_size_d;
     const double current_scale = *current_primal_scale;
-    double primal_scale = current_scale;
+    double primal_scale = fmax(0.0, current_scale);
     double scale_low = 0.0;
     double scale_high = INFINITY;
     double newton_previous_step = INFINITY;
@@ -1074,7 +1074,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
 
     const double primal_step = *step_size_d;
     const double current_scale = *current_primal_scale;
-    double primal_scale = current_scale;
+    double primal_scale = fmax(0.0, current_scale);
     double scale_low = 0.0;
     double scale_high = INFINITY;
     double newton_previous_step = INFINITY;
