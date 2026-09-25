@@ -48,9 +48,11 @@ __global__ void compute_bound_norm_entries_kernel(
 static bool entry_is_near_zero(double value, double matrix_zero_tol);
 
 void filter_constraint_matrix_entries(
-    lp_problem_t *working_problem,
     const lp_problem_t *original_problem,
-    const pdhg_parameters_t *params)
+    const pdhg_parameters_t *params,
+    int **owned_row_pointers,
+    int **owned_col_indices,
+    double **owned_values)
 {
     const int num_rows = original_problem->num_constraints;
     const int nnz = original_problem->constraint_matrix_num_nonzeros;
@@ -99,6 +101,9 @@ void filter_constraint_matrix_entries(
     int *new_row_ptr = (int *)safe_malloc((size_t)(num_rows + 1) * sizeof(int));
     int *new_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
     double *new_vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
+    *owned_row_pointers = new_row_ptr;
+    *owned_col_indices = new_col_ind;
+    *owned_values = new_vals;
 
     int pos = 0;
     new_row_ptr[0] = 0;
@@ -114,11 +119,6 @@ void filter_constraint_matrix_entries(
         }
         new_row_ptr[i + 1] = pos;
     }
-
-    working_problem->constraint_matrix_row_pointers = new_row_ptr;
-    working_problem->constraint_matrix_col_indices = new_col_ind;
-    working_problem->constraint_matrix_values = new_vals;
-    working_problem->constraint_matrix_num_nonzeros = filtered_nnz;
 
     if (params->verbose)
     {

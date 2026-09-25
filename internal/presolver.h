@@ -29,7 +29,7 @@ extern "C"
     {
         Presolver *presolver;
         Settings *settings;
-        lp_problem_t *reduced_problem;
+        lp_problem_t reduced_problem_view;
         bool problem_solved_during_presolve;
         double presolve_time;
         char presolve_status;

@@ -42,29 +42,29 @@ const char *get_presolve_status_str(int status)
     return "UNKNOWN_STATUS";
 }
 
-static lp_problem_t *convert_pslp_to_cuhsdlp(PresolvedProblem *reduced_prob, const lp_problem_t *working_problem)
+static lp_problem_t create_reduced_problem_view(
+    const PresolvedProblem *reduced_prob,
+    const lp_problem_t *working_problem)
 {
-    lp_problem_t *prob = (lp_problem_t *)safe_malloc(sizeof(lp_problem_t));
-    prob->primal_start = NULL;
-    prob->dual_start = NULL;
+    lp_problem_t view = {0};
 
-    prob->objective_constant = working_problem->objective_constant + reduced_prob->obj_offset;
-    prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
-    prob->objective_vector = reduced_prob->c;
-    prob->constraint_lower_bound = reduced_prob->lhs;
-    prob->constraint_upper_bound = reduced_prob->rhs;
-    prob->variable_lower_bound = reduced_prob->lbs;
-    prob->variable_upper_bound = reduced_prob->ubs;
+    view.objective_constant = working_problem->objective_constant + reduced_prob->obj_offset;
+    view.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
+    view.objective_vector = reduced_prob->c;
+    view.constraint_lower_bound = reduced_prob->lhs;
+    view.constraint_upper_bound = reduced_prob->rhs;
+    view.variable_lower_bound = reduced_prob->lbs;
+    view.variable_upper_bound = reduced_prob->ubs;
 
-    prob->constraint_matrix_num_nonzeros = reduced_prob->nnz;
-    prob->constraint_matrix_row_pointers = reduced_prob->Ap;
-    prob->constraint_matrix_col_indices = reduced_prob->Ai;
-    prob->constraint_matrix_values = reduced_prob->Ax;
+    view.constraint_matrix_num_nonzeros = reduced_prob->nnz;
+    view.constraint_matrix_row_pointers = reduced_prob->Ap;
+    view.constraint_matrix_col_indices = reduced_prob->Ai;
+    view.constraint_matrix_values = reduced_prob->Ax;
 
-    prob->num_variables = reduced_prob->n;
-    prob->num_constraints = reduced_prob->m;
+    view.num_variables = reduced_prob->n;
+    view.num_constraints = reduced_prob->m;
 
-    return prob;
+    return view;
 }
 
 cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose)
@@ -130,12 +130,12 @@ cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool
     if (status & INFEASIBLE || status & UNBNDORINFEAS || info->presolver->reduced_prob->n == 0)
     {
         info->problem_solved_during_presolve = true;
-        info->reduced_problem = NULL;
     }
     else
     {
         info->problem_solved_during_presolve = false;
-        info->reduced_problem = convert_pslp_to_cuhsdlp(info->presolver->reduced_prob, working_problem);
+        info->reduced_problem_view =
+            create_reduced_problem_view(info->presolver->reduced_prob, working_problem);
     }
     return info;
 }
@@ -361,7 +361,5 @@ void cuhsdlp_presolve_info_free(cuhsdlp_presolve_info_t *info)
         free_presolver(info->presolver);
     if (info->settings)
         free_settings(info->settings);
-    if (info->reduced_problem)
-        free(info->reduced_problem);
     free(info);
 }

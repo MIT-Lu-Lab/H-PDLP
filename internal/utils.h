@@ -70,9 +70,11 @@ extern "C"
         double *output);
 
     void filter_constraint_matrix_entries(
-        lp_problem_t *working_problem,
         const lp_problem_t *original_problem,
-        const pdhg_parameters_t *params);
+        const pdhg_parameters_t *params,
+        int **owned_row_pointers,
+        int **owned_col_indices,
+        double **owned_values);
 
     void warn_on_large_objective_coefficients(const lp_problem_t *problem);
 
