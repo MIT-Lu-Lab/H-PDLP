@@ -586,7 +586,7 @@ static void update_hsd_primal_block(
         state->current_primal_solution_d,
         state->reflected_primal_solution_d,
         state->pdhg_primal_solution_d,
-        state->pdhg_reduced_cost_d,
+        state->active_set.variable_primal_projection_multiplier_d,
         state->initial_primal_solution_d,
         state->dual_product_d,
         state->objective_vector_d,
@@ -927,11 +927,6 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
         state->num_constraints,
         state->hsd_inverse_scale_d,
         state->pdhg_dual_solution_d, 1));
-    CUBLAS_CHECK(cublasDscal(
-        state->blas_handle_A,
-        state->num_variables,
-        state->hsd_inverse_scale_d,
-        state->pdhg_reduced_cost_d, 1));
     scale_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_primal_scale_pdhg_d,
         state->hsd_dual_scale_pdhg_d,

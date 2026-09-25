@@ -46,7 +46,7 @@ __global__ void compute_residual_kernel(
     double *__restrict__ original_dual_ray,
     double *__restrict__ original_reduced_cost_ray,
     double *__restrict__ original_primal_ray,
-    const double *__restrict__ reduced_cost,
+    double *__restrict__ reduced_cost_out,
     int n_cons,
     int n_vars);
 __global__ void compute_box_support_contribution_kernel(
@@ -542,7 +542,7 @@ __global__ void compute_residual_kernel(
     double *__restrict__ original_dual_ray,
     double *__restrict__ original_reduced_cost_ray,
     double *__restrict__ original_primal_ray,
-    const double *__restrict__ reduced_cost,
+    double *__restrict__ reduced_cost_out,
     int n_cons,
     int n_vars)
 {
@@ -573,7 +573,17 @@ __global__ void compute_residual_kernel(
     {
         int idx = i - n_cons;
         double aty = dual_prod[idx];
-        dual_res[idx] = (obj_vec[idx] * primal_scale - aty - reduced_cost[idx])
+        const double unprojected_reduced_cost =
+            obj_vec[idx] * primal_scale - aty;
+        const double reduced_cost_lower =
+            !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
+        const double reduced_cost_upper =
+            !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
+        const double projected_reduced_cost =
+            fmax(reduced_cost_lower,
+                 fmin(unprojected_reduced_cost, reduced_cost_upper));
+        reduced_cost_out[idx] = projected_reduced_cost;
+        dual_res[idx] = (unprojected_reduced_cost - projected_reduced_cost)
                       * inverse_primal_scale * var_rescaling[idx];
 
         double farkas_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
