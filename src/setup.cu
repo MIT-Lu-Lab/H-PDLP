@@ -313,9 +313,6 @@ pdhg_solver_state_t *initialize_solver_state(
     CUBLAS_CHECK(cublasCreate(&state->blas_handle_A));
     CUBLAS_CHECK(cublasSetStream(state->blas_handle_A, state->stream_A));
     CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_DEVICE));
-    CUBLAS_CHECK(cublasCreate(&state->blas_handle_At));
-    CUBLAS_CHECK(cublasSetStream(state->blas_handle_At, state->stream_At));
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_At, CUBLAS_POINTER_MODE_DEVICE));
 
     CURAND_CHECK(curandCreateGenerator(&state->curand_gen, CURAND_RNG_PSEUDO_DEFAULT));
     CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(state->curand_gen, 42));
@@ -625,8 +622,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->control.step_size_primal_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_dual_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_homogeneous_d, sizeof(double));
-    state->graphExec = NULL;
-    state->graph_created = false;
 
     allocate_zeroed_device_buffer((void **)&state->dual_box_cone_state.scalar_d, sizeof(double));
     state->dual_box_cone_state.lower_bound_d = state->constraint_lower_bound_d;
@@ -804,8 +799,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CURAND_CHECK(curandDestroyGenerator(state->curand_gen));
     if (state->blas_handle_A)
         CUBLAS_CHECK(cublasDestroy(state->blas_handle_A));
-    if (state->blas_handle_At)
-        CUBLAS_CHECK(cublasDestroy(state->blas_handle_At));
     if (state->sparse_handle_A)
         CUSPARSE_CHECK(cusparseDestroy(state->sparse_handle_A));
     if (state->sparse_handle_At)

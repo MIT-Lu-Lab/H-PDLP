@@ -198,7 +198,7 @@ cuhsdlp_result_t *optimize(
             restarted = false;
         }
 
-        if (!state->graph_created)
+        if (!state->graphExec)
         {
             cudaGraph_t graph = NULL;
             CUDA_CHECK(cudaStreamBeginCapture(state->stream_A,
@@ -214,7 +214,6 @@ cuhsdlp_result_t *optimize(
             CUDA_CHECK(cudaGraphInstantiate(&state->graphExec, graph,
                                             NULL, NULL, 0));
             CUDA_CHECK(cudaGraphDestroy(graph));
-            state->graph_created = true;
         }
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 

@@ -179,12 +179,15 @@ void replace_large_bounds_with_infinity(
     int length,
     double infinite_bound)
 {
-    bool has_large_bound = false;
-    for (int i = 0; i < length && !has_large_bound; ++i)
-        has_large_bound = is_infinite_lower_bound(original_lower[i], infinite_bound) ||
-                          is_infinite_upper_bound(original_upper[i], infinite_bound);
+    bool needs_bound_conversion = false;
+    for (int i = 0; i < length && !needs_bound_conversion; ++i)
+        needs_bound_conversion =
+            (isfinite(original_lower[i]) &&
+             is_infinite_lower_bound(original_lower[i], infinite_bound)) ||
+            (isfinite(original_upper[i]) &&
+             is_infinite_upper_bound(original_upper[i], infinite_bound));
 
-    if (!has_large_bound)
+    if (!needs_bound_conversion)
         return;
 
     double *new_lower = (double *)safe_malloc((size_t)length * sizeof(double));

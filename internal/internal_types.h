@@ -171,14 +171,12 @@ typedef struct {
     cusparseHandle_t  sparse_handle_A;
     cusparseHandle_t  sparse_handle_At;
     cublasHandle_t    blas_handle_A;
-    cublasHandle_t    blas_handle_At;
     curandGenerator_t curand_gen;
     cudaStream_t      stream_A;
     cudaStream_t      stream_At;
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
     cudaGraphExec_t   graphExec;
-    bool              graph_created;
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
