@@ -1014,9 +1014,8 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         {
             evaluation_primal[i] = projected;
             reflected_primal[i] = reflected;
-            if (variable_primal_projection_multiplier)
-                variable_primal_projection_multiplier[i] =
-                    (projected - shifted) * inv_primal_step;
+            variable_primal_projection_multiplier[i] =
+                (projected - shifted) * inv_primal_step;
         }
         const double relaxed =
             reflection_coefficient * reflected +
@@ -1164,9 +1163,8 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         {
             evaluation_primal[i] = projected;
             reflected_primal[i] = reflected;
-            if (variable_primal_projection_multiplier)
-                variable_primal_projection_multiplier[i] =
-                    (projected - shifted) * inv_primal_step;
+            variable_primal_projection_multiplier[i] =
+                (projected - shifted) * inv_primal_step;
         }
         const double relaxed =
             reflection_coefficient * reflected +

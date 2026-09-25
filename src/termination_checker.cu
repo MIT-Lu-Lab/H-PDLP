@@ -47,6 +47,7 @@ __global__ void compute_residual_kernel(
     double *__restrict__ original_reduced_cost_ray,
     double *__restrict__ original_primal_ray,
     double *__restrict__ reduced_cost_out,
+    const double *__restrict__ projection_multiplier,
     int n_cons,
     int n_vars);
 __global__ void compute_box_support_contribution_kernel(
@@ -219,6 +220,7 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
         state->reduced_cost_ray_d,
         state->primal_ray_d,
         state->pdhg_reduced_cost_d,
+        state->pdhg_primal_projection_multiplier_d,
         state->num_constraints,
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
@@ -543,6 +545,7 @@ __global__ void compute_residual_kernel(
     double *__restrict__ original_reduced_cost_ray,
     double *__restrict__ original_primal_ray,
     double *__restrict__ reduced_cost_out,
+    const double *__restrict__ projection_multiplier,
     int n_cons,
     int n_vars)
 {
@@ -573,18 +576,14 @@ __global__ void compute_residual_kernel(
     {
         int idx = i - n_cons;
         double aty = dual_prod[idx];
-        const double unprojected_reduced_cost =
-            obj_vec[idx] * primal_scale - aty;
-        const double reduced_cost_lower =
-            !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
-        const double reduced_cost_upper =
-            !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
-        const double projected_reduced_cost =
-            fmax(reduced_cost_lower,
-                 fmin(unprojected_reduced_cost, reduced_cost_upper));
-        reduced_cost_out[idx] = projected_reduced_cost;
-        dual_res[idx] = (unprojected_reduced_cost - projected_reduced_cost)
-                      * inverse_primal_scale * var_rescaling[idx];
+        const double reduced_cost = obj_vec[idx] * primal_scale - aty;
+        const bool bound_active =
+            (projection_multiplier[idx] > 0.0 && reduced_cost > 0.0) ||
+            (projection_multiplier[idx] < 0.0 && reduced_cost < 0.0);
+        reduced_cost_out[idx] = bound_active ? reduced_cost : 0.0;
+        dual_res[idx] = bound_active
+                      ? 0.0
+                      : reduced_cost * inverse_primal_scale * var_rescaling[idx];
 
         double farkas_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
         double farkas_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;

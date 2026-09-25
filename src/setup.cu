@@ -554,6 +554,7 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
         con_bytes);
 
     allocate_zeroed_device_buffer((void **)&state->pdhg_reduced_cost_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->pdhg_primal_projection_multiplier_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_infeasibility_reduced_cost_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->reduced_cost_ray_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_ray_d, con_bytes);
@@ -893,6 +894,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->constraint_reduction_entries_d);
 
     FREE_DEVICE_BUFFER(state->pdhg_reduced_cost_d);
+    FREE_DEVICE_BUFFER(state->pdhg_primal_projection_multiplier_d);
     FREE_DEVICE_BUFFER(state->primal_infeasibility_reduced_cost_d);
     FREE_DEVICE_BUFFER(state->reduced_cost_ray_d);
     FREE_DEVICE_BUFFER(state->dual_ray_d);

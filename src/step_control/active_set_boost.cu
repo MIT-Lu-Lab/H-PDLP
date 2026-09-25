@@ -91,9 +91,6 @@ void initialize_active_set(
         (void **)&active_set->constraint_dual_projection_input_d,
         state->con_bytes);
     allocate_zeroed_device_buffer(
-        (void **)&active_set->variable_primal_projection_multiplier_d,
-        state->var_bytes);
-    allocate_zeroed_device_buffer(
         (void **)&active_set->variable_last_free_iter_d,
         num_variables * sizeof(int));
     allocate_zeroed_device_buffer(
@@ -114,6 +111,9 @@ void initialize_active_set(
     allocate_zeroed_device_buffer(
         (void **)&active_set->anchor.dual_solution_d,
         state->con_bytes);
+    allocate_zeroed_device_buffer(
+        (void **)&active_set->anchor.primal_projection_multiplier_d,
+        state->var_bytes);
     allocate_zeroed_device_buffer(
         (void **)&active_set->anchor.hsd_scalars_d,
         HSD_SCALARS_COUNT * sizeof(double));
@@ -139,8 +139,6 @@ void active_set_free(active_set_state_t *active_set)
     sv_estimator_free(active_set->sv_estimator);
     if (active_set->constraint_dual_projection_input_d)
         CUDA_CHECK(cudaFree(active_set->constraint_dual_projection_input_d));
-    if (active_set->variable_primal_projection_multiplier_d)
-        CUDA_CHECK(cudaFree(active_set->variable_primal_projection_multiplier_d));
     if (active_set->variable_last_free_iter_d)
         CUDA_CHECK(cudaFree(active_set->variable_last_free_iter_d));
     if (active_set->constraint_last_binding_iter_d)
@@ -155,6 +153,8 @@ void active_set_free(active_set_state_t *active_set)
         CUDA_CHECK(cudaFree(active_set->anchor.primal_solution_d));
     if (active_set->anchor.dual_solution_d)
         CUDA_CHECK(cudaFree(active_set->anchor.dual_solution_d));
+    if (active_set->anchor.primal_projection_multiplier_d)
+        CUDA_CHECK(cudaFree(active_set->anchor.primal_projection_multiplier_d));
     if (active_set->anchor.hsd_scalars_d)
         CUDA_CHECK(cudaFree(active_set->anchor.hsd_scalars_d));
     if (active_set->anchor.constraint_cone_scale_d)
@@ -198,7 +198,7 @@ void update_active_set_masks(
         THREADS_PER_BLOCK,
         0,
         state->stream_A>>>(
-        active_set->variable_primal_projection_multiplier_d,
+        state->pdhg_primal_projection_multiplier_d,
         state->objective_vector_d,
         state->hsd_primal_scale_pdhg_d,
         state->variable_lower_bound_d,
@@ -472,6 +472,12 @@ static void save_active_set_anchor(pdhg_solver_state_t *state)
         cudaMemcpyDeviceToDevice,
         state->stream_A));
     CUDA_CHECK(cudaMemcpyAsync(
+        active_set->anchor.primal_projection_multiplier_d,
+        state->pdhg_primal_projection_multiplier_d,
+        state->var_bytes,
+        cudaMemcpyDeviceToDevice,
+        state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(
         active_set->anchor.hsd_scalars_d,
         state->hsd_scalars_d,
         HSD_SCALARS_COUNT * sizeof(double),
@@ -527,6 +533,12 @@ static void restore_active_set_anchor(pdhg_solver_state_t *state)
             cudaMemcpyDeviceToDevice,
             state->stream_A));
     }
+    CUDA_CHECK(cudaMemcpyAsync(
+        state->pdhg_primal_projection_multiplier_d,
+        active_set->anchor.primal_projection_multiplier_d,
+        state->var_bytes,
+        cudaMemcpyDeviceToDevice,
+        state->stream_A));
     CUDA_CHECK(cudaMemcpyAsync(
         state->hsd_scalars_d,
         active_set->anchor.hsd_scalars_d,
