@@ -114,6 +114,7 @@ typedef struct sv_estimator_ctx sv_estimator_ctx_t;
 typedef struct {
     double *primal_solution_d;
     double *dual_solution_d;
+    double *reduced_cost_d;
     double *hsd_scalars_d;
     double *constraint_cone_scale_d;
     double primal_weight;
@@ -129,7 +130,6 @@ typedef struct {
 
 typedef struct {
     double *constraint_dual_projection_input_d;
-    double *variable_primal_projection_input_d;
     int *variable_last_free_iter_d;
     int *constraint_last_binding_iter_d;
     bool *free_variable_mask_d;

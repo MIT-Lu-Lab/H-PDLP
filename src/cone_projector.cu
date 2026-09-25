@@ -78,7 +78,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
-    double *__restrict__ variable_primal_projection_input,
+    double *__restrict__ reduced_cost,
     const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
@@ -100,7 +100,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
-    double *__restrict__ variable_primal_projection_input,
+    double *__restrict__ reduced_cost,
     const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
@@ -267,7 +267,7 @@ void update_primal_box_cone_resolvent(
     double *current_primal,
     double *reflected_primal,
     double *evaluation_primal,
-    double *variable_primal_projection_input,
+    double *reduced_cost,
     const double *initial_primal,
     const double *gradient,
     const double *objective_d,
@@ -293,7 +293,7 @@ void update_primal_box_cone_resolvent(
             current_primal,
             reflected_primal,
             evaluation_primal,
-            variable_primal_projection_input,
+            reduced_cost,
             initial_primal,
             gradient,
             objective_d,
@@ -333,7 +333,7 @@ void update_primal_box_cone_resolvent(
         current_primal,
         reflected_primal,
         evaluation_primal,
-        variable_primal_projection_input,
+        reduced_cost,
         initial_primal,
         gradient,
         objective_d,
@@ -870,7 +870,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
-    double *__restrict__ variable_primal_projection_input,
+    double *__restrict__ reduced_cost,
     const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
@@ -1014,8 +1014,7 @@ __global__ void update_primal_box_cone_resolvent_cooperative_kernel(
         {
             evaluation_primal[i] = projected;
             reflected_primal[i] = reflected;
-            if (variable_primal_projection_input)
-                variable_primal_projection_input[i] = shifted;
+            reduced_cost[i] = (projected - shifted) * inv_primal_step;
         }
         const double relaxed =
             reflection_coefficient * reflected +
@@ -1048,7 +1047,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
     double *__restrict__ current_primal,
     double *__restrict__ reflected_primal,
     double *__restrict__ evaluation_primal,
-    double *__restrict__ variable_primal_projection_input,
+    double *__restrict__ reduced_cost,
     const double *__restrict__ initial_primal,
     const double *__restrict__ gradient,
     const double *__restrict__ objective_d,
@@ -1163,8 +1162,7 @@ __global__ void update_primal_box_cone_resolvent_single_block_kernel(
         {
             evaluation_primal[i] = projected;
             reflected_primal[i] = reflected;
-            if (variable_primal_projection_input)
-                variable_primal_projection_input[i] = shifted;
+            reduced_cost[i] = (projected - shifted) * inv_primal_step;
         }
         const double relaxed =
             reflection_coefficient * reflected +

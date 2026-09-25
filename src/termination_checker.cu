@@ -46,7 +46,7 @@ __global__ void compute_residual_kernel(
     double *__restrict__ original_dual_ray,
     double *__restrict__ original_reduced_cost_ray,
     double *__restrict__ original_primal_ray,
-    double *__restrict__ reduced_cost_out,
+    const double *__restrict__ reduced_cost,
     int n_cons,
     int n_vars);
 __global__ void compute_box_support_contribution_kernel(
@@ -542,7 +542,7 @@ __global__ void compute_residual_kernel(
     double *__restrict__ original_dual_ray,
     double *__restrict__ original_reduced_cost_ray,
     double *__restrict__ original_primal_ray,
-    double *__restrict__ reduced_cost_out,
+    const double *__restrict__ reduced_cost,
     int n_cons,
     int n_vars)
 {
@@ -573,21 +573,8 @@ __global__ void compute_residual_kernel(
     {
         int idx = i - n_cons;
         double aty = dual_prod[idx];
-        double normalized_reduced_cost = (obj_vec[idx] - aty * inverse_primal_scale) 
-                                       * var_rescaling[idx];
-        double dual_cone_violation = 0.0;
-        if (!isfinite(var_ub[idx]))
-        {
-            dual_cone_violation += fmax(0.0, -normalized_reduced_cost);
-        }
-        if (!isfinite(var_lb[idx]))
-        {
-            dual_cone_violation += fmax(0.0, normalized_reduced_cost);
-        }
-        dual_res[idx] = dual_cone_violation;
-
-        double reduced_cost = obj_vec[idx] * primal_scale - aty;
-        reduced_cost_out[idx] = reduced_cost;
+        dual_res[idx] = (obj_vec[idx] * primal_scale - aty - reduced_cost[idx])
+                      * inverse_primal_scale * var_rescaling[idx];
 
         double farkas_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
         double farkas_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
