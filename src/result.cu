@@ -201,17 +201,9 @@ static double compute_original_dual_infeasibility_margin(
     const pdhg_solver_state_t *state,
     const termination_reductions_t *reductions_h)
 {
-    double objective_dot_ray;
-    if (state->control.certificate_from_homogeneous)
-    {
-        CUDA_CHECK(cudaMemcpy(&objective_dot_ray,
-                              state->objective_dot_primal_d,
-                              sizeof(double), cudaMemcpyDeviceToHost));
-    }
-    else
-    {
-        objective_dot_ray = reductions_h->dual_infeasibility_objective;
-    }
+    double objective_dot_ray = state->control.certificate_from_homogeneous
+                                   ? reductions_h->objective_dot_primal
+                                   : reductions_h->dual_infeasibility_objective;
     return -objective_dot_ray /
            (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 }

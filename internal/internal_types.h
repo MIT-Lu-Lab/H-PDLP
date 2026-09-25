@@ -28,15 +28,20 @@ limitations under the License.
 
 typedef struct pdhg_metrics_t pdhg_metrics_t;
 
-enum PdhgReduction {
-    PDHG_PRIMAL_NORM         = 0,
-    PDHG_DUAL_NORM           = 1,
-    PDHG_OBJECTIVE_DOT_X     = 2,
-    PDHG_OPERATOR_CROSS_TERM = 3,
-    PDHG_COUNT               = 4,
-};
+typedef struct {
+    double delta_primal_norm;
+    double delta_dual_norm;
+    double operator_cross_term;
+} fixed_point_reductions_t;
 
 typedef struct {
+    double delta_primal_norm;
+    double delta_dual_norm;
+} restart_reductions_t;
+
+typedef struct {
+    double primal_residual_norm;
+    double dual_residual_norm;
     double dual_solution_norm;
     double primal_infeasibility_stationarity_residual_norm;
     double constraint_recession_residual_norm;
@@ -44,6 +49,7 @@ typedef struct {
     double original_dual_ray_norm;
     double original_reduced_cost_ray_norm;
     double original_primal_ray_norm;
+    double objective_dot_primal;
     double constraint_support;
     double variable_support;
     double homogeneous_variable_support;
@@ -253,12 +259,8 @@ typedef struct {
     solver_control_t control;
     active_set_state_t active_set;
 
-    double *pdhg_reduce_d;
-    double *pdhg_primal_norm_d;
-    double *pdhg_dual_norm_d;
-    double *objective_dot_primal_d;
-    double *fixed_point_operator_cross_d;
-
+    fixed_point_reductions_t *fixed_point_reductions_d;
+    restart_reductions_t *restart_reductions_mp;
     termination_reductions_t *termination_reductions_d;
 
     pdhg_metrics_t *metrics_d;
