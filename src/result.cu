@@ -172,9 +172,9 @@ static double compute_result_divisor(const pdhg_solver_state_t *state)
     }
     else
     {
-        margin = state->control.certificate_from_homogeneous
-                     ? -reductions_h.objective_dot_primal
-                     : -reductions_h.dual_infeasibility_objective;
+        margin = -(state->control.certificate_from_homogeneous
+                       ? reductions_h.objective_dot_primal
+                       : reductions_h.dual_infeasibility_objective);
     }
     return margin /
            (state->constraint_bound_rescaling * state->objective_vector_rescaling);
