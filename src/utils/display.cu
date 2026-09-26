@@ -156,6 +156,9 @@ void print_initial_info(
     PRINT_DIFF_DBL("cone_newton_tol",
                    params->cone_params.tol,
                    default_params.cone_params.tol);
+    PRINT_DIFF_BOOL("primal_weight_safeguard",
+                    params->step_size_params.primal_weight_safeguard,
+                    default_params.step_size_params.primal_weight_safeguard);
     PRINT_DIFF_BOOL("active_set_step_size_boost",
                     params->active_set_params.step_size_boost,
                     default_params.active_set_params.step_size_boost);

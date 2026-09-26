@@ -181,6 +181,7 @@ static void print_usage(const char *prog_name)
     fprintf(stderr, "\n  Solver algorithm:\n");
     fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: 0.998).\n");
     fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
+    fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding (default: enabled).\n");
     fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
     fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
     fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 100).\n");
@@ -214,18 +215,19 @@ int main(int argc, char *argv[])
         {"no_bound_obj_rescaling", no_argument, 0, 1005},
         {"step_size_factor", required_argument, 0, 1006},
         {"no_active_set_step_size_boost", no_argument, 0, 1007},
-        {"singular_value_max_iter", required_argument, 0, 1008},
-        {"singular_value_tol", required_argument, 0, 1009},
-        {"cone_newton_max_iter", required_argument, 0, 1010},
-        {"cone_newton_tol", required_argument, 0, 1011},
-        {"time_limit", required_argument, 0, 1012},
-        {"iter_limit", required_argument, 0, 1013},
-        {"eps_opt", required_argument, 0, 1014},
-        {"eps_feas", required_argument, 0, 1015},
-        {"eps_farkas_homogeneous", required_argument, 0, 1016},
-        {"eps_farkas_displacement", required_argument, 0, 1017},
-        {"eval_freq", required_argument, 0, 1018},
-        {"opt_norm", required_argument, 0, 1019},
+        {"no_primal_weight_safeguard", no_argument, 0, 1008},
+        {"singular_value_max_iter", required_argument, 0, 1009},
+        {"singular_value_tol", required_argument, 0, 1010},
+        {"cone_newton_max_iter", required_argument, 0, 1011},
+        {"cone_newton_tol", required_argument, 0, 1012},
+        {"time_limit", required_argument, 0, 1013},
+        {"iter_limit", required_argument, 0, 1014},
+        {"eps_opt", required_argument, 0, 1015},
+        {"eps_feas", required_argument, 0, 1016},
+        {"eps_farkas_homogeneous", required_argument, 0, 1017},
+        {"eps_farkas_displacement", required_argument, 0, 1018},
+        {"eval_freq", required_argument, 0, 1019},
+        {"opt_norm", required_argument, 0, 1020},
         {"verbose", no_argument, 0, 'v'},
         {"quiet", no_argument, 0, 'q'},
         {"diagnose", no_argument, 0, 'd'},
@@ -276,61 +278,64 @@ int main(int argc, char *argv[])
             params.active_set_params.step_size_boost = false;
             break;
         case 1008:
+            params.step_size_params.primal_weight_safeguard = false;
+            break;
+        case 1009:
             if (!parse_int_arg("--singular_value_max_iter", optarg,
                                &params.power_iter_params.max_iter))
                 return 1;
             break;
-        case 1009:
+        case 1010:
             if (!parse_double_arg("--singular_value_tol", optarg,
                                   &params.power_iter_params.tol))
                 return 1;
             break;
-        case 1010:
+        case 1011:
             if (!parse_int_arg("--cone_newton_max_iter", optarg,
                                &params.cone_params.max_iter))
                 return 1;
             break;
-        case 1011:
+        case 1012:
             if (!parse_double_arg("--cone_newton_tol", optarg,
                                   &params.cone_params.tol))
                 return 1;
             break;
-        case 1012:
+        case 1013:
             if (!parse_double_arg("--time_limit", optarg,
                                   &params.termination_criteria.time_sec_limit))
                 return 1;
             break;
-        case 1013:
+        case 1014:
             if (!parse_int_arg("--iter_limit", optarg,
                                &params.termination_criteria.iteration_limit))
                 return 1;
             break;
-        case 1014:
+        case 1015:
             if (!parse_double_arg("--eps_opt", optarg,
                                   &params.termination_criteria.eps_optimal_relative))
                 return 1;
             break;
-        case 1015:
+        case 1016:
             if (!parse_double_arg("--eps_feas", optarg,
                                   &params.termination_criteria.eps_feasible_relative))
                 return 1;
             break;
-        case 1016:
+        case 1017:
             if (!parse_double_arg("--eps_farkas_homogeneous", optarg,
                                   &params.termination_criteria.eps_farkas_homogeneous))
                 return 1;
             break;
-        case 1017:
+        case 1018:
             if (!parse_double_arg("--eps_farkas_displacement", optarg,
                                   &params.termination_criteria.eps_farkas_displacement))
                 return 1;
             break;
-        case 1018:
+        case 1019:
             if (!parse_int_arg("--eval_freq", optarg,
                                &params.termination_evaluation_frequency))
                 return 1;
             break;
-        case 1019:
+        case 1020:
         {
             const char *norm_str = optarg;
             if (strcmp(norm_str, "l2") == 0)

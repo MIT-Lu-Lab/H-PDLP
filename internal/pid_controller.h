@@ -24,6 +24,10 @@ typedef struct
     double error_sum;
     double last_error;
     bool has_last_error;
+
+    double min_kkt_error;
+    double max_residual_balance;
+    double balanced_primal_weight;
 } pid_state_t;
 
 #ifdef __cplusplus

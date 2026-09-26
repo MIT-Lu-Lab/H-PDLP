@@ -93,6 +93,7 @@ extern "C"
         double k_i;
         double k_d;
         double i_smooth;
+        bool primal_weight_safeguard;
     } step_size_parameters_t;
 
     typedef struct

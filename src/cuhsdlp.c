@@ -278,6 +278,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->step_size_params.k_i = 0.05;
     params->step_size_params.k_d = 0.0;
     params->step_size_params.i_smooth = 0.3;
+    params->step_size_params.primal_weight_safeguard = true;
 
     params->cone_params.max_iter = 100;
     params->cone_params.tol = 1e-6;
