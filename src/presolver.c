@@ -158,22 +158,12 @@ cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *inf
     result->num_nonzeros = working_problem->constraint_matrix_num_nonzeros;
     copy_presolve_stats(info, result);
 
-    if ((info->presolve_status & UNBNDORINFEAS) == UNBNDORINFEAS)
+    if (info->presolve_status & INFEASIBLE)
     {
-        result->termination_reason = TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED;
-        result->absolute_primal_residual = INFINITY;
-        result->relative_primal_residual = INFINITY;
-        result->absolute_dual_residual = INFINITY;
-        result->relative_dual_residual = INFINITY;
-        result->primal_objective_value = INFINITY;
-        result->dual_objective_value = -INFINITY;
-        result->objective_gap = INFINITY;
-        result->relative_objective_gap = INFINITY;
-        return result;
-    }
-    else if (info->presolve_status & INFEASIBLE)
-    {
-        result->termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
+        result->termination_reason =
+            (info->presolve_status & UNBNDORINFEAS) == UNBNDORINFEAS
+                ? TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED
+                : TERMINATION_REASON_PRIMAL_INFEASIBLE;
         result->absolute_primal_residual = INFINITY;
         result->relative_primal_residual = INFINITY;
         result->absolute_dual_residual = INFINITY;
