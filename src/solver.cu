@@ -274,7 +274,7 @@ cuhsdlp_result_t *optimize(
 
     cuhsdlp_result_t *result = create_result_from_state(state, working_problem);
 
-    if (params->presolve && presolve_info)
+    if (presolve_info)
     {
         copy_presolve_stats(presolve_info, result);
         if (termination_has_solution(result->termination_reason))
