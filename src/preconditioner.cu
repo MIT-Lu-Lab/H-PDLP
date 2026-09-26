@@ -544,8 +544,6 @@ void rescale_problem(
 
     state->constraint_bound_rescaling = 1.0;
     state->objective_vector_rescaling = 1.0;
-    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &state->constraint_bound_rescaling, sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &state->objective_vector_rescaling, sizeof(double), cudaMemcpyHostToDevice));
     if (scaling_params->bound_objective_rescaling)
     {
         if (verbose)
