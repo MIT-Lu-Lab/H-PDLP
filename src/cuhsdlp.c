@@ -187,7 +187,6 @@ void lp_problem_free(lp_problem_t *prob)
     free(prob->constraint_upper_bound);
     free(prob->primal_start);
     free(prob->dual_start);
-    memset(prob, 0, sizeof(*prob));
     free(prob);
 }
 
