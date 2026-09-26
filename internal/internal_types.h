@@ -19,6 +19,7 @@ limitations under the License.
 #include "cone_projector.h"
 #include "cuhsdlp_types.h"
 #include "pid_controller.h"
+#include "spmv_backend.h"
 #include <cublas_v2.h>
 #include <curand.h>
 #include <cusparse.h>
@@ -27,19 +28,6 @@ limitations under the License.
 #include <time.h>
 
 typedef struct pdhg_metrics_t pdhg_metrics_t;
-
-typedef struct {
-    lp_problem_t view;
-    double *owned_objective_vector;
-    double *owned_dual_start;
-    double *owned_variable_lower_bound;
-    double *owned_variable_upper_bound;
-    double *owned_constraint_lower_bound;
-    double *owned_constraint_upper_bound;
-    int *owned_constraint_matrix_row_pointers;
-    int *owned_constraint_matrix_col_indices;
-    double *owned_constraint_matrix_values;
-} working_problem_t;
 
 typedef struct {
     double delta_primal_norm;
@@ -120,13 +108,6 @@ typedef struct {
     double *val;
     int *transpose_map;
 } cu_sparse_matrix_csr_t;
-
-typedef struct {
-    cusparseSpMatDescr_t matrix;
-    void *descriptor;
-    void *plan;
-    void *buffer;
-} spmv_plan_t;
 
 typedef struct sv_estimator_ctx sv_estimator_ctx_t;
 

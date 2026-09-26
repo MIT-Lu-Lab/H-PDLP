@@ -39,6 +39,19 @@ limitations under the License.
 #include <string.h>
 #include <time.h>
 
+typedef struct {
+    lp_problem_t view;
+    double *owned_objective_vector;
+    double *owned_dual_start;
+    double *owned_variable_lower_bound;
+    double *owned_variable_upper_bound;
+    double *owned_constraint_lower_bound;
+    double *owned_constraint_upper_bound;
+    int *owned_constraint_matrix_row_pointers;
+    int *owned_constraint_matrix_col_indices;
+    double *owned_constraint_matrix_values;
+} working_problem_t;
+
 __global__ void compute_delta_kernel(
     const double *__restrict__ initial_primal,
     const double *__restrict__ pdhg_primal,
@@ -80,7 +93,7 @@ static void restore_original_objective_sense(
     cuhsdlp_result_t *result,
     objective_sense_t objective_sense);
 static void working_problem_free(
-    working_problem_t *working_problem);
+    working_problem_t *working);
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
@@ -340,13 +353,15 @@ static working_problem_t create_working_problem(
         params->scaling_params.infinite_bound);
 
     if (working.owned_variable_lower_bound)
+    {
         working_problem->variable_lower_bound = working.owned_variable_lower_bound;
-    if (working.owned_variable_upper_bound)
         working_problem->variable_upper_bound = working.owned_variable_upper_bound;
+    }
     if (working.owned_constraint_lower_bound)
+    {
         working_problem->constraint_lower_bound = working.owned_constraint_lower_bound;
-    if (working.owned_constraint_upper_bound)
         working_problem->constraint_upper_bound = working.owned_constraint_upper_bound;
+    }
 
     filter_constraint_matrix_entries(
         original_problem,
@@ -402,17 +417,17 @@ static void restore_original_objective_sense(
 }
 
 static void working_problem_free(
-    working_problem_t *working_problem)
+    working_problem_t *working)
 {
-    free(working_problem->owned_objective_vector);
-    free(working_problem->owned_dual_start);
-    free(working_problem->owned_variable_lower_bound);
-    free(working_problem->owned_variable_upper_bound);
-    free(working_problem->owned_constraint_lower_bound);
-    free(working_problem->owned_constraint_upper_bound);
-    free(working_problem->owned_constraint_matrix_row_pointers);
-    free(working_problem->owned_constraint_matrix_col_indices);
-    free(working_problem->owned_constraint_matrix_values);
+    free(working->owned_objective_vector);
+    free(working->owned_dual_start);
+    free(working->owned_variable_lower_bound);
+    free(working->owned_variable_upper_bound);
+    free(working->owned_constraint_lower_bound);
+    free(working->owned_constraint_upper_bound);
+    free(working->owned_constraint_matrix_row_pointers);
+    free(working->owned_constraint_matrix_col_indices);
+    free(working->owned_constraint_matrix_values);
 }
 
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
