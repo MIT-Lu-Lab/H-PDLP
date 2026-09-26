@@ -175,7 +175,6 @@ typedef struct {
     int num_blocks_primal;
     int num_blocks_dual;
     int num_blocks_primal_dual;
-    int num_blocks_rescale;
     int num_blocks_nnz;
 
     cu_sparse_matrix_csr_t *constraint_matrix;
@@ -262,8 +261,6 @@ typedef struct {
     double *hsd_dual_scale_reflected_d;
     double *primal_residual_d;
     double *dual_residual_d;
-    double *primal_infeasibility_stationarity_residual_d;
-    double *constraint_recession_residual_d;
     double *variable_recession_residual_d;
 
     box_newton_state_t dual_box_cone_state;

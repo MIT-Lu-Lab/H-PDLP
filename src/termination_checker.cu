@@ -95,15 +95,6 @@ __global__ void compute_termination_metrics_kernel(
     double original_objective_norm,
     double objective_constant,
     norm_type_t optimality_norm);
-__global__ void install_primal_infeasibility_ray_kernel(
-    double *__restrict__ dual_sol,
-    double *__restrict__ reduced_cost,
-    const double *__restrict__ delta_dual,
-    const double *__restrict__ dual_prod,
-    const double *__restrict__ var_lb,
-    const double *__restrict__ var_ub,
-    int n_cons,
-    int n_vars);
 static void compute_matrix_products(
     pdhg_solver_state_t *state,
     cusparseDnVecDescr_t primal_vector,
@@ -135,9 +126,6 @@ static bool certify_infeasibility(
     double eps,
     termination_reason_t reason,
     bool from_homogeneous);
-static void prepare_homogeneous_primal_infeasibility_ray_result(pdhg_solver_state_t *state);
-static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state);
-static void prepare_dual_infeasibility_ray_result(pdhg_solver_state_t *state);
 
 void compute_termination_metrics(
     pdhg_solver_state_t *state,
@@ -206,6 +194,9 @@ static void compute_matrix_products(
 
 static void compute_residual_vectors(pdhg_solver_state_t *state)
 {
+    double *stationarity_residual_entries_d = state->variable_reduction_entries_d;
+    double *constraint_recession_residual_entries_d = state->constraint_reduction_entries_d;
+
     compute_residual_kernel<<<state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->primal_residual_d,
         state->primal_product_d,
@@ -222,8 +213,8 @@ static void compute_residual_vectors(pdhg_solver_state_t *state)
         state->pdhg_primal_solution_d,
         state->hsd_primal_scale_pdhg_d,
         state->primal_infeasibility_reduced_cost_d,
-        state->primal_infeasibility_stationarity_residual_d,
-        state->constraint_recession_residual_d,
+        stationarity_residual_entries_d,
+        constraint_recession_residual_entries_d,
         state->variable_recession_residual_d,
         state->dual_ray_d,
         state->reduced_cost_ray_d,
@@ -239,6 +230,13 @@ static void compute_residual_norms(
     const pdhg_parameters_t *params)
 {
     termination_reductions_t *reductions_d = state->termination_reductions_d;
+    const double *stationarity_residual_entries_d = state->variable_reduction_entries_d;
+    const double *constraint_recession_residual_entries_d = state->constraint_reduction_entries_d;
+
+    reduce_device_abs_max(state, stationarity_residual_entries_d, state->num_variables,
+                          &reductions_d->primal_infeasibility_stationarity_residual_norm);
+    reduce_device_abs_max(state, constraint_recession_residual_entries_d, state->num_constraints,
+                          &reductions_d->constraint_recession_residual_norm);
 
     if (params->optimality_norm == NORM_TYPE_L_INF)
     {
@@ -271,10 +269,6 @@ static void compute_residual_norms(
             &reductions_d->dual_solution_norm));
     }
 
-    reduce_device_abs_max(state, state->primal_infeasibility_stationarity_residual_d, state->num_variables,
-                          &reductions_d->primal_infeasibility_stationarity_residual_norm);
-    reduce_device_abs_max(state, state->constraint_recession_residual_d, state->num_constraints,
-                          &reductions_d->constraint_recession_residual_norm);
     reduce_device_abs_max(state, state->variable_recession_residual_d, state->num_variables,
                           &reductions_d->variable_recession_residual_norm);
     reduce_device_abs_max(state, state->dual_ray_d, state->num_constraints,
@@ -461,7 +455,6 @@ void check_termination_criteria(
                                   TERMINATION_REASON_PRIMAL_INFEASIBLE,
                                   true))
         {
-            prepare_homogeneous_primal_infeasibility_ray_result(solver_state);
             return;
         }
         if (certify_infeasibility(solver_state,
@@ -482,7 +475,6 @@ void check_termination_criteria(
                               TERMINATION_REASON_PRIMAL_INFEASIBLE,
                               false))
     {
-        prepare_primal_infeasibility_ray_result(solver_state);
         return;
     }
     if (certify_infeasibility(solver_state,
@@ -492,7 +484,6 @@ void check_termination_criteria(
                               TERMINATION_REASON_DUAL_INFEASIBLE,
                               false))
     {
-        prepare_dual_infeasibility_ray_result(solver_state);
         return;
     }
 
@@ -540,41 +531,6 @@ static bool certify_infeasibility(
         return true;
     }
     return false;
-}
-
-static void prepare_homogeneous_primal_infeasibility_ray_result(pdhg_solver_state_t *state)
-{
-    CUDA_CHECK(cudaMemcpyAsync(
-        state->pdhg_reduced_cost_d,
-        state->primal_infeasibility_reduced_cost_d,
-        state->var_bytes,
-        cudaMemcpyDeviceToDevice,
-        state->stream_A));
-}
-
-static void prepare_primal_infeasibility_ray_result(pdhg_solver_state_t *state)
-{
-    install_primal_infeasibility_ray_kernel<<<
-        state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->pdhg_dual_solution_d,
-        state->pdhg_reduced_cost_d,
-        state->delta_dual_solution_d,
-        state->dual_product_d,
-        state->variable_lower_bound_d,
-        state->variable_upper_bound_d,
-        state->num_constraints,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-}
-
-static void prepare_dual_infeasibility_ray_result(pdhg_solver_state_t *state)
-{
-    CUDA_CHECK(cudaMemcpyAsync(
-        state->pdhg_primal_solution_d,
-        state->delta_primal_solution_d,
-        state->var_bytes,
-        cudaMemcpyDeviceToDevice,
-        state->stream_A));
 }
 
 __global__ void compute_residual_kernel(
@@ -887,29 +843,4 @@ __global__ void compute_termination_metrics_kernel(
     metrics_d->dual_infeasibility_displacement_residual =
         reductions->dual_infeasibility_residual
         / constraint_bound_rescaling;
-}
-
-__global__ void install_primal_infeasibility_ray_kernel(
-    double *__restrict__ dual_sol,
-    double *__restrict__ reduced_cost,
-    const double *__restrict__ delta_dual,
-    const double *__restrict__ dual_prod,
-    const double *__restrict__ var_lb,
-    const double *__restrict__ var_ub,
-    int n_cons,
-    int n_vars)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i < n_cons)
-    {
-        dual_sol[i] = delta_dual[i];
-    }
-    else if (i < n_cons + n_vars)
-    {
-        int idx = i - n_cons;
-        double farkas_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
-        double farkas_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
-        reduced_cost[idx] = fmax(farkas_lower_bound,
-                                 fmin(-dual_prod[idx], farkas_upper_bound));
-    }
 }
