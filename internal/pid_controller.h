@@ -31,6 +31,8 @@ extern "C"
 {
 #endif
 
+void initialize_pid_state(pid_state_t *pid);
+
 void apply_restart_pid(pid_state_t *pid,
                        double *primal_weight,
                        const step_size_parameters_t *params,
@@ -41,8 +43,6 @@ void apply_restart_pid(pid_state_t *pid,
                        double relative_dual_residual,
                        double homogeneous_scale,
                        double homogeneous_ratio);
-
-void initialize_pid_state(pid_state_t *pid);
 
 #ifdef __cplusplus
 }

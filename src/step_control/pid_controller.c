@@ -17,11 +17,50 @@ limitations under the License.
 #include "pid_controller.h"
 #include <math.h>
 
+static void apply_pid_update(pid_state_t *pid,
+                             double *primal_weight,
+                             const step_size_parameters_t *params,
+                             double primal_dist,
+                             double dual_dist,
+                             bool clamp_step);
+
 void initialize_pid_state(pid_state_t *pid)
 {
     pid->error_sum = 0.0;
     pid->last_error = 0.0;
     pid->has_last_error = false;
+}
+
+void apply_restart_pid(pid_state_t *pid,
+                       double *primal_weight,
+                       const step_size_parameters_t *params,
+                       double primal_dist,
+                       double dual_dist,
+                       double relative_objective_gap,
+                       double relative_primal_residual,
+                       double relative_dual_residual,
+                       double homogeneous_scale,
+                       double homogeneous_ratio)
+{
+    if (homogeneous_ratio > 0.9)
+    {
+        initialize_pid_state(pid);
+        return;
+    }
+
+    double scale_reference = fmax(homogeneous_scale, 1e-300);
+    bool dist_ok = primal_dist > 1e-16 * scale_reference &&
+                   dual_dist > 1e-16 * scale_reference &&
+                   primal_dist < 1e16 * scale_reference &&
+                   dual_dist < 1e16 * scale_reference;
+
+    double primal_error = fmax(relative_primal_residual, relative_objective_gap);
+    double dual_error = fmax(relative_dual_residual, relative_objective_gap);
+    double infeas_ratio = primal_error / dual_error;
+    bool ratio_ok = infeas_ratio > 1e-7 && infeas_ratio < 1e7;
+
+    apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist,
+                     !(dist_ok && ratio_ok));
 }
 
 static void apply_pid_update(pid_state_t *pid,
@@ -49,37 +88,4 @@ static void apply_pid_update(pid_state_t *pid,
     *primal_weight *= exp(step);
     pid->last_error = error;
     pid->has_last_error = true;
-}
-
-void apply_restart_pid(pid_state_t *pid,
-                       double *primal_weight,
-                       const step_size_parameters_t *params,
-                       double primal_dist,
-                       double dual_dist,
-                       double relative_objective_gap,
-                       double relative_primal_residual,
-                       double relative_dual_residual,
-                       double homogeneous_scale,
-                       double homogeneous_ratio)
-{
-    if (homogeneous_ratio > 0.9)
-    {
-        pid->error_sum = 0.0;
-        pid->has_last_error = false;
-        return;
-    }
-
-    double scale_reference = fmax(homogeneous_scale, 1e-300);
-    bool dist_ok = primal_dist > 1e-16 * scale_reference &&
-                   dual_dist > 1e-16 * scale_reference &&
-                   primal_dist < 1e16 * scale_reference &&
-                   dual_dist < 1e16 * scale_reference;
-
-    double primal_error = fmax(relative_primal_residual, relative_objective_gap);
-    double dual_error = fmax(relative_dual_residual, relative_objective_gap);
-    double infeas_ratio = primal_error / dual_error;
-    bool ratio_ok = infeas_ratio > 1e-7 && infeas_ratio < 1e7;
-
-    apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist,
-                     !(dist_ok && ratio_ok));
 }
