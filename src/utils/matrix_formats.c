@@ -544,15 +544,13 @@ static matrix_format_status_t build_csr_entries(
     }
 
     CooEntry *entries = (CooEntry *)safe_malloc((size_t)nnz_in * sizeof(CooEntry));
-    int pos = 0;
     for (int i = 0; i < m; ++i)
     {
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
-            entries[pos].row = i;
-            entries[pos].col = col_ind[k];
-            entries[pos].value = input_vals[k];
-            ++pos;
+            entries[k].row = i;
+            entries[k].col = col_ind[k];
+            entries[k].value = input_vals[k];
         }
     }
 
