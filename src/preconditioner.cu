@@ -70,7 +70,7 @@ __global__ void compute_csr_row_powsum_kernel(
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
-    const double *bound_norm,
+    const double *bound_squared_norm,
     const double *objective_norm);
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
@@ -447,10 +447,6 @@ static void bound_objective_rescaling(
         1,
         state->objective_norm_workspace_mp));
 
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    *state->bound_norm_workspace_mp =
-        sqrt(*state->bound_norm_workspace_mp);
-
     compute_bound_objective_scales_kernel<<<1, 1, 0, state->stream_A>>>(
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
@@ -720,10 +716,10 @@ __global__ void compute_csr_row_powsum_kernel(
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
-    const double *bound_norm,
+    const double *bound_squared_norm,
     const double *objective_norm)
 {
-    *cons_scale_d = 1.0 / (bound_norm[0] + 1.0);
+    *cons_scale_d = 1.0 / (sqrt(bound_squared_norm[0]) + 1.0);
     *obj_scale_d = 1.0 / (objective_norm[0] + 1.0);
 }
 
