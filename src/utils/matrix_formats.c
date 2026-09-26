@@ -214,11 +214,8 @@ matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
         }
     }
 
-    int *raw_row_ptr = (int *)safe_malloc((size_t)(m + 1) * sizeof(int));
-    for (int i = 0; i <= m; ++i)
-        raw_row_ptr[i] = 0;
+    int *raw_row_ptr = (int *)safe_calloc((size_t)(m + 1), sizeof(int));
 
-    int raw_nnz = 0;
     for (int j = 0; j < n; ++j)
     {
         for (int k = col_ptr[j]; k < col_ptr[j + 1]; ++k)
@@ -230,14 +227,13 @@ matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
                 return MATRIX_FORMAT_INVALID_CSC_ROW;
             }
             ++(raw_row_ptr[ri + 1]);
-            ++raw_nnz;
         }
     }
 
     for (int i = 0; i < m; ++i)
         raw_row_ptr[i + 1] += raw_row_ptr[i];
 
-    const size_t alloc_nnz = (raw_nnz > 0) ? (size_t)raw_nnz : 1;
+    const size_t alloc_nnz = (nnz_in > 0) ? (size_t)nnz_in : 1;
     int *raw_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
     double *raw_vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
 
