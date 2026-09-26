@@ -34,22 +34,20 @@ static matrix_format_status_t validate_conversion_args(
     double **vals,
     int *nnz_out);
 static int compare_coo_entries(const void *lhs, const void *rhs);
-static int build_coo_entries(int m, int n,
-                             int nnz_in,
-                             const int *row_ind,
-                             const int *col_ind,
-                             const double *input_vals,
-                             CooEntry **entries_out,
-                             int *nnz_out,
-                             matrix_format_status_t *status_out);
-static int build_csr_entries(int m, int n,
-                             int nnz_in,
-                             const int *row_ptr,
-                             const int *col_ind,
-                             const double *input_vals,
-                             CooEntry **entries_out,
-                             int *nnz_out,
-                             matrix_format_status_t *status_out);
+static matrix_format_status_t build_coo_entries(
+    int m, int n,
+    int nnz_in,
+    const int *row_ind,
+    const int *col_ind,
+    const double *input_vals,
+    CooEntry **entries_out);
+static matrix_format_status_t build_csr_entries(
+    int m, int n,
+    int nnz_in,
+    const int *row_ptr,
+    const int *col_ind,
+    const double *input_vals,
+    CooEntry **entries_out);
 static void sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
                               int **row_ptr, int **col_ind,
                               double **vals, int *nnz_out);
@@ -290,21 +288,20 @@ matrix_format_status_t coo_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
     }
 
     CooEntry *entries = NULL;
-    int entry_count = 0;
-    status = MATRIX_FORMAT_OK;
-    if (build_coo_entries(m, n, nnz_in, coo_row_ind, coo_col_ind,
-                          coo_vals, &entries, &entry_count, &status) != 0)
+    status = build_coo_entries(m, n, nnz_in, coo_row_ind, coo_col_ind,
+                               coo_vals, &entries);
+    if (status != MATRIX_FORMAT_OK)
     {
         return status;
     }
-    if (entry_count == 0)
+    if (nnz_in == 0)
     {
         init_empty_csr(m, row_ptr, col_ind, vals, nnz_out);
         return MATRIX_FORMAT_OK;
     }
 
-    qsort(entries, (size_t)entry_count, sizeof(CooEntry), compare_coo_entries);
-    sorted_coo_to_csr(entries, m, entry_count, row_ptr, col_ind, vals, nnz_out);
+    qsort(entries, (size_t)nnz_in, sizeof(CooEntry), compare_coo_entries);
+    sorted_coo_to_csr(entries, m, nnz_in, row_ptr, col_ind, vals, nnz_out);
     free(entries);
     return MATRIX_FORMAT_OK;
 }
@@ -332,21 +329,20 @@ matrix_format_status_t canonicalize_csr(const matrix_desc_t *desc, int **row_ptr
     }
 
     CooEntry *entries = NULL;
-    int entry_count = 0;
-    status = MATRIX_FORMAT_OK;
-    if (build_csr_entries(m, n, nnz_in, csr_row_ptr, csr_col_ind,
-                          csr_vals, &entries, &entry_count, &status) != 0)
+    status = build_csr_entries(m, n, nnz_in, csr_row_ptr, csr_col_ind,
+                               csr_vals, &entries);
+    if (status != MATRIX_FORMAT_OK)
     {
         return status;
     }
-    if (entry_count == 0)
+    if (nnz_in == 0)
     {
         init_empty_csr(m, row_ptr, col_ind, vals, nnz_out);
         return MATRIX_FORMAT_OK;
     }
 
-    qsort(entries, (size_t)entry_count, sizeof(CooEntry), compare_coo_entries);
-    sorted_coo_to_csr(entries, m, entry_count, row_ptr, col_ind, vals, nnz_out);
+    qsort(entries, (size_t)nnz_in, sizeof(CooEntry), compare_coo_entries);
+    sorted_coo_to_csr(entries, m, nnz_in, row_ptr, col_ind, vals, nnz_out);
     free(entries);
     return MATRIX_FORMAT_OK;
 }
@@ -409,14 +405,13 @@ static int compare_coo_entries(const void *lhs, const void *rhs)
     return 0;
 }
 
-static int build_coo_entries(int m, int n,
-                             int nnz_in,
-                             const int *row_ind,
-                             const int *col_ind,
-                             const double *input_vals,
-                             CooEntry **entries_out,
-                             int *nnz_out,
-                             matrix_format_status_t *status_out)
+static matrix_format_status_t build_coo_entries(
+    int m, int n,
+    int nnz_in,
+    const int *row_ind,
+    const int *col_ind,
+    const double *input_vals,
+    CooEntry **entries_out)
 {
     for (int k = 0; k < nnz_in; ++k)
     {
@@ -424,21 +419,18 @@ static int build_coo_entries(int m, int n,
         int cj = col_ind[k];
         if (ri < 0 || ri >= m)
         {
-            *status_out = MATRIX_FORMAT_INVALID_COO_ROW;
-            return -1;
+            return MATRIX_FORMAT_INVALID_COO_ROW;
         }
         if (cj < 0 || cj >= n)
         {
-            *status_out = MATRIX_FORMAT_INVALID_COO_COL;
-            return -1;
+            return MATRIX_FORMAT_INVALID_COO_COL;
         }
     }
 
     if (nnz_in == 0)
     {
         *entries_out = NULL;
-        *nnz_out = 0;
-        return 0;
+        return MATRIX_FORMAT_OK;
     }
 
     CooEntry *entries = (CooEntry *)safe_malloc((size_t)nnz_in * sizeof(CooEntry));
@@ -450,23 +442,20 @@ static int build_coo_entries(int m, int n,
     }
 
     *entries_out = entries;
-    *nnz_out = nnz_in;
-    return 0;
+    return MATRIX_FORMAT_OK;
 }
 
-static int build_csr_entries(int m, int n,
-                             int nnz_in,
-                             const int *row_ptr,
-                             const int *col_ind,
-                             const double *input_vals,
-                             CooEntry **entries_out,
-                             int *nnz_out,
-                             matrix_format_status_t *status_out)
+static matrix_format_status_t build_csr_entries(
+    int m, int n,
+    int nnz_in,
+    const int *row_ptr,
+    const int *col_ind,
+    const double *input_vals,
+    CooEntry **entries_out)
 {
     if (row_ptr[m] != nnz_in)
     {
-        *status_out = MATRIX_FORMAT_INVALID_CSR_ROW_PTR;
-        return -1;
+        return MATRIX_FORMAT_INVALID_CSR_ROW_PTR;
     }
     for (int i = 0; i < m; ++i)
     {
@@ -474,16 +463,14 @@ static int build_csr_entries(int m, int n,
         int row_end = row_ptr[i + 1];
         if (row_start > row_end || row_start < 0 || row_end > nnz_in)
         {
-            *status_out = MATRIX_FORMAT_INVALID_CSR_ROW_PTR;
-            return -1;
+            return MATRIX_FORMAT_INVALID_CSR_ROW_PTR;
         }
         for (int k = row_start; k < row_end; ++k)
         {
             int cj = col_ind[k];
             if (cj < 0 || cj >= n)
             {
-                *status_out = MATRIX_FORMAT_INVALID_CSR_COL;
-                return -1;
+                return MATRIX_FORMAT_INVALID_CSR_COL;
             }
         }
     }
@@ -491,8 +478,7 @@ static int build_csr_entries(int m, int n,
     if (nnz_in == 0)
     {
         *entries_out = NULL;
-        *nnz_out = 0;
-        return 0;
+        return MATRIX_FORMAT_OK;
     }
 
     CooEntry *entries = (CooEntry *)safe_malloc((size_t)nnz_in * sizeof(CooEntry));
@@ -509,8 +495,7 @@ static int build_csr_entries(int m, int n,
     }
 
     *entries_out = entries;
-    *nnz_out = nnz_in;
-    return 0;
+    return MATRIX_FORMAT_OK;
 }
 
 static void sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
