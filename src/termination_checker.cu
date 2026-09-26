@@ -18,7 +18,6 @@ limitations under the License.
 #include "cuda_macros.h"
 #include "cuda_utils.h"
 #include "spmv_backend.h"
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
@@ -308,12 +307,8 @@ static void compute_objective_and_support_terms(
         1.0,
         state->num_constraints);
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        constraint_support_entries_d,
-        constraint_support_d,
-        state->num_constraints, state->stream_A));
+    reduce_device_sum(state, constraint_support_entries_d, state->num_constraints,
+                      constraint_support_d);
 
     compute_box_support_contribution_kernel<<<
         state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -324,12 +319,8 @@ static void compute_objective_and_support_terms(
         variable_direction_sign,
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        variable_support_entries_d,
-        variable_support_d,
-        state->num_variables, state->stream_A));
+    reduce_device_sum(state, variable_support_entries_d, state->num_variables,
+                      variable_support_d);
 }
 
 static void compute_homogeneous_variable_support(pdhg_solver_state_t *state)
@@ -346,12 +337,8 @@ static void compute_homogeneous_variable_support(pdhg_solver_state_t *state)
         1.0,
         state->num_variables);
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        variable_support_entries_d,
-        &reductions_d->homogeneous_variable_support,
-        state->num_variables, state->stream_A));
+    reduce_device_sum(state, variable_support_entries_d, state->num_variables,
+                      &reductions_d->homogeneous_variable_support);
 }
 
 static void compute_ray_infeasibility(pdhg_solver_state_t *state)

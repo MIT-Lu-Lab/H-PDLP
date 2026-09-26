@@ -39,12 +39,6 @@ __global__ void rescale_reduced_cost_kernel(
     double input_sign,
     int n_vars);
 static double compute_result_divisor(const pdhg_solver_state_t *state);
-static double compute_original_primal_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h);
-static double compute_original_dual_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h);
 
 bool termination_has_solution(termination_reason_t reason)
 {
@@ -167,33 +161,22 @@ static double compute_result_divisor(const pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMemcpy(&reductions_h, state->termination_reductions_d,
                           sizeof(reductions_h), cudaMemcpyDeviceToHost));
 
-    return state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE
-               ? compute_original_primal_infeasibility_margin(state, &reductions_h)
-               : compute_original_dual_infeasibility_margin(state, &reductions_h);
-}
-
-static double compute_original_primal_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h)
-{
-    double support_total =
-        state->control.certificate_from_homogeneous
-            ? reductions_h->constraint_support +
-                  reductions_h->homogeneous_variable_support
-            : reductions_h->primal_infeasibility_constraint_support +
-                  reductions_h->primal_infeasibility_variable_support;
-    return support_total /
-           (state->constraint_bound_rescaling * state->objective_vector_rescaling);
-}
-
-static double compute_original_dual_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h)
-{
-    double objective_dot_ray = state->control.certificate_from_homogeneous
-                                   ? reductions_h->objective_dot_primal
-                                   : reductions_h->dual_infeasibility_objective;
-    return -objective_dot_ray /
+    double margin;
+    if (state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
+    {
+        margin = state->control.certificate_from_homogeneous
+                     ? reductions_h.constraint_support +
+                           reductions_h.homogeneous_variable_support
+                     : reductions_h.primal_infeasibility_constraint_support +
+                           reductions_h.primal_infeasibility_variable_support;
+    }
+    else
+    {
+        margin = state->control.certificate_from_homogeneous
+                     ? -reductions_h.objective_dot_primal
+                     : -reductions_h.dual_infeasibility_objective;
+    }
+    return margin /
            (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 }
 

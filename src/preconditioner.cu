@@ -19,7 +19,6 @@ limitations under the License.
 #include "cuda_utils.h"
 #include "power_iteration.h"
 #include "setup.h"
-#include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <math.h>
@@ -200,17 +199,15 @@ static void geometric_mean_rescaling(
 {
     const int num_constraints = state->num_constraints;
     const int num_variables = state->num_variables;
-    double *constraint_multiplier = constraint_rescaling;
-    double *variable_multiplier = variable_rescaling;
 
     thrust::fill_n(
         thrust::cuda::par.on(state->stream_A),
-        constraint_multiplier,
+        constraint_rescaling,
         num_constraints,
         1.0);
     thrust::fill_n(
         thrust::cuda::par.on(state->stream_A),
-        variable_multiplier,
+        variable_rescaling,
         num_variables,
         1.0);
 
@@ -237,8 +234,8 @@ static void geometric_mean_rescaling(
             state->constraint_matrix->val,
             num_constraints,
             row_log2,
-            variable_multiplier,
-            constraint_multiplier);
+            variable_rescaling,
+            constraint_rescaling);
         update_geometric_mean_multiplier_kernel<<<
             col_blocks,
             THREADS_PER_BLOCK,
@@ -249,8 +246,8 @@ static void geometric_mean_rescaling(
             state->constraint_matrix_t->val,
             num_variables,
             col_log2,
-            constraint_multiplier,
-            variable_multiplier);
+            constraint_rescaling,
+            variable_rescaling);
     }
 
     finalize_geometric_mean_scaling_kernel<<<
@@ -440,13 +437,8 @@ static void bound_objective_rescaling(
         state->constraint_upper_bound_d,
         num_constraints);
 
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        bound_contrib_d,
-        state->bound_norm_workspace_mp,
-        num_constraints,
-        state->stream_A));
+    reduce_device_sum(state, bound_contrib_d, num_constraints,
+                      state->bound_norm_workspace_mp);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
