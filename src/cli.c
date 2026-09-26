@@ -70,8 +70,6 @@ static FILE *open_output_file(const char *output_dir, const char *instance_name,
                               const char *suffix, const char *description)
 {
     char *file_path = get_output_path(output_dir, instance_name, suffix);
-    if (file_path == NULL)
-        return NULL;
 
     FILE *outfile = fopen(file_path, "w");
     if (outfile == NULL)

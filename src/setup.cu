@@ -17,6 +17,8 @@ limitations under the License.
 #include "setup.h"
 #include "active_set_boost.h"
 #include "cone_projector.h"
+#include "cuda_macros.h"
+#include "cuda_utils.h"
 #include "cuhsdlp.h"
 #include "display.h"
 #include "matrix_formats.h"
@@ -296,8 +298,6 @@ pdhg_solver_state_t *initialize_solver_state(
     state->num_blocks_dual = (state->num_constraints + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_primal_dual =
         (state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-    state->num_blocks_rescale =
-        (2 * state->num_variables + state->num_constraints + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_nnz = (state->constraint_matrix->num_nonzeros + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     if (state->num_blocks_nnz < 1)
         state->num_blocks_nnz = 1;
@@ -313,9 +313,6 @@ pdhg_solver_state_t *initialize_solver_state(
     CUBLAS_CHECK(cublasCreate(&state->blas_handle_A));
     CUBLAS_CHECK(cublasSetStream(state->blas_handle_A, state->stream_A));
     CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_A, CUBLAS_POINTER_MODE_DEVICE));
-    CUBLAS_CHECK(cublasCreate(&state->blas_handle_At));
-    CUBLAS_CHECK(cublasSetStream(state->blas_handle_At, state->stream_At));
-    CUBLAS_CHECK(cublasSetPointerMode(state->blas_handle_At, CUBLAS_POINTER_MODE_DEVICE));
 
     CURAND_CHECK(curandCreateGenerator(&state->curand_gen, CURAND_RNG_PSEUDO_DEFAULT));
     CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(state->curand_gen, 42));
@@ -564,8 +561,6 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
 
     allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes + var_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_residual_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->primal_infeasibility_stationarity_residual_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->constraint_recession_residual_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->variable_recession_residual_d, var_bytes);
 }
 
@@ -589,6 +584,10 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
         sizeof(double),
         cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(&state->control.fixed_point_error_mp, sizeof(double), cudaHostAllocMapped));
+    CUDA_CHECK(cudaHostAlloc(
+        &state->restart_reductions_mp,
+        sizeof(restart_reductions_t),
+        cudaHostAllocMapped));
 }
 
 static void allocate_device_scalars(pdhg_solver_state_t *state)
@@ -604,14 +603,8 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->hsd_dual_scale_reflected_d = state->hsd_scalars_d + HSD_DUAL_SCALE_REFLECTED;
 
     allocate_zeroed_device_buffer(
-        (void **)&state->pdhg_reduce_d,
-        PDHG_COUNT * sizeof(double));
-    state->pdhg_primal_norm_d     = state->pdhg_reduce_d + PDHG_PRIMAL_NORM;
-    state->pdhg_dual_norm_d       = state->pdhg_reduce_d + PDHG_DUAL_NORM;
-    state->objective_dot_primal_d =
-        state->pdhg_reduce_d + PDHG_OBJECTIVE_DOT_X;
-    state->fixed_point_operator_cross_d =
-        state->pdhg_reduce_d + PDHG_OPERATOR_CROSS_TERM;
+        (void **)&state->fixed_point_reductions_d,
+        sizeof(fixed_point_reductions_t));
 
     allocate_zeroed_device_buffer(
         (void **)&state->termination_reductions_d,
@@ -625,8 +618,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->control.step_size_primal_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_dual_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_homogeneous_d, sizeof(double));
-    state->graphExec = NULL;
-    state->graph_created = false;
 
     allocate_zeroed_device_buffer((void **)&state->dual_box_cone_state.scalar_d, sizeof(double));
     state->dual_box_cone_state.lower_bound_d = state->constraint_lower_bound_d;
@@ -804,8 +795,6 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
         CURAND_CHECK(curandDestroyGenerator(state->curand_gen));
     if (state->blas_handle_A)
         CUBLAS_CHECK(cublasDestroy(state->blas_handle_A));
-    if (state->blas_handle_At)
-        CUBLAS_CHECK(cublasDestroy(state->blas_handle_At));
     if (state->sparse_handle_A)
         CUSPARSE_CHECK(cusparseDestroy(state->sparse_handle_A));
     if (state->sparse_handle_At)
@@ -913,8 +902,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
     FREE_DEVICE_BUFFER(state->primal_residual_d);
     FREE_DEVICE_BUFFER(state->dual_residual_d);
-    FREE_DEVICE_BUFFER(state->primal_infeasibility_stationarity_residual_d);
-    FREE_DEVICE_BUFFER(state->constraint_recession_residual_d);
     FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
 
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.scalar_d);
@@ -926,7 +913,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->control.step_size_primal_d);
     FREE_DEVICE_BUFFER(state->control.step_size_dual_d);
     FREE_DEVICE_BUFFER(state->control.step_size_homogeneous_d);
-    FREE_DEVICE_BUFFER(state->pdhg_reduce_d);
+    FREE_DEVICE_BUFFER(state->fixed_point_reductions_d);
     FREE_DEVICE_BUFFER(state->termination_reductions_d);
     FREE_DEVICE_BUFFER(state->metrics_d);
 
@@ -943,6 +930,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_HOST_BUFFER(state->bound_norm_workspace_mp);
     FREE_HOST_BUFFER(state->objective_norm_workspace_mp);
     FREE_HOST_BUFFER(state->control.fixed_point_error_mp);
+    FREE_HOST_BUFFER(state->restart_reductions_mp);
 
 #undef FREE_HOST_BUFFER
 }

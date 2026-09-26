@@ -17,12 +17,18 @@ limitations under the License.
 #pragma once
 
 #include "cusparse_compat.h"
-#include "internal_types.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+
+    typedef struct {
+        cusparseSpMatDescr_t matrix;
+        void *descriptor;
+        void *plan;
+        void *buffer;
+    } spmv_plan_t;
 
     const char *spmv_backend_name(void);
 

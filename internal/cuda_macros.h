@@ -23,11 +23,6 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
 #define CUDA_CHECK(call)                                           \
     do                                                             \
     {                                                              \
@@ -77,10 +72,3 @@ extern "C"
     } while (0)
 
 #define THREADS_PER_BLOCK 256
-
-    extern const double HOST_ONE;
-    extern const double HOST_ZERO;
-
-#ifdef __cplusplus
-}
-#endif

@@ -15,10 +15,10 @@ limitations under the License.
 */
 
 #include "preconditioner.h"
+#include "cuda_macros.h"
+#include "cuda_utils.h"
 #include "power_iteration.h"
 #include "setup.h"
-#include "utils.h"
-#include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <math.h>
@@ -70,7 +70,7 @@ __global__ void compute_csr_row_powsum_kernel(
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
-    const double *bound_norm,
+    const double *bound_squared_norm,
     const double *objective_norm);
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
@@ -109,7 +109,6 @@ __global__ void update_geometric_mean_multiplier_kernel(
     const double *__restrict__ other_multiplier,
     double *__restrict__ multiplier);
 __global__ void finalize_geometric_mean_scaling_kernel(
-    const double *__restrict__ multiplier,
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
     int n);
@@ -119,11 +118,9 @@ static void scale_problem(
     double *variable_rescaling);
 static void geometric_mean_rescaling(
     pdhg_solver_state_t *state,
-    int num_iters,
+    int num_iterations,
     double *constraint_rescaling,
-    double *variable_rescaling,
-    double *constraint_multiplier,
-    double *variable_multiplier);
+    double *variable_rescaling);
 static int compute_log2_vector_width(
     long long num_nonzeros,
     int num_rows,
@@ -133,7 +130,7 @@ static void compute_longest_csr_rows(
     int *longest);
 static void ruiz_rescaling(
     pdhg_solver_state_t *state,
-    int num_iters,
+    int num_iterations,
     double *constraint_rescaling,
     double *variable_rescaling);
 static void pock_chambolle_rescaling(
@@ -198,21 +195,19 @@ static void geometric_mean_rescaling(
     pdhg_solver_state_t *state,
     int num_iterations,
     double *constraint_rescaling,
-    double *variable_rescaling,
-    double *constraint_multiplier,
-    double *variable_multiplier)
+    double *variable_rescaling)
 {
     const int num_constraints = state->num_constraints;
     const int num_variables = state->num_variables;
 
     thrust::fill_n(
         thrust::cuda::par.on(state->stream_A),
-        constraint_multiplier,
+        constraint_rescaling,
         num_constraints,
         1.0);
     thrust::fill_n(
         thrust::cuda::par.on(state->stream_A),
-        variable_multiplier,
+        variable_rescaling,
         num_variables,
         1.0);
 
@@ -239,8 +234,8 @@ static void geometric_mean_rescaling(
             state->constraint_matrix->val,
             num_constraints,
             row_log2,
-            variable_multiplier,
-            constraint_multiplier);
+            variable_rescaling,
+            constraint_rescaling);
         update_geometric_mean_multiplier_kernel<<<
             col_blocks,
             THREADS_PER_BLOCK,
@@ -251,8 +246,8 @@ static void geometric_mean_rescaling(
             state->constraint_matrix_t->val,
             num_variables,
             col_log2,
-            constraint_multiplier,
-            variable_multiplier);
+            constraint_rescaling,
+            variable_rescaling);
     }
 
     finalize_geometric_mean_scaling_kernel<<<
@@ -260,7 +255,6 @@ static void geometric_mean_rescaling(
         THREADS_PER_BLOCK,
         0,
         state->stream_A>>>(
-        constraint_multiplier,
         constraint_rescaling,
         state->constraint_rescaling_d,
         num_constraints);
@@ -269,7 +263,6 @@ static void geometric_mean_rescaling(
         THREADS_PER_BLOCK,
         0,
         state->stream_A>>>(
-        variable_multiplier,
         variable_rescaling,
         state->variable_rescaling_d,
         num_variables);
@@ -444,13 +437,8 @@ static void bound_objective_rescaling(
         state->constraint_upper_bound_d,
         num_constraints);
 
-    CUDA_CHECK(cub::DeviceReduce::Sum(
-        state->cub_reduce_workspace_d,
-        state->cub_reduce_workspace_bytes,
-        bound_contrib_d,
-        state->bound_norm_workspace_mp,
-        num_constraints,
-        state->stream_A));
+    reduce_device_sum(state, bound_contrib_d, num_constraints,
+                      state->bound_norm_workspace_mp);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
@@ -458,10 +446,6 @@ static void bound_objective_rescaling(
         state->objective_vector_d,
         1,
         state->objective_norm_workspace_mp));
-
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    *state->bound_norm_workspace_mp =
-        sqrt(*state->bound_norm_workspace_mp);
 
     compute_bound_objective_scales_kernel<<<1, 1, 0, state->stream_A>>>(
         state->constraint_bound_rescaling_d,
@@ -525,27 +509,8 @@ void rescale_problem(
         num_variables,
         1.0);
 
-    double *constraint_rescaling = NULL;
-    double *variable_rescaling = NULL;
-    const bool needs_equilibration_workspace =
-        scaling_params->geometric_mean_iterations > 0 ||
-        scaling_params->l_inf_ruiz_iterations > 0 ||
-        scaling_params->has_pock_chambolle_alpha;
-    if (needs_equilibration_workspace)
-    {
-        CUDA_CHECK(cudaMalloc(
-            &constraint_rescaling,
-            (size_t)((num_constraints > 0)
-                         ? num_constraints
-                         : 1) *
-                sizeof(double)));
-        CUDA_CHECK(cudaMalloc(
-            &variable_rescaling,
-            (size_t)((num_variables > 0)
-                         ? num_variables
-                         : 1) *
-                sizeof(double)));
-    }
+    double *constraint_rescaling = state->constraint_reduction_entries_d;
+    double *variable_rescaling = state->variable_reduction_entries_d;
 
     if (scaling_params->geometric_mean_iterations > 0)
     {
@@ -554,25 +519,11 @@ void rescale_problem(
             printf("  Geometric-mean scaling (%d iterations)\n", scaling_params->geometric_mean_iterations);
         }
 
-        double *constraint_multiplier = NULL;
-        double *variable_multiplier = NULL;
-        CUDA_CHECK(cudaMalloc(
-            &constraint_multiplier,
-            (size_t)((num_constraints > 0) ? num_constraints : 1) * sizeof(double)));
-        CUDA_CHECK(cudaMalloc(
-            &variable_multiplier,
-            (size_t)((num_variables > 0) ? num_variables : 1) * sizeof(double)));
-
         geometric_mean_rescaling(
             state,
             scaling_params->geometric_mean_iterations,
             constraint_rescaling,
-            variable_rescaling,
-            constraint_multiplier,
-            variable_multiplier);
-
-        CUDA_CHECK(cudaFree(constraint_multiplier));
-        CUDA_CHECK(cudaFree(variable_multiplier));
+            variable_rescaling);
     }
     if (scaling_params->l_inf_ruiz_iterations > 0)
     {
@@ -593,8 +544,6 @@ void rescale_problem(
 
     state->constraint_bound_rescaling = 1.0;
     state->objective_vector_rescaling = 1.0;
-    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &HOST_ONE, sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &HOST_ONE, sizeof(double), cudaMemcpyHostToDevice));
     if (scaling_params->bound_objective_rescaling)
     {
         if (verbose)
@@ -631,11 +580,6 @@ void rescale_problem(
         state->rescaled_constraint_norm = estimate.max_singular_value;
     }
     state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
-
-    if (constraint_rescaling)
-        CUDA_CHECK(cudaFree(constraint_rescaling));
-    if (variable_rescaling)
-        CUDA_CHECK(cudaFree(variable_rescaling));
 
     if (verbose)
     {
@@ -770,10 +714,10 @@ __global__ void compute_csr_row_powsum_kernel(
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
-    const double *bound_norm,
+    const double *bound_squared_norm,
     const double *objective_norm)
 {
-    *cons_scale_d = 1.0 / (bound_norm[0] + 1.0);
+    *cons_scale_d = 1.0 / (sqrt(bound_squared_norm[0]) + 1.0);
     *obj_scale_d = 1.0 / (objective_norm[0] + 1.0);
 }
 
@@ -909,14 +853,13 @@ __global__ void update_geometric_mean_multiplier_kernel(
 }
 
 __global__ void finalize_geometric_mean_scaling_kernel(
-    const double *__restrict__ multiplier,
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
     int n)
 {
     for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n; t += blockDim.x * gridDim.x)
     {
-        const double divisor = 1.0 / multiplier[t];
+        const double divisor = 1.0 / scaling_factors[t];
         cumulative_rescaling[t] *= divisor;
         scaling_factors[t] = divisor;
     }

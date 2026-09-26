@@ -19,7 +19,6 @@ limitations under the License.
 #include "cuhsdlp.h"
 #include "spmv_backend.h"
 #include "termination_checker.h"
-#include "utils.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>

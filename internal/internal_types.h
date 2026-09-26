@@ -19,6 +19,7 @@ limitations under the License.
 #include "cone_projector.h"
 #include "cuhsdlp_types.h"
 #include "pid_controller.h"
+#include "spmv_backend.h"
 #include <cublas_v2.h>
 #include <curand.h>
 #include <cusparse.h>
@@ -28,22 +29,27 @@ limitations under the License.
 
 typedef struct pdhg_metrics_t pdhg_metrics_t;
 
-enum PdhgReduction {
-    PDHG_PRIMAL_NORM         = 0,
-    PDHG_DUAL_NORM           = 1,
-    PDHG_OBJECTIVE_DOT_X     = 2,
-    PDHG_OPERATOR_CROSS_TERM = 3,
-    PDHG_COUNT               = 4,
-};
+typedef struct {
+    double delta_primal_norm;
+    double delta_dual_norm;
+    double operator_cross_term;
+} fixed_point_reductions_t;
 
 typedef struct {
-    double dual_solution_norm;
+    double delta_primal_norm;
+    double delta_dual_norm;
+} restart_reductions_t;
+
+typedef struct {
+    double primal_residual_norm;
+    double dual_residual_norm;
     double primal_infeasibility_stationarity_residual_norm;
     double constraint_recession_residual_norm;
     double variable_recession_residual_norm;
     double original_dual_ray_norm;
     double original_reduced_cost_ray_norm;
     double original_primal_ray_norm;
+    double objective_dot_primal;
     double constraint_support;
     double variable_support;
     double homogeneous_variable_support;
@@ -103,13 +109,6 @@ typedef struct {
     int *transpose_map;
 } cu_sparse_matrix_csr_t;
 
-typedef struct {
-    cusparseSpMatDescr_t matrix;
-    void *descriptor;
-    void *plan;
-    void *buffer;
-} spmv_plan_t;
-
 typedef struct sv_estimator_ctx sv_estimator_ctx_t;
 
 typedef struct {
@@ -156,7 +155,6 @@ typedef struct {
     int num_blocks_primal;
     int num_blocks_dual;
     int num_blocks_primal_dual;
-    int num_blocks_rescale;
     int num_blocks_nnz;
 
     cu_sparse_matrix_csr_t *constraint_matrix;
@@ -171,14 +169,12 @@ typedef struct {
     cusparseHandle_t  sparse_handle_A;
     cusparseHandle_t  sparse_handle_At;
     cublasHandle_t    blas_handle_A;
-    cublasHandle_t    blas_handle_At;
     curandGenerator_t curand_gen;
     cudaStream_t      stream_A;
     cudaStream_t      stream_At;
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
     cudaGraphExec_t   graphExec;
-    bool              graph_created;
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
@@ -245,8 +241,6 @@ typedef struct {
     double *hsd_dual_scale_reflected_d;
     double *primal_residual_d;
     double *dual_residual_d;
-    double *primal_infeasibility_stationarity_residual_d;
-    double *constraint_recession_residual_d;
     double *variable_recession_residual_d;
 
     box_newton_state_t dual_box_cone_state;
@@ -255,12 +249,8 @@ typedef struct {
     solver_control_t control;
     active_set_state_t active_set;
 
-    double *pdhg_reduce_d;
-    double *pdhg_primal_norm_d;
-    double *pdhg_dual_norm_d;
-    double *objective_dot_primal_d;
-    double *fixed_point_operator_cross_d;
-
+    fixed_point_reductions_t *fixed_point_reductions_d;
+    restart_reductions_t *restart_reductions_mp;
     termination_reductions_t *termination_reductions_d;
 
     pdhg_metrics_t *metrics_d;

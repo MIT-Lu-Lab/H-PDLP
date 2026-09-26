@@ -16,20 +16,9 @@ limitations under the License.
 
 #pragma once
 
-#include "cuda_macros.h"
-#include "internal_types.h"
+#include "cuhsdlp_types.h"
 #include <stdbool.h>
-#include <stdlib.h>
-
-#ifdef __cplusplus
-struct absolute_value_transform_t
-{
-    __host__ __device__ double operator()(const double &value) const
-    {
-        return value < 0.0 ? -value : value;
-    }
-};
-#endif
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -42,37 +31,12 @@ extern "C"
 
     bool validate_lp_problem_data(const lp_problem_t *prob);
 
-    void allocate_zeroed_device_buffer(void **dst, size_t bytes);
-
-    void allocate_and_copy_to_device(
-        void **dst,
-        const void *src,
-        size_t bytes);
-
-    void allocate_cub_reduce_workspace(pdhg_solver_state_t *state);
-
-    void reduce_device_sum(
-        pdhg_solver_state_t *state,
-        const double *input,
-        int length,
-        double *output);
-
-    void reduce_device_max(
-        pdhg_solver_state_t *state,
-        const double *input,
-        int length,
-        double *output);
-
-    void reduce_device_abs_max(
-        pdhg_solver_state_t *state,
-        const double *input,
-        int length,
-        double *output);
-
     void filter_constraint_matrix_entries(
-        lp_problem_t *working_problem,
         const lp_problem_t *original_problem,
-        const pdhg_parameters_t *params);
+        const pdhg_parameters_t *params,
+        int **owned_row_pointers,
+        int **owned_col_indices,
+        double **owned_values);
 
     void warn_on_large_objective_coefficients(const lp_problem_t *problem);
 
@@ -88,12 +52,6 @@ extern "C"
         const lp_problem_t *problem,
         norm_type_t optimality_norm,
         double infinite_bound,
-        double *out_objective_norm,
-        double *out_bound_norm);
-
-    void compute_lp_problem_norms_device(
-        pdhg_solver_state_t *state,
-        norm_type_t optimality_norm,
         double *out_objective_norm,
         double *out_bound_norm);
 

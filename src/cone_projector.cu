@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 #include "cone_projector.h"
-#include "utils.h"
+#include "cuda_macros.h"
 #include <cooperative_groups.h>
 #include <cub/cub.cuh>
 #include <cuda_runtime.h>

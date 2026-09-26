@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "active_set_boost.h"
 #include "cone_projector.h"
+#include "cuda_macros.h"
 #include "cuhsdlp.h"
 #include "display.h"
 #include "internal_types.h"
@@ -27,7 +28,6 @@ limitations under the License.
 #include "spmv_backend.h"
 #include "termination_checker.h"
 #include "utils.h"
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
@@ -37,6 +37,19 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+typedef struct {
+    lp_problem_t view;
+    double *owned_objective_vector;
+    double *owned_dual_start;
+    double *owned_variable_lower_bound;
+    double *owned_variable_upper_bound;
+    double *owned_constraint_lower_bound;
+    double *owned_constraint_upper_bound;
+    int *owned_constraint_matrix_row_pointers;
+    int *owned_constraint_matrix_col_indices;
+    double *owned_constraint_matrix_values;
+} working_problem_t;
 
 __global__ void compute_delta_kernel(
     const double *__restrict__ initial_primal,
@@ -49,9 +62,7 @@ __global__ void compute_delta_kernel(
     int n_cons);
 __global__ void compute_fixed_point_error_kernel(
     double *fixed_point_error_d,
-    const double *primal_norm,
-    const double *dual_norm,
-    const double *dual_cross,
+    const fixed_point_reductions_t *reductions,
     const double *primal_scale_pdhg,
     const double *primal_scale_reflected,
     const double *dual_scale_pdhg,
@@ -74,15 +85,14 @@ __global__ void scale_hsd_scalars_kernel(
     double *primal_scale_pdhg,
     double *dual_scale_pdhg,
     double  inv_scale);
-static lp_problem_t create_working_problem(
+static working_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
 static void restore_original_objective_sense(
     cuhsdlp_result_t *result,
     objective_sense_t objective_sense);
 static void working_problem_free(
-    const lp_problem_t *working_problem,
-    const lp_problem_t *original_problem);
+    working_problem_t *working);
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
@@ -135,44 +145,45 @@ cuhsdlp_result_t *optimize(
     if (!check_params_validity(params))
         return NULL;
 
-    lp_problem_t working_problem = create_working_problem(original_problem, params);
-    print_initial_info(params, &working_problem);
+    working_problem_t working = create_working_problem(original_problem, params);
+    lp_problem_t *working_problem = &working.view;
+    print_initial_info(params, working_problem);
 
-    if (working_problem.num_variables == 0 && working_problem.num_constraints == 0)
+    if (working_problem->num_variables == 0 && working_problem->num_constraints == 0)
     {
         cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
-        result->primal_objective_value = working_problem.objective_constant;
-        result->dual_objective_value = working_problem.objective_constant;
+        result->primal_objective_value = working_problem->objective_constant;
+        result->dual_objective_value = working_problem->objective_constant;
         result->homogeneous_scale = 1.0;
         restore_original_objective_sense(result, original_problem->objective_sense);
         pdhg_final_log(result, params);
-        working_problem_free(&working_problem, original_problem);
+        working_problem_free(&working);
         return result;
     }
 
     cuhsdlp_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
     {
-        presolve_info = pslp_presolve(&working_problem, params->verbose);
+        presolve_info = pslp_presolve(working_problem, params->verbose);
         if (!presolve_info)
         {
-            working_problem_free(&working_problem, original_problem);
+            working_problem_free(&working);
             return NULL;
         }
         if (presolve_info->problem_solved_during_presolve)
         {
-            cuhsdlp_result_t *result = create_result_from_presolve(presolve_info, &working_problem);
+            cuhsdlp_result_t *result = create_result_from_presolve(presolve_info, working_problem);
             cuhsdlp_presolve_info_free(presolve_info);
             restore_original_objective_sense(result, original_problem->objective_sense);
             pdhg_final_log(result, params);
-            working_problem_free(&working_problem, original_problem);
+            working_problem_free(&working);
             return result;
         }
     }
 
     pdhg_solver_state_t *state = initialize_solver_state(
-        presolve_info ? presolve_info->reduced_problem : &working_problem,
+        presolve_info ? &presolve_info->reduced_problem_view : working_problem,
         original_problem,
         params);
     tau_trace_t *tau_trace = tau_trace_open(params->tau_trace_path);
@@ -199,7 +210,7 @@ cuhsdlp_result_t *optimize(
             restarted = false;
         }
 
-        if (!state->graph_created)
+        if (!state->graphExec)
         {
             cudaGraph_t graph = NULL;
             CUDA_CHECK(cudaStreamBeginCapture(state->stream_A,
@@ -215,7 +226,6 @@ cuhsdlp_result_t *optimize(
             CUDA_CHECK(cudaGraphInstantiate(&state->graphExec, graph,
                                             NULL, NULL, 0));
             CUDA_CHECK(cudaGraphDestroy(graph));
-            state->graph_created = true;
         }
         CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
 
@@ -268,22 +278,22 @@ cuhsdlp_result_t *optimize(
     tau_trace_write_row(tau_trace, state, "final");
     tau_trace_close(tau_trace);
 
-    cuhsdlp_result_t *result = create_result_from_state(state, &working_problem);
+    cuhsdlp_result_t *result = create_result_from_state(state, working_problem);
 
-    if (params->presolve && presolve_info)
+    if (presolve_info)
     {
         copy_presolve_stats(presolve_info, result);
         if (termination_has_solution(result->termination_reason))
         {
-            pslp_postsolve(presolve_info, result, &working_problem);
+            pslp_postsolve(presolve_info, result, working_problem);
         }
         else if (result->termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
         {
-            pslp_postsolve_primal_infeasibility_ray(presolve_info, result, &working_problem);
+            pslp_postsolve_primal_infeasibility_ray(presolve_info, result, working_problem);
         }
         else if (result->termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
         {
-            pslp_postsolve_dual_infeasibility_ray(presolve_info, result, &working_problem);
+            pslp_postsolve_dual_infeasibility_ray(presolve_info, result, working_problem);
         }
         cuhsdlp_presolve_info_free(presolve_info);
     }
@@ -292,59 +302,90 @@ cuhsdlp_result_t *optimize(
     pdhg_final_log(result, params);
     pdhg_solver_state_free(state);
     CUDA_CHECK(cudaGetLastError());
-    working_problem_free(&working_problem, original_problem);
+    working_problem_free(&working);
     return result;
 }
 
-static lp_problem_t create_working_problem(
+static working_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params)
 {
-    lp_problem_t working_problem = *original_problem;
+    working_problem_t working{};
+    working.view = *original_problem;
+    lp_problem_t *working_problem = &working.view;
 
     if (original_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
     {
         int num_variables = original_problem->num_variables;
-        double *negated_objective = (double *)safe_malloc((size_t)num_variables * sizeof(double));
+        working.owned_objective_vector =
+            (double *)safe_malloc((size_t)num_variables * sizeof(double));
         for (int j = 0; j < num_variables; ++j)
         {
-            negated_objective[j] = -original_problem->objective_vector[j];
+            working.owned_objective_vector[j] = -original_problem->objective_vector[j];
         }
-        working_problem.objective_vector = negated_objective;
-        working_problem.objective_constant = -original_problem->objective_constant;
-        working_problem.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
+        working_problem->objective_vector = working.owned_objective_vector;
+        working_problem->objective_constant = -original_problem->objective_constant;
+        working_problem->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
 
         if (original_problem->dual_start != NULL)
         {
             int num_constraints = original_problem->num_constraints;
-            double *negated_dual_start = (double *)safe_malloc((size_t)num_constraints * sizeof(double));
+            working.owned_dual_start =
+                (double *)safe_malloc((size_t)num_constraints * sizeof(double));
             for (int i = 0; i < num_constraints; ++i)
             {
-                negated_dual_start[i] = -original_problem->dual_start[i];
+                working.owned_dual_start[i] = -original_problem->dual_start[i];
             }
-            working_problem.dual_start = negated_dual_start;
+            working_problem->dual_start = working.owned_dual_start;
         }
     }
 
-    warn_on_large_objective_coefficients(&working_problem);
+    warn_on_large_objective_coefficients(working_problem);
 
     replace_large_bounds_with_infinity(
         original_problem->variable_lower_bound,
         original_problem->variable_upper_bound,
-        &working_problem.variable_lower_bound,
-        &working_problem.variable_upper_bound,
+        &working.owned_variable_lower_bound,
+        &working.owned_variable_upper_bound,
         original_problem->num_variables,
         params->scaling_params.infinite_bound);
     replace_large_bounds_with_infinity(
         original_problem->constraint_lower_bound,
         original_problem->constraint_upper_bound,
-        &working_problem.constraint_lower_bound,
-        &working_problem.constraint_upper_bound,
+        &working.owned_constraint_lower_bound,
+        &working.owned_constraint_upper_bound,
         original_problem->num_constraints,
         params->scaling_params.infinite_bound);
 
-    filter_constraint_matrix_entries(&working_problem, original_problem, params);
-    return working_problem;
+    if (working.owned_variable_lower_bound)
+    {
+        working_problem->variable_lower_bound = working.owned_variable_lower_bound;
+        working_problem->variable_upper_bound = working.owned_variable_upper_bound;
+    }
+    if (working.owned_constraint_lower_bound)
+    {
+        working_problem->constraint_lower_bound = working.owned_constraint_lower_bound;
+        working_problem->constraint_upper_bound = working.owned_constraint_upper_bound;
+    }
+
+    filter_constraint_matrix_entries(
+        original_problem,
+        params,
+        &working.owned_constraint_matrix_row_pointers,
+        &working.owned_constraint_matrix_col_indices,
+        &working.owned_constraint_matrix_values);
+    if (working.owned_constraint_matrix_row_pointers)
+    {
+        working_problem->constraint_matrix_row_pointers =
+            working.owned_constraint_matrix_row_pointers;
+        working_problem->constraint_matrix_col_indices =
+            working.owned_constraint_matrix_col_indices;
+        working_problem->constraint_matrix_values =
+            working.owned_constraint_matrix_values;
+        working_problem->constraint_matrix_num_nonzeros =
+            working.owned_constraint_matrix_row_pointers[original_problem->num_constraints];
+    }
+    return working;
 }
 
 static void restore_original_objective_sense(
@@ -381,33 +422,17 @@ static void restore_original_objective_sense(
 }
 
 static void working_problem_free(
-    const lp_problem_t *working_problem,
-    const lp_problem_t *original_problem)
+    working_problem_t *working)
 {
-    if (working_problem->objective_vector != original_problem->objective_vector)
-    {
-        free(working_problem->objective_vector);
-    }
-    if (working_problem->dual_start != original_problem->dual_start)
-    {
-        free(working_problem->dual_start);
-    }
-    if (working_problem->variable_lower_bound != original_problem->variable_lower_bound)
-    {
-        free(working_problem->variable_lower_bound);
-        free(working_problem->variable_upper_bound);
-    }
-    if (working_problem->constraint_lower_bound != original_problem->constraint_lower_bound)
-    {
-        free(working_problem->constraint_lower_bound);
-        free(working_problem->constraint_upper_bound);
-    }
-    if (working_problem->constraint_matrix_values != original_problem->constraint_matrix_values)
-    {
-        free(working_problem->constraint_matrix_row_pointers);
-        free(working_problem->constraint_matrix_col_indices);
-        free(working_problem->constraint_matrix_values);
-    }
+    free(working->owned_objective_vector);
+    free(working->owned_dual_start);
+    free(working->owned_variable_lower_bound);
+    free(working->owned_variable_upper_bound);
+    free(working->owned_constraint_lower_bound);
+    free(working->owned_constraint_upper_bound);
+    free(working->owned_constraint_matrix_row_pointers);
+    free(working->owned_constraint_matrix_col_indices);
+    free(working->owned_constraint_matrix_values);
 }
 
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
@@ -589,6 +614,8 @@ static void compute_fixed_point_error(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params)
 {
+    fixed_point_reductions_t *reductions_d = state->fixed_point_reductions_d;
+
     compute_delta_kernel<<<
         state->num_blocks_primal_dual,
         THREADS_PER_BLOCK,
@@ -617,13 +644,13 @@ static void compute_fixed_point_error(
         state->num_variables,
         state->delta_primal_solution_d,
         1,
-        state->pdhg_primal_norm_d));
+        &reductions_d->delta_primal_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_constraints,
         state->delta_dual_solution_d,
         1,
-        state->pdhg_dual_norm_d));
+        &reductions_d->delta_dual_norm));
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
@@ -635,7 +662,7 @@ static void compute_fixed_point_error(
         1,
         state->delta_primal_solution_d,
         1,
-        state->fixed_point_operator_cross_d));
+        &reductions_d->operator_cross_term));
 
     double metric_step_size_primal = 0.0;
     double metric_step_size_dual = 0.0;
@@ -650,9 +677,7 @@ static void compute_fixed_point_error(
 
     compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
         state->control.fixed_point_error_mp,
-        state->pdhg_primal_norm_d,
-        state->pdhg_dual_norm_d,
-        state->fixed_point_operator_cross_d,
+        reductions_d,
         state->hsd_primal_scale_pdhg_d,
         state->hsd_primal_scale_reflected_d,
         state->hsd_dual_scale_pdhg_d,
@@ -737,6 +762,7 @@ static void perform_restart(
     const pdhg_parameters_t *params)
 {
     const step_size_parameters_t *step_size_params = &params->step_size_params;
+    restart_reductions_t *reductions_mp = state->restart_reductions_mp;
 
     state->control.restart_count++;
     display_iteration_stats(state, params, true);
@@ -760,13 +786,13 @@ static void perform_restart(
         state->num_variables,
         state->delta_primal_solution_d,
         1,
-        state->pdhg_primal_norm_d));
+        &reductions_mp->delta_primal_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_constraints,
         state->delta_dual_solution_d,
         1,
-        state->pdhg_dual_norm_d));
+        &reductions_mp->delta_dual_norm));
 
     update_primal_weight_via_restart_pid(state, step_size_params);
 
@@ -828,15 +854,9 @@ static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params)
 {
-    double pdhg_reduce_h[PDHG_COUNT];
+    const restart_reductions_t *reductions_mp = state->restart_reductions_mp;
     double hsd_scalars_h[HSD_SCALARS_COUNT];
 
-    CUDA_CHECK(cudaMemcpyAsync(
-        pdhg_reduce_h,
-        state->pdhg_reduce_d,
-        PDHG_COUNT * sizeof(double),
-        cudaMemcpyDeviceToHost,
-        state->stream_A));
     CUDA_CHECK(cudaMemcpyAsync(
         hsd_scalars_h,
         state->hsd_scalars_d,
@@ -845,20 +865,20 @@ static void update_primal_weight_via_restart_pid(
         state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
-    double dx2     = pdhg_reduce_h[PDHG_PRIMAL_NORM] * pdhg_reduce_h[PDHG_PRIMAL_NORM];
-    double dy2     = pdhg_reduce_h[PDHG_DUAL_NORM] * pdhg_reduce_h[PDHG_DUAL_NORM];
+    double dx2 = reductions_mp->delta_primal_norm * reductions_mp->delta_primal_norm;
+    double dy2 = reductions_mp->delta_dual_norm * reductions_mp->delta_dual_norm;
 
-    double primal_scale_delta =
+    double delta_primal_scale =
         hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG] -
         hsd_scalars_h[HSD_PRIMAL_SCALE_INITIAL];
     double d_ac    = hsd_scalars_h[HSD_DUAL_SCALE_PDHG]
                    - hsd_scalars_h[HSD_DUAL_SCALE_INITIAL];
     double base2   = state->control.step_size_base * state->control.step_size_base;
     double alpha_p = base2 / step_size_params->step_size_factor;
-    double primal_scale_delta_squared =
-        primal_scale_delta * primal_scale_delta;
+    double delta_primal_scale_squared =
+        delta_primal_scale * delta_primal_scale;
 
-    double primal_dist = sqrt(dx2 + alpha_p * primal_scale_delta_squared);
+    double primal_dist = sqrt(dx2 + alpha_p * delta_primal_scale_squared);
     double dual_dist   = sqrt(dy2 + d_ac * d_ac);
 
     apply_restart_pid(&state->control.pid, &state->control.primal_weight, step_size_params,
@@ -924,11 +944,31 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
     return inv_scale;
 }
 
+__global__ void compute_delta_kernel(
+    const double *__restrict__ initial_primal,
+    const double *__restrict__ pdhg_primal,
+    double *__restrict__ delta_primal,
+    const double *__restrict__ initial_dual,
+    const double *__restrict__ pdhg_dual,
+    double *__restrict__ delta_dual,
+    int n_vars,
+    int n_cons)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n_vars)
+    {
+        delta_primal[i] = pdhg_primal[i] - initial_primal[i];
+    }
+    else if (i < n_vars + n_cons)
+    {
+        int idx = i - n_vars;
+        delta_dual[idx] = pdhg_dual[idx] - initial_dual[idx];
+    }
+}
+
 __global__ void compute_fixed_point_error_kernel(
     double *fixed_point_error_d,
-    const double *primal_norm,
-    const double *dual_norm,
-    const double *dual_cross,
+    const fixed_point_reductions_t *reductions,
     const double *primal_scale_pdhg,
     const double *primal_scale_reflected,
     const double *dual_scale_pdhg,
@@ -939,18 +979,19 @@ __global__ void compute_fixed_point_error_kernel(
 {
     double delta_primal_scale = (*primal_scale_reflected) - (*primal_scale_pdhg);
     double delta_constraint_offset = (*dual_scale_reflected) - (*dual_scale_pdhg);
-    double primal_norm_v = *primal_norm;
-    double dual_norm_v = *dual_norm;
-    double cross_term = *dual_cross;
+    double delta_primal_norm = reductions->delta_primal_norm;
+    double delta_dual_norm = reductions->delta_dual_norm;
+    double operator_cross_term = reductions->operator_cross_term;
 
     double dual_movement =
-        (dual_norm_v * dual_norm_v +
+        (delta_dual_norm * delta_dual_norm +
          delta_constraint_offset * delta_constraint_offset) / step_size_dual;
     double movement =
-        primal_norm_v * primal_norm_v / step_size_primal +
+        delta_primal_norm * delta_primal_norm / step_size_primal +
         dual_movement +
         delta_primal_scale * delta_primal_scale / step_size_homogeneous;
-    double interaction = -2.0 * (delta_primal_scale * delta_constraint_offset + cross_term);
+    double interaction =
+        -2.0 * (delta_primal_scale * delta_constraint_offset + operator_cross_term);
     const double squared_error = movement + interaction;
     fixed_point_error_d[0] =
         isfinite(squared_error) ? sqrt(fmax(0.0, squared_error)) : INFINITY;

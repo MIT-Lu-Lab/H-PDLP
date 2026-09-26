@@ -15,31 +15,30 @@ limitations under the License.
 */
 
 #include "result.h"
+#include "cuda_macros.h"
 #include "termination_checker.h"
 #include "utils.h"
 #include <cuda_runtime.h>
 #include <math.h>
 
-__global__ void rescale_solution_kernel(
-    double *__restrict__ primal_sol,
-    double *__restrict__ dual_sol,
-    double *__restrict__ reduced_cost,
+__global__ void rescale_solution_component_kernel(
+    const double *__restrict__ input,
+    double *__restrict__ output,
+    const double *__restrict__ element_rescaling,
+    double scalar_rescaling,
+    double divisor,
+    int n);
+__global__ void rescale_reduced_cost_kernel(
+    const double *__restrict__ input,
+    double *__restrict__ output,
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ var_rescaling,
-    const double *__restrict__ cons_rescaling,
-    const double obj_vec_rescaling,
-    const double cons_bound_rescaling,
+    double obj_vec_rescaling,
     double divisor,
-    int n_vars,
-    int n_cons);
-static void rescale_solution(pdhg_solver_state_t *state);
-static double compute_original_primal_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h);
-static double compute_original_dual_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h);
+    double input_sign,
+    int n_vars);
+static double compute_result_divisor(const pdhg_solver_state_t *state);
 
 bool termination_has_solution(termination_reason_t reason)
 {
@@ -52,203 +51,169 @@ cuhsdlp_result_t *create_result_from_state(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem)
 {
-    cuhsdlp_result_t *results = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+    cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+    const termination_reason_t reason = state->control.termination_reason;
+    const bool has_solution = termination_has_solution(reason);
+    const bool primal_infeasible = reason == TERMINATION_REASON_PRIMAL_INFEASIBLE;
+    const bool dual_infeasible = reason == TERMINATION_REASON_DUAL_INFEASIBLE;
+    const bool from_displacement =
+        (primal_infeasible || dual_infeasible) &&
+        !state->control.certificate_from_homogeneous;
 
-    rescale_solution(state);
-
-    if (termination_has_solution(state->control.termination_reason))
+    if (has_solution || primal_infeasible || dual_infeasible)
     {
-        results->primal_solution = (double *)safe_malloc(state->var_bytes);
-        results->dual_solution = (double *)safe_malloc(state->con_bytes);
-        results->reduced_cost = (double *)safe_malloc(state->var_bytes);
+        const double divisor = compute_result_divisor(state);
 
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->primal_solution,
-            state->pdhg_primal_solution_d,
-            state->var_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->dual_solution,
-            state->pdhg_dual_solution_d,
-            state->con_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->reduced_cost,
-            state->pdhg_reduced_cost_d,
-            state->var_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
+        if (has_solution || dual_infeasible)
+        {
+            const double *primal_input_d =
+                from_displacement
+                    ? state->delta_primal_solution_d
+                    : state->pdhg_primal_solution_d;
+            result->primal_solution = (double *)safe_malloc(state->var_bytes);
+            rescale_solution_component_kernel<<<
+                state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+                primal_input_d, state->variable_reduction_entries_d,
+                state->variable_rescaling_d, state->constraint_bound_rescaling,
+                divisor, state->num_variables);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaMemcpyAsync(
+                result->primal_solution, state->variable_reduction_entries_d,
+                state->var_bytes, cudaMemcpyDeviceToHost, state->stream_A));
+        }
+
+        if (has_solution || primal_infeasible)
+        {
+            const double *dual_input_d =
+                from_displacement
+                    ? state->delta_dual_solution_d
+                    : state->pdhg_dual_solution_d;
+            result->dual_solution = (double *)safe_malloc(state->con_bytes);
+            rescale_solution_component_kernel<<<
+                state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+                dual_input_d, state->constraint_reduction_entries_d,
+                state->constraint_rescaling_d, state->objective_vector_rescaling,
+                divisor, state->num_constraints);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaMemcpyAsync(
+                result->dual_solution, state->constraint_reduction_entries_d,
+                state->con_bytes, cudaMemcpyDeviceToHost, state->stream_A));
+
+            const double *reduced_cost_input_d =
+                from_displacement
+                    ? state->dual_product_d
+                    : (primal_infeasible
+                           ? state->primal_infeasibility_reduced_cost_d
+                           : state->pdhg_reduced_cost_d);
+            result->reduced_cost = (double *)safe_malloc(state->var_bytes);
+            rescale_reduced_cost_kernel<<<
+                state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+                reduced_cost_input_d, state->variable_reduction_entries_d,
+                state->variable_lower_bound_d, state->variable_upper_bound_d,
+                state->variable_rescaling_d, state->objective_vector_rescaling,
+                divisor, from_displacement ? -1.0 : 1.0, state->num_variables);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaMemcpyAsync(
+                result->reduced_cost, state->variable_reduction_entries_d,
+                state->var_bytes, cudaMemcpyDeviceToHost, state->stream_A));
+        }
+
         CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     }
-    else if (state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
-    {
-        results->dual_solution = (double *)safe_malloc(state->con_bytes);
-        results->reduced_cost = (double *)safe_malloc(state->var_bytes);
 
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->dual_solution,
-            state->pdhg_dual_solution_d,
-            state->con_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->reduced_cost,
-            state->pdhg_reduced_cost_d,
-            state->var_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    }
-    else if (state->control.termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
-    {
-        results->primal_solution = (double *)safe_malloc(state->var_bytes);
+    result->num_variables = working_problem->num_variables;
+    result->num_constraints = working_problem->num_constraints;
+    result->num_nonzeros = working_problem->constraint_matrix_num_nonzeros;
+    result->total_count = state->control.total_count;
+    result->rescaling_time_sec = state->rescaling_time_sec;
+    result->cumulative_time_sec = state->control.cumulative_time_sec;
+    result->absolute_primal_residual = state->metrics_h->absolute_primal_residual;
+    result->relative_primal_residual = state->metrics_h->relative_primal_residual;
+    result->absolute_dual_residual = state->metrics_h->absolute_dual_residual;
+    result->relative_dual_residual = state->metrics_h->relative_dual_residual;
+    result->primal_objective_value = state->metrics_h->primal_objective;
+    result->dual_objective_value = state->metrics_h->dual_objective;
+    result->objective_gap = state->metrics_h->objective_gap;
+    result->relative_objective_gap = state->metrics_h->relative_objective_gap;
+    result->farkas_margin = state->control.certificate_margin;
+    result->farkas_residual = state->control.certificate_residual;
+    result->termination_reason = state->control.termination_reason;
 
-        CUDA_CHECK(cudaMemcpyAsync(
-            results->primal_solution,
-            state->pdhg_primal_solution_d,
-            state->var_bytes,
-            cudaMemcpyDeviceToHost,
-            state->stream_A));
-        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    }
+    result->restart_count = state->control.restart_count;
+    result->active_set_raise_count = state->active_set.raise_count;
+    result->active_set_revert_count = state->active_set.revert_count;
+    result->active_set_power_iteration_count = state->active_set.power_iteration_count;
+    result->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
+    result->final_step_size_primal = state->control.step_size_primal;
+    result->final_step_size_dual = state->control.step_size_dual;
+    result->final_step_size_homogeneous = state->control.step_size_homogeneous;
 
-    results->num_variables = working_problem->num_variables;
-    results->num_constraints = working_problem->num_constraints;
-    results->num_nonzeros = working_problem->constraint_matrix_num_nonzeros;
-    results->total_count = state->control.total_count;
-    results->rescaling_time_sec = state->rescaling_time_sec;
-    results->cumulative_time_sec = state->control.cumulative_time_sec;
-    results->absolute_primal_residual = state->metrics_h->absolute_primal_residual;
-    results->relative_primal_residual = state->metrics_h->relative_primal_residual;
-    results->absolute_dual_residual = state->metrics_h->absolute_dual_residual;
-    results->relative_dual_residual = state->metrics_h->relative_dual_residual;
-    results->primal_objective_value = state->metrics_h->primal_objective;
-    results->dual_objective_value = state->metrics_h->dual_objective;
-    results->objective_gap = state->metrics_h->objective_gap;
-    results->relative_objective_gap = state->metrics_h->relative_objective_gap;
-    results->farkas_margin = state->control.certificate_margin;
-    results->farkas_residual = state->control.certificate_residual;
-    results->termination_reason = state->control.termination_reason;
-
-    results->restart_count = state->control.restart_count;
-    results->active_set_raise_count = state->active_set.raise_count;
-    results->active_set_revert_count = state->active_set.revert_count;
-    results->active_set_power_iteration_count = state->active_set.power_iteration_count;
-    results->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
-    results->final_step_size_primal = state->control.step_size_primal;
-    results->final_step_size_dual = state->control.step_size_dual;
-    results->final_step_size_homogeneous = state->control.step_size_homogeneous;
-
-    return results;
+    return result;
 }
 
-static void rescale_solution(pdhg_solver_state_t *state)
+static double compute_result_divisor(const pdhg_solver_state_t *state)
 {
+    if (state->control.termination_reason != TERMINATION_REASON_PRIMAL_INFEASIBLE &&
+        state->control.termination_reason != TERMINATION_REASON_DUAL_INFEASIBLE)
+        return state->metrics_h->pdhg_primal_scale;
+
     termination_reductions_t reductions_h;
     CUDA_CHECK(cudaMemcpy(&reductions_h, state->termination_reductions_d,
                           sizeof(reductions_h), cudaMemcpyDeviceToHost));
 
-    double divisor;
-    switch (state->control.termination_reason)
+    double margin;
+    if (state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
     {
-    case TERMINATION_REASON_PRIMAL_INFEASIBLE:
-        divisor = compute_original_primal_infeasibility_margin(state, &reductions_h);
-        break;
-    case TERMINATION_REASON_DUAL_INFEASIBLE:
-        divisor = compute_original_dual_infeasibility_margin(state, &reductions_h);
-        break;
-    default:
-        divisor = state->metrics_h->pdhg_primal_scale;
-        break;
-    }
-
-    rescale_solution_kernel<<<
-        state->num_blocks_rescale,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->pdhg_primal_solution_d,
-        state->pdhg_dual_solution_d,
-        state->pdhg_reduced_cost_d,
-        state->variable_lower_bound_d,
-        state->variable_upper_bound_d,
-        state->variable_rescaling_d,
-        state->constraint_rescaling_d,
-        state->objective_vector_rescaling,
-        state->constraint_bound_rescaling,
-        divisor,
-        state->num_variables,
-        state->num_constraints);
-}
-
-static double compute_original_primal_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h)
-{
-    double support_total =
-        state->control.certificate_from_homogeneous
-            ? reductions_h->constraint_support +
-                  reductions_h->homogeneous_variable_support
-            : reductions_h->primal_infeasibility_constraint_support +
-                  reductions_h->primal_infeasibility_variable_support;
-    return support_total /
-           (state->constraint_bound_rescaling * state->objective_vector_rescaling);
-}
-
-static double compute_original_dual_infeasibility_margin(
-    const pdhg_solver_state_t *state,
-    const termination_reductions_t *reductions_h)
-{
-    double objective_dot_ray;
-    if (state->control.certificate_from_homogeneous)
-    {
-        CUDA_CHECK(cudaMemcpy(&objective_dot_ray,
-                              state->objective_dot_primal_d,
-                              sizeof(double), cudaMemcpyDeviceToHost));
+        margin = state->control.certificate_from_homogeneous
+                     ? reductions_h.constraint_support +
+                           reductions_h.homogeneous_variable_support
+                     : reductions_h.primal_infeasibility_constraint_support +
+                           reductions_h.primal_infeasibility_variable_support;
     }
     else
     {
-        objective_dot_ray = reductions_h->dual_infeasibility_objective;
+        margin = -(state->control.certificate_from_homogeneous
+                       ? reductions_h.objective_dot_primal
+                       : reductions_h.dual_infeasibility_objective);
     }
-    return -objective_dot_ray /
+    return margin /
            (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 }
 
-__global__ void rescale_solution_kernel(
-    double *__restrict__ primal_sol,
-    double *__restrict__ dual_sol,
-    double *__restrict__ reduced_cost,
+__global__ void rescale_solution_component_kernel(
+    const double *__restrict__ input,
+    double *__restrict__ output,
+    const double *__restrict__ element_rescaling,
+    double scalar_rescaling,
+    double divisor,
+    int n)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+    double inv_divisor = (fabs(divisor) > 1e-50) ? 1.0 / divisor : 0.0;
+    output[i] = input[i] * inv_divisor / element_rescaling[i] / scalar_rescaling;
+}
+
+__global__ void rescale_reduced_cost_kernel(
+    const double *__restrict__ input,
+    double *__restrict__ output,
     const double *__restrict__ var_lb,
     const double *__restrict__ var_ub,
     const double *__restrict__ var_rescaling,
-    const double *__restrict__ cons_rescaling,
-    const double obj_vec_rescaling,
-    const double cons_bound_rescaling,
+    double obj_vec_rescaling,
     double divisor,
-    int n_vars,
-    int n_cons)
+    double input_sign,
+    int n_vars)
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_vars) return;
+
+    double reduced_cost = input_sign * input[i];
     double inv_divisor = (fabs(divisor) > 1e-50) ? 1.0 / divisor : 0.0;
-    if (i < n_vars)
-    {
-        primal_sol[i] = primal_sol[i] * inv_divisor / var_rescaling[i] / cons_bound_rescaling;
-    }
-    else if (i < n_vars + n_cons)
-    {
-        int idx = i - n_vars;
-        dual_sol[idx] = dual_sol[idx] * inv_divisor / cons_rescaling[idx] / obj_vec_rescaling;
-    }
-    else if (i < 2 * n_vars + n_cons)
-    {
-        int idx = i - n_vars - n_cons;
-        double rc = reduced_cost[idx] * inv_divisor * var_rescaling[idx] / obj_vec_rescaling;
-        if (!isfinite(var_lb[idx]))
-            rc = fmin(rc, 0.0);
-        if (!isfinite(var_ub[idx]))
-            rc = fmax(rc, 0.0);
-        reduced_cost[idx] = rc;
-    }
+    reduced_cost = reduced_cost * inv_divisor * var_rescaling[i] / obj_vec_rescaling;
+    if (!isfinite(var_lb[i]))
+        reduced_cost = fmin(reduced_cost, 0.0);
+    if (!isfinite(var_ub[i]))
+        reduced_cost = fmax(reduced_cost, 0.0);
+    output[i] = reduced_cost;
 }
