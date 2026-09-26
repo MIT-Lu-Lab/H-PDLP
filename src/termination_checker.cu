@@ -246,7 +246,7 @@ static void compute_residual_norms(
         reduce_device_abs_max(state, state->pdhg_primal_solution_d, state->num_variables,
                               &state->metrics_d->primal_solution_norm);
         reduce_device_abs_max(state, state->pdhg_dual_solution_d, state->num_constraints,
-                              &reductions_d->dual_solution_norm);
+                              &state->metrics_d->dual_solution_norm);
     }
     else
     {
@@ -265,7 +265,7 @@ static void compute_residual_norms(
         CUBLAS_CHECK(cublasDnrm2_v2_64(
             state->blas_handle_A, state->num_constraints,
             state->pdhg_dual_solution_d, 1,
-            &reductions_d->dual_solution_norm));
+            &state->metrics_d->dual_solution_norm));
     }
 
     reduce_device_abs_max(state, state->variable_recession_residual_d, state->num_variables,
@@ -764,10 +764,8 @@ __global__ void compute_termination_metrics_kernel(
     metrics_d->pdhg_primal_scale      = primal_scale;
     metrics_d->pdhg_dual_scale = pdhg_dual_scale;
 
-    double dual_solution_norm = reductions->dual_solution_norm;
     double primal_solution_norm = metrics_d->primal_solution_norm;
-
-    metrics_d->dual_solution_norm = dual_solution_norm;
+    double dual_solution_norm = metrics_d->dual_solution_norm;
 
     double homogeneous_gap = objective_dot_primal_value
                            - reductions->constraint_support

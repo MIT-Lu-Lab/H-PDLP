@@ -55,7 +55,6 @@ typedef struct {
 typedef struct {
     double primal_residual_norm;
     double dual_residual_norm;
-    double dual_solution_norm;
     double primal_infeasibility_stationarity_residual_norm;
     double constraint_recession_residual_norm;
     double variable_recession_residual_norm;
