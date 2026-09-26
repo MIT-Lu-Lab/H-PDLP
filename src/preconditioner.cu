@@ -15,9 +15,10 @@ limitations under the License.
 */
 
 #include "preconditioner.h"
+#include "cuda_macros.h"
+#include "cuda_utils.h"
 #include "power_iteration.h"
 #include "setup.h"
-#include "utils.h"
 #include <cub/device/device_reduce.cuh>
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
@@ -593,8 +594,8 @@ void rescale_problem(
 
     state->constraint_bound_rescaling = 1.0;
     state->objective_vector_rescaling = 1.0;
-    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &HOST_ONE, sizeof(double), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &HOST_ONE, sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->constraint_bound_rescaling_d, &state->constraint_bound_rescaling, sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->objective_vector_rescaling_d, &state->objective_vector_rescaling, sizeof(double), cudaMemcpyHostToDevice));
     if (scaling_params->bound_objective_rescaling)
     {
         if (verbose)

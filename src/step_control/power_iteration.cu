@@ -15,6 +15,8 @@ limitations under the License.
 */
 
 #include "power_iteration.h"
+#include "cuda_macros.h"
+#include "cuda_utils.h"
 #include "spmv_backend.h"
 #include "utils.h"
 #include <math.h>

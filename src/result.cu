@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "result.h"
+#include "cuda_macros.h"
 #include "termination_checker.h"
 #include "utils.h"
 #include <cuda_runtime.h>

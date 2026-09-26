@@ -17,6 +17,8 @@ limitations under the License.
 #include "setup.h"
 #include "active_set_boost.h"
 #include "cone_projector.h"
+#include "cuda_macros.h"
+#include "cuda_utils.h"
 #include "cuhsdlp.h"
 #include "display.h"
 #include "matrix_formats.h"

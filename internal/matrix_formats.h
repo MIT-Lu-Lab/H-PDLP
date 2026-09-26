@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "internal_types.h"
+#include "cuhsdlp_types.h"
 
 #ifdef __cplusplus
 extern "C"

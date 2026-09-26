@@ -16,7 +16,9 @@ limitations under the License.
 
 #include "spmv_backend.h"
 #include "cuda_macros.h"
-#include "utils.h"
+
+static const double HOST_ONE = 1.0;
+static const double HOST_ZERO = 0.0;
 
 const char *spmv_backend_name(void)
 {

@@ -16,10 +16,10 @@ limitations under the License.
 
 #include "active_set_boost.h"
 #include "cuda_macros.h"
+#include "cuda_utils.h"
 #include "display.h"
 #include "power_iteration.h"
 #include "termination_checker.h"
-#include "utils.h"
 #include <math.h>
 
 __global__ void update_binding_constraint_mask_kernel(

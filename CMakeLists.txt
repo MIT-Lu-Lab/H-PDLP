@@ -142,9 +142,10 @@ set(CORE_SOURCES
     src/step_control/active_set_boost.cu
     src/step_control/pid_controller.c
     src/step_control/power_iteration.cu
+    src/utils/cuda_utils.cu
     src/utils/display.cu
     src/utils/mps_parser.c
-    src/utils/utils.cu)
+    src/utils/utils.c)
 
 # Set common include directories for the core libraries
 set(CORE_INCLUDE_DIRS
