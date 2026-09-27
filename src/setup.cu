@@ -554,6 +554,7 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
         con_bytes);
 
     allocate_zeroed_device_buffer((void **)&state->pdhg_reduced_cost_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->bound_multiplier_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->pdhg_primal_projection_multiplier_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_infeasibility_reduced_cost_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->reduced_cost_ray_d, var_bytes);
@@ -562,6 +563,7 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
 
     allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes + var_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_residual_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->bound_multiplier_dual_residual_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->variable_recession_residual_d, var_bytes);
 }
 
@@ -894,6 +896,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->constraint_reduction_entries_d);
 
     FREE_DEVICE_BUFFER(state->pdhg_reduced_cost_d);
+    FREE_DEVICE_BUFFER(state->bound_multiplier_d);
     FREE_DEVICE_BUFFER(state->pdhg_primal_projection_multiplier_d);
     FREE_DEVICE_BUFFER(state->primal_infeasibility_reduced_cost_d);
     FREE_DEVICE_BUFFER(state->reduced_cost_ray_d);
@@ -904,6 +907,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
     FREE_DEVICE_BUFFER(state->primal_residual_d);
     FREE_DEVICE_BUFFER(state->dual_residual_d);
+    FREE_DEVICE_BUFFER(state->bound_multiplier_dual_residual_d);
     FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
 
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.scalar_d);

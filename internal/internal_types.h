@@ -43,6 +43,7 @@ typedef struct {
 typedef struct {
     double primal_residual_norm;
     double dual_residual_norm;
+    double bound_multiplier_dual_residual_norm;
     double primal_infeasibility_stationarity_residual_norm;
     double constraint_recession_residual_norm;
     double variable_recession_residual_norm;
@@ -52,6 +53,7 @@ typedef struct {
     double objective_dot_primal;
     double constraint_support;
     double variable_support;
+    double bound_multiplier_variable_support;
     double homogeneous_variable_support;
     double dual_infeasibility_objective;
     double primal_infeasibility_constraint_support;
@@ -224,6 +226,7 @@ typedef struct {
     double *constraint_reduction_entries_d;
 
     double *pdhg_reduced_cost_d;
+    double *bound_multiplier_d;
     double *pdhg_primal_projection_multiplier_d;
     double *primal_infeasibility_reduced_cost_d;
     double *reduced_cost_ray_d;
@@ -242,6 +245,7 @@ typedef struct {
     double *hsd_dual_scale_reflected_d;
     double *primal_residual_d;
     double *dual_residual_d;
+    double *bound_multiplier_dual_residual_d;
     double *variable_recession_residual_d;
 
     box_newton_state_t dual_box_cone_state;
