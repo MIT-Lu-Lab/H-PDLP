@@ -89,7 +89,7 @@ static bool apply_primal_weight_safeguard(pid_state_t *pid,
                                           double relative_dual_residual)
 {
     const double kkt_recording_threshold = 1e-2;
-    const double kkt_activation_threshold = 1e-4;
+    const double kkt_activation_threshold = 1e-5;
     const double kkt_growth_factor = 100.0;
     double kkt_error = fmax(relative_objective_gap,
                             fmax(relative_primal_residual, relative_dual_residual));
