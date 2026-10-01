@@ -834,7 +834,7 @@ __global__ void compute_termination_metrics_kernel(
 
     double homogeneous_gap = objective_dot_primal_value
                            - reductions->constraint_support
-                           - reductions->variable_support;
+                           - reductions->bound_multiplier_variable_support;
     double iterate_norm = optimality_norm == NORM_TYPE_L_INF
                         ? fmax(fmax(primal_solution_norm, dual_solution_norm),
                                fmax(fabs(primal_scale), fabs(pdhg_dual_scale)))
