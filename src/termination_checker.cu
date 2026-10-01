@@ -449,6 +449,9 @@ void check_termination_criteria(
     }
 
     double ratio = solver_state->metrics_h->normalized_homogeneous_ratio;
+    double normalized_primal_scale = solver_state->metrics_h->pdhg_primal_scale
+                                   / fmax(solver_state->metrics_h->primal_solution_norm,
+                                          solver_state->metrics_h->dual_solution_norm);
     if (ratio < 0.5)
     {
         if (certify_optimality(solver_state, criteria))
@@ -456,7 +459,7 @@ void check_termination_criteria(
             return;
         }
     }
-    else if (ratio > 0.9)
+    if (ratio > 0.9 || normalized_primal_scale < 1e-10)
     {
         if (certify_infeasibility(solver_state,
                                   solver_state->metrics_h->primal_infeasibility_homogeneous_margin,
