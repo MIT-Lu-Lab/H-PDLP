@@ -422,7 +422,8 @@ __device__ __forceinline__ newton_terms_t evaluate_dual_box_cone_newton_terms(
     double scale)
 {
     const double vi = -unprojected;
-    const double bound = select_active_dual_bound(vi, lb, ub, scale);
+    const double bound =
+        (lb == ub) ? ub : select_active_dual_bound(vi, lb, ub, scale);
     return newton_terms_t{bound * bound, bound * vi};
 }
 
@@ -676,7 +677,7 @@ __device__ __forceinline__ newton_terms_t evaluate_primal_box_cone_newton_terms(
     const double box_lower = isfinite(lb) ? lb * scale : -INFINITY;
     const double box_upper = isfinite(ub) ? ub * scale : INFINITY;
 
-    if (shifted > box_upper)
+    if (lb == ub || shifted > box_upper)
         return newton_terms_t{
             inv_primal_step * ub * ub,
             inv_primal_step * ub * (unprojected - box_upper)};
