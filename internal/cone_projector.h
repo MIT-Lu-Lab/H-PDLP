@@ -31,13 +31,20 @@ typedef struct {
     double function_value;
 } newton_terms_t;
 
+enum BoxConeScaleSlot {
+    BOX_CONE_SCALE_LATEST   = 0,
+    BOX_CONE_SCALE_PREVIOUS = 1,
+    BOX_CONE_SCALE_OLDEST   = 2,
+    BOX_CONE_SCALE_COUNT    = 3,
+};
+
 typedef struct {
     const double *lower_bound_d;
     const double *upper_bound_d;
     int num_elements;
     bool newton_terms_are_zero;
     int num_blocks_newton;
-    double *scalar_d;
+    double *scale_history_d;
     newton_terms_t *newton_partials_d;
 } box_newton_state_t;
 

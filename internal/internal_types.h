@@ -91,15 +91,17 @@ typedef struct {
 } solver_control_t;
 
 enum HsdScalarSlot {
-    HSD_PRIMAL_SCALE_INITIAL             = 0,
-    HSD_PRIMAL_SCALE_CURRENT             = 1,
-    HSD_PRIMAL_SCALE_PDHG                = 2,
-    HSD_PRIMAL_SCALE_REFLECTED           = 3,
-    HSD_DUAL_SCALE_INITIAL   = 4,
-    HSD_DUAL_SCALE_CURRENT   = 5,
-    HSD_DUAL_SCALE_PDHG      = 6,
-    HSD_DUAL_SCALE_REFLECTED = 7,
-    HSD_SCALARS_COUNT             = 8,
+    HSD_PRIMAL_SCALE_INITIAL      = 0,
+    HSD_PRIMAL_SCALE_CURRENT      = 1,
+    HSD_PRIMAL_SCALE_PDHG         = 2,
+    HSD_PRIMAL_SCALE_REFLECTED    = 3,
+    HSD_DUAL_SCALE_INITIAL        = 4,
+    HSD_DUAL_SCALE_CURRENT        = 5,
+    HSD_DUAL_SCALE_PDHG           = 6,
+    HSD_DUAL_SCALE_REFLECTED      = 7,
+    HSD_PRIMAL_CONE_SCALE_HISTORY = 8,
+    HSD_DUAL_CONE_SCALE_HISTORY   = 11,
+    HSD_SCALARS_COUNT             = 14,
 };
 
 typedef struct {
@@ -118,7 +120,6 @@ typedef struct {
     double *dual_solution_d;
     double *primal_projection_multiplier_d;
     double *hsd_scalars_d;
-    double *constraint_cone_scale_d;
     double primal_weight;
     pid_state_t pid;
 } active_set_anchor_t;

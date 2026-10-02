@@ -67,6 +67,7 @@ __global__ void update_dual_box_cone_projection_kernel(
     box_newton_state_t state,
     int max_iter,
     double tol);
+__device__ __forceinline__ double compute_newton_start_scale(const double *history);
 template <bool COOPERATIVE, typename EvaluateTerms, typename UpdateScale>
 __device__ __forceinline__ double solve_scale_newton(
     double scale,
@@ -108,6 +109,7 @@ __device__ __forceinline__ double compute_halpern_update(
     double initial,
     double reflection_coefficient,
     double weight);
+__device__ __forceinline__ void update_scale_history(double *history, double scale);
 template <bool COOPERATIVE>
 __global__ void update_primal_box_cone_resolvent_kernel(
     double *__restrict__ current_primal,
@@ -249,9 +251,9 @@ __global__ void update_dual_box_cone_projection_kernel(
         current_scale - step_size * (*primal_scale_current);
     const int newton_max_iter =
         state.newton_terms_are_zero ? 0 : max_iter;
-    double scale = *state.scalar_d;
-    if (state.newton_terms_are_zero)
-        scale = fmax(0.0, -unprojected_scale);
+    double scale = state.newton_terms_are_zero
+        ? fmax(0.0, -unprojected_scale)
+        : compute_newton_start_scale(state.scale_history_d);
 
     newton_bracket_t bracket = {0.0, INFINITY, INFINITY};
     scale = solve_scale_newton<COOPERATIVE>(
@@ -307,7 +309,7 @@ __global__ void update_dual_box_cone_projection_kernel(
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
-        *state.scalar_d = scale;
+        update_scale_history(state.scale_history_d, scale);
         const double projected = unprojected_scale + scale;
         if (is_major)
             *dual_scale_evaluation = projected;
@@ -317,6 +319,19 @@ __global__ void update_dual_box_cone_projection_kernel(
             reflection_coefficient, weight);
         *dual_scale_reflected = reflected;
     }
+}
+
+__device__ __forceinline__ double compute_newton_start_scale(const double *history)
+{
+    const double latest_scale   = history[BOX_CONE_SCALE_LATEST];
+    const double previous_scale = history[BOX_CONE_SCALE_PREVIOUS];
+    const double latest_delta   = latest_scale - previous_scale;
+    const double previous_delta = previous_scale - history[BOX_CONE_SCALE_OLDEST];
+    const bool deltas_agree =
+        latest_delta * previous_delta > 0.0 &&
+        fabs(latest_delta) <= 2.0 * fabs(previous_delta) &&
+        fabs(previous_delta) <= 2.0 * fabs(latest_delta);
+    return deltas_agree ? fmax(0.0, latest_scale + latest_delta) : latest_scale;
 }
 
 template <bool COOPERATIVE, typename EvaluateTerms, typename UpdateScale>
@@ -503,6 +518,13 @@ __device__ __forceinline__ double compute_halpern_update(
     return weight * relaxed + (1.0 - weight) * initial;
 }
 
+__device__ __forceinline__ void update_scale_history(double *history, double scale)
+{
+    history[BOX_CONE_SCALE_OLDEST]   = history[BOX_CONE_SCALE_PREVIOUS];
+    history[BOX_CONE_SCALE_PREVIOUS] = history[BOX_CONE_SCALE_LATEST];
+    history[BOX_CONE_SCALE_LATEST]   = scale;
+}
+
 void update_primal_box_cone_resolvent(
     const cone_parameters_t *cone_params,
     box_newton_state_t *primal_state,
@@ -589,9 +611,9 @@ __global__ void update_primal_box_cone_resolvent_kernel(
         current_scale + homogeneous_step * (*homogeneous_dual_gradient);
     const int newton_max_iter =
         state.newton_terms_are_zero ? 0 : max_iter;
-    double scale = fmax(0.0, current_scale);
-    if (state.newton_terms_are_zero)
-        scale = fmax(0.0, unprojected_scale);
+    double scale = state.newton_terms_are_zero
+        ? fmax(0.0, unprojected_scale)
+        : compute_newton_start_scale(state.scale_history_d);
 
     newton_bracket_t bracket = {0.0, INFINITY, INFINITY};
     scale = solve_scale_newton<COOPERATIVE>(
@@ -652,6 +674,7 @@ __global__ void update_primal_box_cone_resolvent_kernel(
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
     {
+        update_scale_history(state.scale_history_d, scale);
         const double reflected_scale = 2.0 * scale - current_scale;
         if (is_major)
         {

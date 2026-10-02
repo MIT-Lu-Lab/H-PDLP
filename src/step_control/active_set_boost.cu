@@ -24,7 +24,7 @@ limitations under the License.
 
 __global__ void update_binding_constraint_mask_kernel(
     const double *__restrict__ constraint_dual_projection_input,
-    const double *constraint_cone_scale,
+    const double *dual_cone_scale,
     const double *__restrict__ constraint_lower_bound,
     const double *__restrict__ constraint_upper_bound,
     int *__restrict__ constraint_last_binding_iter,
@@ -117,9 +117,6 @@ void initialize_active_set(
     allocate_zeroed_device_buffer(
         (void **)&active_set->anchor.hsd_scalars_d,
         HSD_SCALARS_COUNT * sizeof(double));
-    allocate_zeroed_device_buffer(
-        (void **)&active_set->anchor.constraint_cone_scale_d,
-        sizeof(double));
 
     CUDA_CHECK(cudaMemset(
         active_set->free_variable_mask_d,
@@ -157,8 +154,6 @@ void active_set_free(active_set_state_t *active_set)
         CUDA_CHECK(cudaFree(active_set->anchor.primal_projection_multiplier_d));
     if (active_set->anchor.hsd_scalars_d)
         CUDA_CHECK(cudaFree(active_set->anchor.hsd_scalars_d));
-    if (active_set->anchor.constraint_cone_scale_d)
-        CUDA_CHECK(cudaFree(active_set->anchor.constraint_cone_scale_d));
 
     *active_set = {};
 }
@@ -183,7 +178,7 @@ void update_active_set_masks(
         0,
         state->stream_A>>>(
         active_set->constraint_dual_projection_input_d,
-        state->dual_box_cone_state.scalar_d,
+        &state->dual_box_cone_state.scale_history_d[BOX_CONE_SCALE_LATEST],
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
         active_set->constraint_last_binding_iter_d,
@@ -483,12 +478,6 @@ static void save_active_set_anchor(pdhg_solver_state_t *state)
         HSD_SCALARS_COUNT * sizeof(double),
         cudaMemcpyDeviceToDevice,
         state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(
-        active_set->anchor.constraint_cone_scale_d,
-        state->dual_box_cone_state.scalar_d,
-        sizeof(double),
-        cudaMemcpyDeviceToDevice,
-        state->stream_A));
     active_set->anchor.primal_weight = state->control.primal_weight;
     active_set->anchor.pid = state->control.pid;
 }
@@ -545,19 +534,13 @@ static void restore_active_set_anchor(pdhg_solver_state_t *state)
         HSD_SCALARS_COUNT * sizeof(double),
         cudaMemcpyDeviceToDevice,
         state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(
-        state->dual_box_cone_state.scalar_d,
-        active_set->anchor.constraint_cone_scale_d,
-        sizeof(double),
-        cudaMemcpyDeviceToDevice,
-        state->stream_A));
     state->control.primal_weight = active_set->anchor.primal_weight;
     state->control.pid = active_set->anchor.pid;
 }
 
 __global__ void update_binding_constraint_mask_kernel(
     const double *__restrict__ constraint_dual_projection_input,
-    const double *constraint_cone_scale,
+    const double *dual_cone_scale,
     const double *__restrict__ constraint_lower_bound,
     const double *__restrict__ constraint_upper_bound,
     int *__restrict__ constraint_last_binding_iter,
@@ -576,12 +559,11 @@ __global__ void update_binding_constraint_mask_kernel(
 
     const double lower = constraint_lower_bound[i];
     const double upper = constraint_upper_bound[i];
-    const double cone_scale = *constraint_cone_scale;
     const bool is_binding =
         lower == upper ||
-        !(cone_scale > 0.0) ||
+        !(*dual_cone_scale > 0.0) ||
         !is_safely_between_bounds(
-            -(constraint_dual_projection_input[i] / cone_scale),
+            -(constraint_dual_projection_input[i] / (*dual_cone_scale)),
             lower,
             upper,
             relative_tol);

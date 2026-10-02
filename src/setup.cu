@@ -596,14 +596,14 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
 static void allocate_device_scalars(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaMalloc(&state->hsd_scalars_d, HSD_SCALARS_COUNT * sizeof(double)));
-    state->hsd_primal_scale_initial_d             = state->hsd_scalars_d + HSD_PRIMAL_SCALE_INITIAL;
-    state->hsd_primal_scale_current_d             = state->hsd_scalars_d + HSD_PRIMAL_SCALE_CURRENT;
-    state->hsd_primal_scale_pdhg_d                = state->hsd_scalars_d + HSD_PRIMAL_SCALE_PDHG;
-    state->hsd_primal_scale_reflected_d           = state->hsd_scalars_d + HSD_PRIMAL_SCALE_REFLECTED;
-    state->hsd_dual_scale_initial_d   = state->hsd_scalars_d + HSD_DUAL_SCALE_INITIAL;
-    state->hsd_dual_scale_current_d   = state->hsd_scalars_d + HSD_DUAL_SCALE_CURRENT;
-    state->hsd_dual_scale_pdhg_d      = state->hsd_scalars_d + HSD_DUAL_SCALE_PDHG;
-    state->hsd_dual_scale_reflected_d = state->hsd_scalars_d + HSD_DUAL_SCALE_REFLECTED;
+    state->hsd_primal_scale_initial_d   = state->hsd_scalars_d + HSD_PRIMAL_SCALE_INITIAL;
+    state->hsd_primal_scale_current_d   = state->hsd_scalars_d + HSD_PRIMAL_SCALE_CURRENT;
+    state->hsd_primal_scale_pdhg_d      = state->hsd_scalars_d + HSD_PRIMAL_SCALE_PDHG;
+    state->hsd_primal_scale_reflected_d = state->hsd_scalars_d + HSD_PRIMAL_SCALE_REFLECTED;
+    state->hsd_dual_scale_initial_d     = state->hsd_scalars_d + HSD_DUAL_SCALE_INITIAL;
+    state->hsd_dual_scale_current_d     = state->hsd_scalars_d + HSD_DUAL_SCALE_CURRENT;
+    state->hsd_dual_scale_pdhg_d        = state->hsd_scalars_d + HSD_DUAL_SCALE_PDHG;
+    state->hsd_dual_scale_reflected_d   = state->hsd_scalars_d + HSD_DUAL_SCALE_REFLECTED;
 
     allocate_zeroed_device_buffer(
         (void **)&state->fixed_point_reductions_d,
@@ -622,14 +622,15 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->control.step_size_dual_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_homogeneous_d, sizeof(double));
 
-    allocate_zeroed_device_buffer((void **)&state->dual_box_cone_state.scalar_d, sizeof(double));
-    state->dual_box_cone_state.lower_bound_d = state->constraint_lower_bound_d;
-    state->dual_box_cone_state.upper_bound_d = state->constraint_upper_bound_d;
-    state->dual_box_cone_state.num_elements = state->num_constraints;
+    state->primal_box_cone_state.scale_history_d = state->hsd_scalars_d + HSD_PRIMAL_CONE_SCALE_HISTORY;
+    state->primal_box_cone_state.lower_bound_d   = state->variable_lower_bound_d;
+    state->primal_box_cone_state.upper_bound_d   = state->variable_upper_bound_d;
+    state->primal_box_cone_state.num_elements    = state->num_variables;
 
-    state->primal_box_cone_state.lower_bound_d = state->variable_lower_bound_d;
-    state->primal_box_cone_state.upper_bound_d = state->variable_upper_bound_d;
-    state->primal_box_cone_state.num_elements = state->num_variables;
+    state->dual_box_cone_state.scale_history_d = state->hsd_scalars_d + HSD_DUAL_CONE_SCALE_HISTORY;
+    state->dual_box_cone_state.lower_bound_d   = state->constraint_lower_bound_d;
+    state->dual_box_cone_state.upper_bound_d   = state->constraint_upper_bound_d;
+    state->dual_box_cone_state.num_elements    = state->num_constraints;
 }
 
 static void apply_warm_starts(
@@ -910,7 +911,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->bound_multiplier_dual_residual_d);
     FREE_DEVICE_BUFFER(state->variable_recession_residual_d);
 
-    FREE_DEVICE_BUFFER(state->dual_box_cone_state.scalar_d);
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.newton_partials_d);
     FREE_DEVICE_BUFFER(state->primal_box_cone_state.newton_partials_d);
 
