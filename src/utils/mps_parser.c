@@ -349,6 +349,7 @@ typedef struct
 
     char *objective_row_name;
     char *current_col_name;
+    int current_col_idx;
     int in_integer_block;
     double objective_constant;
     objective_sense_t model_sense;
@@ -934,17 +935,29 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
         return 0;
     }
 
-    const char *col_name = NULL;
     int pair_start_index;
 
     if (n_tokens % 2 != 0)
     {
-        free(state->current_col_name);
-        state->current_col_name = strdup(tokens[0]);
-        if (!state->current_col_name)
-            return -1;
+        if (!state->current_col_name ||
+            strcmp(tokens[0], state->current_col_name) != 0)
+        {
+            free(state->current_col_name);
+            state->current_col_name = strdup(tokens[0]);
+            if (!state->current_col_name)
+                return -1;
 
-        col_name = state->current_col_name;
+            if (!ensure_column_capacity(state))
+                return -1;
+
+            size_t num_columns_before = state->col_map.size;
+            state->current_col_idx =
+                namemap_put(&state->col_map, state->current_col_name);
+            if (state->current_col_idx == -1)
+                return -1;
+            if (state->col_map.size > num_columns_before && state->in_integer_block)
+                state->col_binary_default[state->current_col_idx] = 1;
+        }
         pair_start_index = 1;
     }
     else
@@ -955,19 +968,10 @@ static int parse_columns_section(MpsParserState *state, char **tokens,
                     "ERROR: Column data found before any column name was defined.\n");
             return -1;
         }
-        col_name = state->current_col_name;
         pair_start_index = 0;
     }
 
-    if (!ensure_column_capacity(state))
-        return -1;
-
-    size_t num_columns_before = state->col_map.size;
-    int col_idx = namemap_put(&state->col_map, col_name);
-    if (col_idx == -1)
-        return -1;
-    if (state->col_map.size > num_columns_before && state->in_integer_block)
-        state->col_binary_default[col_idx] = 1;
+    int col_idx = state->current_col_idx;
 
     for (int i = pair_start_index; i + 1 < n_tokens; i += 2)
     {
