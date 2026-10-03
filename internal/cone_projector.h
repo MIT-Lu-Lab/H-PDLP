@@ -46,6 +46,7 @@ typedef struct {
     int num_blocks_newton;
     double *scale_history_d;
     newton_terms_t *newton_partials_d;
+    unsigned int *block_arrival_count_d;
 } box_newton_state_t;
 
 void update_dual_box_cone_projection(

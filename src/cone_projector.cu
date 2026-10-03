@@ -109,6 +109,9 @@ __device__ __forceinline__ double compute_halpern_update(
     double initial,
     double reflection_coefficient,
     double weight);
+template <bool COOPERATIVE>
+__device__ __forceinline__ bool claim_last_block_arrival(
+    unsigned int *block_arrival_count);
 __device__ __forceinline__ void update_scale_history(double *history, double scale);
 template <bool COOPERATIVE>
 __global__ void update_primal_box_cone_resolvent_kernel(
@@ -301,13 +304,9 @@ __global__ void update_dual_box_cone_projection_kernel(
             reflected, current, initial_dual[i], reflection_coefficient, weight);
     }
 
-    if constexpr (COOPERATIVE)
-    {
-        if (newton_max_iter == 0)
-            cg::this_grid().sync();
-    }
-
-    if (blockIdx.x == 0 && threadIdx.x == 0)
+    __syncthreads();
+    if (threadIdx.x == 0 &&
+        claim_last_block_arrival<COOPERATIVE>(state.block_arrival_count_d))
     {
         update_scale_history(state.scale_history_d, scale);
         const double projected = unprojected_scale + scale;
@@ -518,6 +517,22 @@ __device__ __forceinline__ double compute_halpern_update(
     return weight * relaxed + (1.0 - weight) * initial;
 }
 
+template <bool COOPERATIVE>
+__device__ __forceinline__ bool claim_last_block_arrival(
+    unsigned int *block_arrival_count)
+{
+    if constexpr (!COOPERATIVE)
+    {
+        return true;
+    }
+    else
+    {
+        __threadfence();
+        const unsigned int last_arrival = gridDim.x - 1;
+        return atomicInc(block_arrival_count, last_arrival) == last_arrival;
+    }
+}
+
 __device__ __forceinline__ void update_scale_history(double *history, double scale)
 {
     history[BOX_CONE_SCALE_OLDEST]   = history[BOX_CONE_SCALE_PREVIOUS];
@@ -666,13 +681,9 @@ __global__ void update_primal_box_cone_resolvent_kernel(
             reflected, current, initial_primal[i], reflection_coefficient, weight);
     }
 
-    if constexpr (COOPERATIVE)
-    {
-        if (newton_max_iter == 0)
-            cg::this_grid().sync();
-    }
-
-    if (blockIdx.x == 0 && threadIdx.x == 0)
+    __syncthreads();
+    if (threadIdx.x == 0 &&
+        claim_last_block_arrival<COOPERATIVE>(state.block_arrival_count_d))
     {
         update_scale_history(state.scale_history_d, scale);
         const double reflected_scale = 2.0 * scale - current_scale;
