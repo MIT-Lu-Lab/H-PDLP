@@ -698,9 +698,8 @@ static void initialize_newton_workspace(
 
     if (n <= COOP_NEWTON_THRESHOLD)
     {
-        newton_state->num_blocks_newton     = 1;
-        newton_state->newton_partials_d     = NULL;
-        newton_state->block_arrival_count_d = NULL;
+        newton_state->num_blocks_newton = 1;
+        newton_state->newton_partials_d = NULL;
         return;
     }
 
@@ -717,9 +716,6 @@ static void initialize_newton_workspace(
     allocate_zeroed_device_buffer(
         (void **)&newton_state->newton_partials_d,
         2 * (size_t)n_blocks_newton * sizeof(newton_terms_t));
-    allocate_zeroed_device_buffer(
-        (void **)&newton_state->block_arrival_count_d,
-        sizeof(unsigned int));
 }
 
 static void initialize_newton_workspaces(pdhg_solver_state_t *state)
@@ -917,8 +913,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
 
     FREE_DEVICE_BUFFER(state->dual_box_cone_state.newton_partials_d);
     FREE_DEVICE_BUFFER(state->primal_box_cone_state.newton_partials_d);
-    FREE_DEVICE_BUFFER(state->dual_box_cone_state.block_arrival_count_d);
-    FREE_DEVICE_BUFFER(state->primal_box_cone_state.block_arrival_count_d);
 
     FREE_DEVICE_BUFFER(state->cub_reduce_workspace_d);
     FREE_DEVICE_BUFFER(state->control.inner_count_d);
