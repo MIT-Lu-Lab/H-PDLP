@@ -17,6 +17,12 @@ limitations under the License.
 #include "pid_controller.h"
 #include <math.h>
 
+static void reset_pid_errors(pid_state_t *pid);
+static bool apply_primal_weight_safeguard(pid_state_t *pid,
+                                          double *primal_weight,
+                                          double relative_objective_gap,
+                                          double relative_primal_residual,
+                                          double relative_dual_residual);
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
                              const step_size_parameters_t *params,
@@ -25,6 +31,14 @@ static void apply_pid_update(pid_state_t *pid,
                              bool clamp_step);
 
 void initialize_pid_state(pid_state_t *pid)
+{
+    reset_pid_errors(pid);
+    pid->min_kkt_error = INFINITY;
+    pid->max_residual_balance = 0.0;
+    pid->balanced_primal_weight = 0.0;
+}
+
+static void reset_pid_errors(pid_state_t *pid)
 {
     pid->error_sum = 0.0;
     pid->last_error = 0.0;
@@ -44,9 +58,14 @@ void apply_restart_pid(pid_state_t *pid,
 {
     if (homogeneous_ratio > 0.9)
     {
-        initialize_pid_state(pid);
+        reset_pid_errors(pid);
         return;
     }
+
+    if (params->primal_weight_safeguard &&
+        apply_primal_weight_safeguard(pid, primal_weight, relative_objective_gap,
+                                      relative_primal_residual, relative_dual_residual))
+        return;
 
     double scale_reference = fmax(homogeneous_scale, 1e-300);
     bool dist_ok = primal_dist > 1e-16 * scale_reference &&
@@ -61,6 +80,43 @@ void apply_restart_pid(pid_state_t *pid,
 
     apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist,
                      !(dist_ok && ratio_ok));
+}
+
+static bool apply_primal_weight_safeguard(pid_state_t *pid,
+                                          double *primal_weight,
+                                          double relative_objective_gap,
+                                          double relative_primal_residual,
+                                          double relative_dual_residual)
+{
+    const double kkt_recording_threshold = 1e-2;
+    const double kkt_activation_threshold = 1e-5;
+    const double kkt_growth_factor = 100.0;
+    double kkt_error = fmax(relative_objective_gap,
+                            fmax(relative_primal_residual, relative_dual_residual));
+
+    if (pid->min_kkt_error < kkt_activation_threshold &&
+        pid->balanced_primal_weight > 0.0 &&
+        kkt_error >= kkt_growth_factor * pid->min_kkt_error)
+    {
+        *primal_weight = pid->balanced_primal_weight;
+        reset_pid_errors(pid);
+        return true;
+    }
+    if (kkt_error < pid->min_kkt_error)
+        pid->min_kkt_error = kkt_error;
+
+    if (pid->min_kkt_error < kkt_recording_threshold &&
+        relative_primal_residual > 0.0 && relative_dual_residual > 0.0)
+    {
+        double residual_balance = fmin(relative_primal_residual, relative_dual_residual) /
+                                  fmax(relative_primal_residual, relative_dual_residual);
+        if (residual_balance > pid->max_residual_balance)
+        {
+            pid->max_residual_balance = residual_balance;
+            pid->balanced_primal_weight = *primal_weight;
+        }
+    }
+    return false;
 }
 
 static void apply_pid_update(pid_state_t *pid,

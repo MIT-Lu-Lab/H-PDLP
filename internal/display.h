@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "cuhsdlp_types.h"
+#include "hopdlp_types.h"
 #include "internal_types.h"
 #include <stdbool.h>
 
@@ -46,7 +46,7 @@ extern "C"
         const pdhg_parameters_t *params);
 
     void pdhg_final_log(
-        const cuhsdlp_result_t *result,
+        const hopdlp_result_t *result,
         const pdhg_parameters_t *params);
 
     int get_print_frequency(int iter);

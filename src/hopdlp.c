@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "cuhsdlp.h"
+#include "hopdlp.h"
 #include "matrix_formats.h"
 #include "solver.h"
 #include "utils.h"
@@ -162,7 +162,7 @@ static void fill_or_copy(
         (*dst)[i] = fill_val;
 }
 
-void cuhsdlp_result_free(cuhsdlp_result_t *results)
+void hopdlp_result_free(hopdlp_result_t *results)
 {
     if (results == NULL)
         return;
@@ -278,6 +278,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->step_size_params.k_i = 0.05;
     params->step_size_params.k_d = 0.0;
     params->step_size_params.i_smooth = 0.3;
+    params->step_size_params.primal_weight_safeguard = true;
 
     params->cone_params.max_iter = 100;
     params->cone_params.tol = 1e-6;
@@ -306,7 +307,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->tau_trace_path = NULL;
 }
 
-cuhsdlp_result_t *solve_lp_problem(
+hopdlp_result_t *solve_lp_problem(
     const lp_problem_t *prob,
     const pdhg_parameters_t *params)
 {

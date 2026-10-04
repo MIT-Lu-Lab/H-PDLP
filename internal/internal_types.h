@@ -17,7 +17,7 @@ limitations under the License.
 #pragma once
 
 #include "cone_projector.h"
-#include "cuhsdlp_types.h"
+#include "hopdlp_types.h"
 #include "pid_controller.h"
 #include "spmv_backend.h"
 #include <cublas_v2.h>
@@ -43,6 +43,7 @@ typedef struct {
 typedef struct {
     double primal_residual_norm;
     double dual_residual_norm;
+    double bound_multiplier_dual_residual_norm;
     double primal_infeasibility_stationarity_residual_norm;
     double constraint_recession_residual_norm;
     double variable_recession_residual_norm;
@@ -52,6 +53,7 @@ typedef struct {
     double objective_dot_primal;
     double constraint_support;
     double variable_support;
+    double bound_multiplier_variable_support;
     double homogeneous_variable_support;
     double dual_infeasibility_objective;
     double primal_infeasibility_constraint_support;
@@ -89,15 +91,17 @@ typedef struct {
 } solver_control_t;
 
 enum HsdScalarSlot {
-    HSD_PRIMAL_SCALE_INITIAL             = 0,
-    HSD_PRIMAL_SCALE_CURRENT             = 1,
-    HSD_PRIMAL_SCALE_PDHG                = 2,
-    HSD_PRIMAL_SCALE_REFLECTED           = 3,
-    HSD_DUAL_SCALE_INITIAL   = 4,
-    HSD_DUAL_SCALE_CURRENT   = 5,
-    HSD_DUAL_SCALE_PDHG      = 6,
-    HSD_DUAL_SCALE_REFLECTED = 7,
-    HSD_SCALARS_COUNT             = 8,
+    HSD_PRIMAL_SCALE_INITIAL      = 0,
+    HSD_PRIMAL_SCALE_CURRENT      = 1,
+    HSD_PRIMAL_SCALE_PDHG         = 2,
+    HSD_PRIMAL_SCALE_REFLECTED    = 3,
+    HSD_DUAL_SCALE_INITIAL        = 4,
+    HSD_DUAL_SCALE_CURRENT        = 5,
+    HSD_DUAL_SCALE_PDHG           = 6,
+    HSD_DUAL_SCALE_REFLECTED      = 7,
+    HSD_PRIMAL_CONE_SCALE_HISTORY = 8,
+    HSD_DUAL_CONE_SCALE_HISTORY   = 11,
+    HSD_SCALARS_COUNT             = 14,
 };
 
 typedef struct {
@@ -114,8 +118,8 @@ typedef struct sv_estimator_ctx sv_estimator_ctx_t;
 typedef struct {
     double *primal_solution_d;
     double *dual_solution_d;
+    double *primal_projection_multiplier_d;
     double *hsd_scalars_d;
-    double *constraint_cone_scale_d;
     double primal_weight;
     pid_state_t pid;
 } active_set_anchor_t;
@@ -129,7 +133,6 @@ typedef struct {
 
 typedef struct {
     double *constraint_dual_projection_input_d;
-    double *variable_primal_projection_input_d;
     int *variable_last_free_iter_d;
     int *constraint_last_binding_iter_d;
     bool *free_variable_mask_d;
@@ -224,6 +227,8 @@ typedef struct {
     double *constraint_reduction_entries_d;
 
     double *pdhg_reduced_cost_d;
+    double *bound_multiplier_d;
+    double *pdhg_primal_projection_multiplier_d;
     double *primal_infeasibility_reduced_cost_d;
     double *reduced_cost_ray_d;
     double *dual_ray_d;
@@ -241,6 +246,7 @@ typedef struct {
     double *hsd_dual_scale_reflected_d;
     double *primal_residual_d;
     double *dual_residual_d;
+    double *bound_multiplier_dual_residual_d;
     double *variable_recession_residual_d;
 
     box_newton_state_t dual_box_cone_state;

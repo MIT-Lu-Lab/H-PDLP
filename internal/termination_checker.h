@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "cuhsdlp_types.h"
+#include "hopdlp_types.h"
 #include "internal_types.h"
 #include <stdbool.h>
 
@@ -35,6 +35,12 @@ extern "C"
         double dual_objective;
         double objective_gap;
         double relative_objective_gap;
+
+        double bound_multiplier_absolute_dual_residual;
+        double bound_multiplier_relative_dual_residual;
+        double bound_multiplier_dual_objective;
+        double bound_multiplier_objective_gap;
+        double bound_multiplier_relative_objective_gap;
 
         double current_primal_scale;
         double pdhg_primal_scale;

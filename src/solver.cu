@@ -17,7 +17,8 @@ limitations under the License.
 #include "active_set_boost.h"
 #include "cone_projector.h"
 #include "cuda_macros.h"
-#include "cuhsdlp.h"
+#include "cublas_checks.h"
+#include "hopdlp.h"
 #include "display.h"
 #include "internal_types.h"
 #include "pid_controller.h"
@@ -79,7 +80,8 @@ __global__ void restart_hsd_scalars_kernel(
     double *dual_scale_current,
     double *dual_scale_pdhg,
     double *dual_scale_reflected,
-    double *constraint_cone_scale_d,
+    double *primal_cone_scale_history,
+    double *dual_cone_scale_history,
     double  cone_warm_start_scale);
 __global__ void scale_hsd_scalars_kernel(
     double *primal_scale_pdhg,
@@ -89,7 +91,7 @@ static working_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
 static void restore_original_objective_sense(
-    cuhsdlp_result_t *result,
+    hopdlp_result_t *result,
     objective_sense_t objective_sense);
 static void working_problem_free(
     working_problem_t *working);
@@ -138,7 +140,7 @@ static void update_primal_weight_via_restart_pid(
     const step_size_parameters_t *step_size_params);
 static double apply_gauge_control(pdhg_solver_state_t *state);
 
-cuhsdlp_result_t *optimize(
+hopdlp_result_t *optimize(
     const pdhg_parameters_t *params,
     const lp_problem_t *original_problem)
 {
@@ -151,7 +153,7 @@ cuhsdlp_result_t *optimize(
 
     if (working_problem->num_variables == 0 && working_problem->num_constraints == 0)
     {
-        cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+        hopdlp_result_t *result = (hopdlp_result_t *)safe_calloc(1, sizeof(hopdlp_result_t));
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
         result->primal_objective_value = working_problem->objective_constant;
         result->dual_objective_value = working_problem->objective_constant;
@@ -162,7 +164,7 @@ cuhsdlp_result_t *optimize(
         return result;
     }
 
-    cuhsdlp_presolve_info_t *presolve_info = NULL;
+    hopdlp_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
     {
         presolve_info = pslp_presolve(working_problem, params->verbose);
@@ -173,8 +175,8 @@ cuhsdlp_result_t *optimize(
         }
         if (presolve_info->problem_solved_during_presolve)
         {
-            cuhsdlp_result_t *result = create_result_from_presolve(presolve_info, working_problem);
-            cuhsdlp_presolve_info_free(presolve_info);
+            hopdlp_result_t *result = create_result_from_presolve(presolve_info, working_problem);
+            hopdlp_presolve_info_free(presolve_info);
             restore_original_objective_sense(result, original_problem->objective_sense);
             pdhg_final_log(result, params);
             working_problem_free(&working);
@@ -278,7 +280,7 @@ cuhsdlp_result_t *optimize(
     tau_trace_write_row(tau_trace, state, "final");
     tau_trace_close(tau_trace);
 
-    cuhsdlp_result_t *result = create_result_from_state(state, working_problem);
+    hopdlp_result_t *result = create_result_from_state(state, working_problem);
 
     if (presolve_info)
     {
@@ -295,7 +297,7 @@ cuhsdlp_result_t *optimize(
         {
             pslp_postsolve_dual_infeasibility_ray(presolve_info, result, working_problem);
         }
-        cuhsdlp_presolve_info_free(presolve_info);
+        hopdlp_presolve_info_free(presolve_info);
     }
 
     restore_original_objective_sense(result, original_problem->objective_sense);
@@ -389,7 +391,7 @@ static working_problem_t create_working_problem(
 }
 
 static void restore_original_objective_sense(
-    cuhsdlp_result_t *result,
+    hopdlp_result_t *result,
     objective_sense_t objective_sense)
 {
     if (objective_sense != OBJECTIVE_SENSE_MAXIMIZE)
@@ -592,7 +594,7 @@ static void update_hsd_primal_block(
         state->current_primal_solution_d,
         state->reflected_primal_solution_d,
         state->pdhg_primal_solution_d,
-        state->active_set.variable_primal_projection_input_d,
+        state->pdhg_primal_projection_multiplier_d,
         state->initial_primal_solution_d,
         state->dual_product_d,
         state->objective_vector_d,
@@ -833,7 +835,8 @@ static void perform_restart(
         state->hsd_dual_scale_current_d,
         state->hsd_dual_scale_pdhg_d,
         state->hsd_dual_scale_reflected_d,
-        state->dual_box_cone_state.scalar_d,
+        state->primal_box_cone_state.scale_history_d,
+        state->dual_box_cone_state.scale_history_d,
         cone_warm_start_scale);
 
     state->control.inner_count = 0;
@@ -1006,20 +1009,29 @@ __global__ void restart_hsd_scalars_kernel(
     double *dual_scale_current,
     double *dual_scale_pdhg,
     double *dual_scale_reflected,
-    double *constraint_cone_scale_d,
+    double *primal_cone_scale_history,
+    double *dual_cone_scale_history,
     double  cone_warm_start_scale)
 {
-    double s = *primal_scale_pdhg;
+    const double s = *primal_scale_pdhg;
     *primal_scale_initial   = s;
     *primal_scale_current   = s;
     *primal_scale_reflected = s;
 
-    double dc = *dual_scale_pdhg;
+    const double dc = *dual_scale_pdhg;
     *dual_scale_initial   = dc;
     *dual_scale_current   = dc;
     *dual_scale_reflected = dc;
 
-    *constraint_cone_scale_d *= cone_warm_start_scale;
+    const double primal_cone_scale =
+        primal_cone_scale_history[BOX_CONE_SCALE_LATEST] * cone_warm_start_scale;
+    const double dual_cone_scale =
+        dual_cone_scale_history[BOX_CONE_SCALE_LATEST] * cone_warm_start_scale;
+    for (int i = 0; i < BOX_CONE_SCALE_COUNT; ++i)
+    {
+        primal_cone_scale_history[i] = primal_cone_scale;
+        dual_cone_scale_history[i]   = dual_cone_scale;
+    }
 }
 
 __global__ void scale_hsd_scalars_kernel(

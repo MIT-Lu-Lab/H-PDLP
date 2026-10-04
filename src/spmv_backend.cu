@@ -16,13 +16,14 @@ limitations under the License.
 
 #include "spmv_backend.h"
 #include "cuda_macros.h"
+#include "cusparse_checks.h"
 
 static const double HOST_ONE = 1.0;
 static const double HOST_ZERO = 0.0;
 
 const char *spmv_backend_name(void)
 {
-    return CUHSDLP_HAS_SPMVOP ? "cusparseSpMVOp" : "cusparseSpMV";
+    return HOPDLP_HAS_SPMVOP ? "cusparseSpMVOp" : "cusparseSpMV";
 }
 
 void create_spmv_plan(
@@ -34,7 +35,7 @@ void create_spmv_plan(
 {
     size_t buffer_size = 0;
     plan->matrix = matrix;
-#if CUHSDLP_HAS_SPMVOP
+#if HOPDLP_HAS_SPMVOP
     cusparseSpMVOpDescr_t spmvop_descriptor = NULL;
     cusparseSpMVOpPlan_t spmvop_plan = NULL;
     CUSPARSE_CHECK(cusparseSpMVOp_bufferSize(
@@ -66,7 +67,7 @@ void execute_spmv(
     cusparseDnVecDescr_t output,
     const spmv_plan_t *plan)
 {
-#if CUHSDLP_HAS_SPMVOP
+#if HOPDLP_HAS_SPMVOP
     CUSPARSE_CHECK(cusparseSpMVOp(
         handle, (cusparseSpMVOpPlan_t)plan->plan, &HOST_ONE, &HOST_ZERO, input, output, output));
 #else
@@ -78,7 +79,7 @@ void execute_spmv(
 
 void destroy_spmv_plan(spmv_plan_t *plan)
 {
-#if CUHSDLP_HAS_SPMVOP
+#if HOPDLP_HAS_SPMVOP
     if (plan->plan)
         CUSPARSE_CHECK(cusparseSpMVOp_destroyPlan((cusparseSpMVOpPlan_t)plan->plan));
     if (plan->descriptor)

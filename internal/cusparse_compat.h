@@ -20,7 +20,7 @@ limitations under the License.
 
 #if defined(CUSPARSE_ENABLE_EXPERIMENTAL_API) && defined(CUSPARSE_VERSION) && \
     CUSPARSE_VERSION >= 12801
-#define CUHSDLP_HAS_SPMVOP 1
+#define HOPDLP_HAS_SPMVOP 1
 #else
-#define CUHSDLP_HAS_SPMVOP 0
+#define HOPDLP_HAS_SPMVOP 0
 #endif

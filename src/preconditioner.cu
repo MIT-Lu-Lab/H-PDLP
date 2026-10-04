@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "preconditioner.h"
 #include "cuda_macros.h"
+#include "cublas_checks.h"
 #include "cuda_utils.h"
 #include "power_iteration.h"
 #include "setup.h"

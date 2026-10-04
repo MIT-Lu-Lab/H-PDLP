@@ -93,6 +93,7 @@ extern "C"
         double k_i;
         double k_d;
         double i_smooth;
+        bool primal_weight_safeguard;
     } step_size_parameters_t;
 
     typedef struct
@@ -191,7 +192,7 @@ extern "C"
         int active_set_raise_count;
         int active_set_revert_count;
         int active_set_power_iteration_count;
-    } cuhsdlp_result_t;
+    } hopdlp_result_t;
 
     typedef enum
     {

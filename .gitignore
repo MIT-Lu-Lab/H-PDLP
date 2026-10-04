@@ -62,5 +62,6 @@ test/*
 !/result/miplib_infeas/
 !/result/mittelmann/
 !/result/netlib/
-/docs
+/docs/*
+!/docs/C_API.md
 /infeas

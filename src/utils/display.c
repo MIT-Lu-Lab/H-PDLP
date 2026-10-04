@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "display.h"
 #include "active_set_boost.h"
-#include "cuhsdlp.h"
+#include "hopdlp.h"
 #include "spmv_backend.h"
 #include "termination_checker.h"
 #include <math.h>
@@ -82,7 +82,8 @@ void print_initial_info(
     }
     printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
-    printf("%*scuHSDLP v%s\n", (124 - 14) / 2, "", CUHSDLP_VERSION);
+    printf("%*sHoPDLP v%s\n", (124 - (int)(sizeof("HoPDLP v" HOPDLP_VERSION) - 1)) / 2,
+           "", HOPDLP_VERSION);
     printf("%*sA GPU-Accelerated First-Order LP Solver\n", (124 - 39) / 2, "");
     printf(
         "%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n",
@@ -157,6 +158,9 @@ void print_initial_info(
     PRINT_DIFF_DBL("cone_newton_tol",
                    params->cone_params.tol,
                    default_params.cone_params.tol);
+    PRINT_DIFF_BOOL("primal_weight_safeguard",
+                    params->step_size_params.primal_weight_safeguard,
+                    default_params.step_size_params.primal_weight_safeguard);
     PRINT_DIFF_BOOL("active_set_step_size_boost",
                     params->active_set_params.step_size_boost,
                     default_params.active_set_params.step_size_boost);
@@ -316,7 +320,7 @@ void display_active_set_boost_revert(
 }
 
 void pdhg_final_log(
-    const cuhsdlp_result_t *result,
+    const hopdlp_result_t *result,
     const pdhg_parameters_t *params)
 {
     if (params->verbose)

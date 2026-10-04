@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "cuhsdlp_types.h"
+#include "hopdlp_types.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -36,13 +36,13 @@ extern "C"
 
     bool set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
 
-    cuhsdlp_result_t *solve_lp_problem(
+    hopdlp_result_t *solve_lp_problem(
         const lp_problem_t *prob,
         const pdhg_parameters_t *params);
 
     void set_default_parameters(pdhg_parameters_t *params);
 
-    void cuhsdlp_result_free(cuhsdlp_result_t *results);
+    void hopdlp_result_free(hopdlp_result_t *results);
 
     void lp_problem_free(lp_problem_t *prob);
 

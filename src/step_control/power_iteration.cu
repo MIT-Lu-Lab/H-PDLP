@@ -16,6 +16,9 @@ limitations under the License.
 
 #include "power_iteration.h"
 #include "cuda_macros.h"
+#include "cublas_checks.h"
+#include "cusparse_checks.h"
+#include "curand_checks.h"
 #include "cuda_utils.h"
 #include "spmv_backend.h"
 #include "utils.h"

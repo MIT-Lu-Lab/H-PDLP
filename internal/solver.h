@@ -16,14 +16,14 @@ limitations under the License.
 
 #pragma once
 
-#include "cuhsdlp_types.h"
+#include "hopdlp_types.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-    cuhsdlp_result_t *optimize(
+    hopdlp_result_t *optimize(
         const pdhg_parameters_t *params,
         const lp_problem_t *original_problem);
 
