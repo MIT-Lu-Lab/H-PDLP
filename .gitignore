@@ -54,5 +54,6 @@ dkms.conf
 build/*
 test/*
 /result
-/docs
+/docs/*
+!/docs/C_API.md
 /infeas
