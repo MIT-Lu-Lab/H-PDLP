@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "termination_checker.h"
 #include "cuda_macros.h"
+#include "cublas_checks.h"
 #include "cuda_utils.h"
 #include "spmv_backend.h"
 #include <cublas_v2.h>

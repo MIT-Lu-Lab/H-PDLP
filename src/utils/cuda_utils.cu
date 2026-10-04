@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "cuda_utils.h"
 #include "cuda_macros.h"
-#include <cub/cub.cuh>
+#include <cub/device/device_reduce.cuh>
 #include <math.h>
 #include <thrust/iterator/transform_iterator.h>
 
@@ -71,29 +71,31 @@ void allocate_cub_reduce_workspace(pdhg_solver_state_t *state)
     size_t sum_bytes = 0;
     size_t max_bytes = 0;
     size_t abs_max_bytes = 0;
-    double *null_values = NULL;
+    // Match the execution wrappers' iterator types to reuse CUB instantiations.
+    const double *null_input = NULL;
+    double *null_output = NULL;
     auto absolute_values =
         thrust::make_transform_iterator(
-            null_values,
+            null_input,
             absolute_value_transform_t{});
 
     CUDA_CHECK(cub::DeviceReduce::Sum(
         NULL,
         sum_bytes,
-        null_values,
-        null_values,
+        null_input,
+        null_output,
         max_reduction_length));
     CUDA_CHECK(cub::DeviceReduce::Max(
         NULL,
         max_bytes,
-        null_values,
-        null_values,
+        null_input,
+        null_output,
         max_reduction_length));
     CUDA_CHECK(cub::DeviceReduce::Max(
         NULL,
         abs_max_bytes,
         absolute_values,
-        null_values,
+        null_output,
         max_reduction_length));
 
     size_t workspace_bytes =

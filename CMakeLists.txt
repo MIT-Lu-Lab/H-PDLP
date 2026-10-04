@@ -143,7 +143,7 @@ set(CORE_SOURCES
     src/step_control/pid_controller.c
     src/step_control/power_iteration.cu
     src/utils/cuda_utils.cu
-    src/utils/display.cu
+    src/utils/display.c
     src/utils/mps_parser.c
     src/utils/utils.c)
 

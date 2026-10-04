@@ -16,10 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include <cublas_v2.h>
 #include <cuda_runtime.h>
-#include <curand.h>
-#include <cusparse.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -33,42 +30,6 @@ limitations under the License.
                     __LINE__, cudaGetErrorName(err));              \
             exit(EXIT_FAILURE);                                    \
         }                                                          \
-    } while (0)
-
-#define CUBLAS_CHECK(call)                                           \
-    do                                                               \
-    {                                                                \
-        cublasStatus_t status = call;                                \
-        if (status != CUBLAS_STATUS_SUCCESS)                         \
-        {                                                            \
-            fprintf(stderr, "cuBLAS Error at %s:%d: %s\n", __FILE__, \
-                    __LINE__, cublasGetStatusName(status));          \
-            exit(EXIT_FAILURE);                                      \
-        }                                                            \
-    } while (0)
-
-#define CUSPARSE_CHECK(call)                                           \
-    do                                                                 \
-    {                                                                  \
-        cusparseStatus_t status = call;                                \
-        if (status != CUSPARSE_STATUS_SUCCESS)                         \
-        {                                                              \
-            fprintf(stderr, "cuSPARSE Error at %s:%d: %s\n", __FILE__, \
-                    __LINE__, cusparseGetErrorName(status));           \
-            exit(EXIT_FAILURE);                                        \
-        }                                                              \
-    } while (0)
-
-#define CURAND_CHECK(call)                                              \
-    do                                                                  \
-    {                                                                   \
-        curandStatus_t status = call;                                   \
-        if (status != CURAND_STATUS_SUCCESS)                            \
-        {                                                               \
-            fprintf(stderr, "cuRAND Error at %s:%d: %d\n", __FILE__,    \
-                    __LINE__, (int)status);                             \
-            exit(EXIT_FAILURE);                                         \
-        }                                                               \
     } while (0)
 
 #define THREADS_PER_BLOCK 256

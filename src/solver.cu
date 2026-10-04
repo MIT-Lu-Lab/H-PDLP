@@ -17,6 +17,7 @@ limitations under the License.
 #include "active_set_boost.h"
 #include "cone_projector.h"
 #include "cuda_macros.h"
+#include "cublas_checks.h"
 #include "hopdlp.h"
 #include "display.h"
 #include "internal_types.h"
