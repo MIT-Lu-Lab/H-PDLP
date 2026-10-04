@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "PSLP_API.h"
 #include "PSLP_stats.h"
-#include "cuhsdlp.h"
+#include "hopdlp.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -33,29 +33,29 @@ extern "C"
         bool problem_solved_during_presolve;
         double presolve_time;
         char presolve_status;
-    } cuhsdlp_presolve_info_t;
+    } hopdlp_presolve_info_t;
 
-    cuhsdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose);
+    hopdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose);
 
-    cuhsdlp_result_t *create_result_from_presolve(const cuhsdlp_presolve_info_t *info, const lp_problem_t *working_problem);
+    hopdlp_result_t *create_result_from_presolve(const hopdlp_presolve_info_t *info, const lp_problem_t *working_problem);
     const char *get_presolve_status_str(int status);
 
-    void copy_presolve_stats(const cuhsdlp_presolve_info_t *info,
-                             cuhsdlp_result_t *result);
+    void copy_presolve_stats(const hopdlp_presolve_info_t *info,
+                             hopdlp_result_t *result);
 
-    void pslp_postsolve(const cuhsdlp_presolve_info_t *info,
-                        cuhsdlp_result_t *reduced_result,
+    void pslp_postsolve(const hopdlp_presolve_info_t *info,
+                        hopdlp_result_t *reduced_result,
                         const lp_problem_t *working_problem);
 
-    void pslp_postsolve_primal_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
-                                                 cuhsdlp_result_t *reduced_result,
+    void pslp_postsolve_primal_infeasibility_ray(const hopdlp_presolve_info_t *info,
+                                                 hopdlp_result_t *reduced_result,
                                                  const lp_problem_t *working_problem);
 
-    void pslp_postsolve_dual_infeasibility_ray(const cuhsdlp_presolve_info_t *info,
-                                               cuhsdlp_result_t *reduced_result,
+    void pslp_postsolve_dual_infeasibility_ray(const hopdlp_presolve_info_t *info,
+                                               hopdlp_result_t *reduced_result,
                                                const lp_problem_t *working_problem);
 
-    void cuhsdlp_presolve_info_free(cuhsdlp_presolve_info_t *info);
+    void hopdlp_presolve_info_free(hopdlp_presolve_info_t *info);
 
 #ifdef __cplusplus
 }

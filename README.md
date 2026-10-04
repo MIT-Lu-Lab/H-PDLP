@@ -1,10 +1,11 @@
-# **cuHSDLP: A GPU-Accelerated Homogeneous Self-Dual LP Solver**
+# **HoPDLP: A GPU-Accelerated Homogeneous Self-Dual LP Solver**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-v0.0.1-blue.svg)
 
-**cuHSDLP** is a GPU-accelerated linear programming solver based on a Primal-Dual Hybrid Gradient (PDHG) method applied to a **Homogeneous Self-Dual (HSD) embedding**. It detects optimality, primal infeasibility, and dual infeasibility, and combines reflected Halpern updates, adaptive restart, PID-controlled primal weight, active-set step-size boosting, and rescaling.
+**HoPDLP** is a GPU-accelerated linear programming solver based on a Primal-Dual Hybrid Gradient (PDHG) method applied to a **Homogeneous Self-Dual (HSD) embedding**. It detects optimality, primal infeasibility, and dual infeasibility, and combines reflected Halpern updates, adaptive restart, PID-controlled primal weight, active-set step-size boosting, and rescaling.
 
-cuHSDLP solves linear programs of the form
+HoPDLP solves linear programs of the form
 ```math
 \begin{aligned}
 \min_{x} \quad & c^\top x + c_0 \\
@@ -31,21 +32,21 @@ External dependencies (fetched automatically by CMake if not found):
 ### Build from Source
 Clone the repository and compile the project using CMake.
 ```bash
-git clone git@github.com:LucasBoTang/cuHSDLP.git
-cd cuHSDLP
+git clone git@github.com:LucasBoTang/HoPDLP.git
+cd HoPDLP
 cmake -B build
 cmake --build build --clean-first
 ```
-On Linux, this creates `./build/cuhsdlp`, `./build/libcuhsdlp.so` (shared), and `./build/libcuhsdlp_core.a` (static). The default build type is Release.
+On Linux, this creates `./build/hopdlp`, `./build/libhopdlp.so` (shared), and `./build/libhopdlp_core.a` (static). The default build type is Release.
 
 Optional CMake flags:
 
 | Flag | Default | Effect |
 | :--- | :--- | :--- |
-| `-DCUHSDLP_BUILD_STATIC_LIB` | `ON` | Build static library `cuhsdlp_core` |
-| `-DCUHSDLP_BUILD_SHARED_LIB` | `ON` | Build shared library |
-| `-DCUHSDLP_BUILD_CLI` | `ON` | Build CLI executable |
-| `-DCUHSDLP_BUILD_TESTS` | `OFF` | Build the test suite (run with `ctest`) |
+| `-DHOPDLP_BUILD_STATIC_LIB` | `ON` | Build static library `hopdlp_core` |
+| `-DHOPDLP_BUILD_SHARED_LIB` | `ON` | Build shared library |
+| `-DHOPDLP_BUILD_CLI` | `ON` | Build CLI executable |
+| `-DHOPDLP_BUILD_TESTS` | `OFF` | Build the test suite (run with `ctest`) |
 
 The CLI and tests require the static library.
 
@@ -57,7 +58,7 @@ mkdir -p test
 wget -P test/ https://miplib.zib.de/WebData/instances/2club200v15p5scn.mps.gz
 
 # 2. Solve its LP relaxation and write output to test/
-./build/cuhsdlp test/2club200v15p5scn.mps.gz test/
+./build/hopdlp test/2club200v15p5scn.mps.gz test/
 ```
 Inspect `test/2club200v15p5scn_summary.txt` for the termination reason and residuals to verify the solve.
 
@@ -65,17 +66,17 @@ Inspect `test/2club200v15p5scn_summary.txt` for the termination reason and resid
 
 ### Command-line Interface
 
-After building the project, the `./build/cuhsdlp` binary can be invoked from the command line as follows:
+After building the project, the `./build/hopdlp` binary can be invoked from the command line as follows:
 
 ```bash
-./build/cuhsdlp [OPTIONS] <mps_file> <output_directory>
+./build/hopdlp [OPTIONS] <mps_file> <output_directory>
 ```
 
 #### Arguments
 - `<mps_file>`: The path to the input linear programming problem. Both plain (`.mps`) and gzipped (`.mps.gz`) files are supported.
 - `<output_directory>`: An existing directory where the output files will be saved.
 
-For MPS inputs with integer variables, cuHSDLP solves the LP relaxation; integrality is not enforced.
+For MPS inputs with integer variables, HoPDLP solves the LP relaxation; integrality is not enforced.
 
 #### Solver Options
 
@@ -135,7 +136,7 @@ The summary reports termination status, timing, iteration count, objective value
 
 ### C Interface
 
-The public C API is defined in the header files [`include/cuhsdlp.h`](include/cuhsdlp.h) and [`include/cuhsdlp_types.h`](include/cuhsdlp_types.h). The core entry points are:
+The public C API is defined in the header files [`include/hopdlp.h`](include/hopdlp.h) and [`include/hopdlp_types.h`](include/hopdlp_types.h). The core entry points are:
 
 ```c
 lp_problem_t      *create_lp_problem(const double *c,
@@ -148,9 +149,9 @@ void               set_objective_sense(lp_problem_t *prob,
                                       objective_sense_t sense);
 bool               set_start_values(lp_problem_t *prob,
                                    const double *primal, const double *dual);
-cuhsdlp_result_t  *solve_lp_problem(const lp_problem_t *prob,
+hopdlp_result_t  *solve_lp_problem(const lp_problem_t *prob,
                                     const pdhg_parameters_t *params);
-void               cuhsdlp_result_free(cuhsdlp_result_t *result);
+void               hopdlp_result_free(hopdlp_result_t *result);
 void               lp_problem_free(lp_problem_t *prob);
 ```
 
@@ -176,4 +177,4 @@ Interpret the returned vectors according to `termination_reason`:
 Limit statuses do not guarantee feasibility or optimality. Presolve may detect infeasibility without returning a ray.
 
 ## License
-cuHSDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
+HoPDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.

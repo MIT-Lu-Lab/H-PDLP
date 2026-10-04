@@ -19,7 +19,7 @@ limitations under the License.
 #include "cone_projector.h"
 #include "cuda_macros.h"
 #include "cuda_utils.h"
-#include "cuhsdlp.h"
+#include "hopdlp.h"
 #include "display.h"
 #include "matrix_formats.h"
 #include "preconditioner.h"

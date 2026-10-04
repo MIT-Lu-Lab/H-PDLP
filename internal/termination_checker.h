@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "cuhsdlp_types.h"
+#include "hopdlp_types.h"
 #include "internal_types.h"
 #include <stdbool.h>
 

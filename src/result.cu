@@ -47,11 +47,11 @@ bool termination_has_solution(termination_reason_t reason)
            reason == TERMINATION_REASON_ITERATION_LIMIT;
 }
 
-cuhsdlp_result_t *create_result_from_state(
+hopdlp_result_t *create_result_from_state(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem)
 {
-    cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+    hopdlp_result_t *result = (hopdlp_result_t *)safe_calloc(1, sizeof(hopdlp_result_t));
     const termination_reason_t reason = state->control.termination_reason;
     const bool has_solution = termination_has_solution(reason);
     const bool primal_infeasible = reason == TERMINATION_REASON_PRIMAL_INFEASIBLE;

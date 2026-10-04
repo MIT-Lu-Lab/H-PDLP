@@ -17,7 +17,7 @@ limitations under the License.
 #include "active_set_boost.h"
 #include "cone_projector.h"
 #include "cuda_macros.h"
-#include "cuhsdlp.h"
+#include "hopdlp.h"
 #include "display.h"
 #include "internal_types.h"
 #include "pid_controller.h"
@@ -90,7 +90,7 @@ static working_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
 static void restore_original_objective_sense(
-    cuhsdlp_result_t *result,
+    hopdlp_result_t *result,
     objective_sense_t objective_sense);
 static void working_problem_free(
     working_problem_t *working);
@@ -139,7 +139,7 @@ static void update_primal_weight_via_restart_pid(
     const step_size_parameters_t *step_size_params);
 static double apply_gauge_control(pdhg_solver_state_t *state);
 
-cuhsdlp_result_t *optimize(
+hopdlp_result_t *optimize(
     const pdhg_parameters_t *params,
     const lp_problem_t *original_problem)
 {
@@ -152,7 +152,7 @@ cuhsdlp_result_t *optimize(
 
     if (working_problem->num_variables == 0 && working_problem->num_constraints == 0)
     {
-        cuhsdlp_result_t *result = (cuhsdlp_result_t *)safe_calloc(1, sizeof(cuhsdlp_result_t));
+        hopdlp_result_t *result = (hopdlp_result_t *)safe_calloc(1, sizeof(hopdlp_result_t));
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
         result->primal_objective_value = working_problem->objective_constant;
         result->dual_objective_value = working_problem->objective_constant;
@@ -163,7 +163,7 @@ cuhsdlp_result_t *optimize(
         return result;
     }
 
-    cuhsdlp_presolve_info_t *presolve_info = NULL;
+    hopdlp_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
     {
         presolve_info = pslp_presolve(working_problem, params->verbose);
@@ -174,8 +174,8 @@ cuhsdlp_result_t *optimize(
         }
         if (presolve_info->problem_solved_during_presolve)
         {
-            cuhsdlp_result_t *result = create_result_from_presolve(presolve_info, working_problem);
-            cuhsdlp_presolve_info_free(presolve_info);
+            hopdlp_result_t *result = create_result_from_presolve(presolve_info, working_problem);
+            hopdlp_presolve_info_free(presolve_info);
             restore_original_objective_sense(result, original_problem->objective_sense);
             pdhg_final_log(result, params);
             working_problem_free(&working);
@@ -273,7 +273,7 @@ cuhsdlp_result_t *optimize(
         display_iteration_stats(state, params, false);
     }
 
-    cuhsdlp_result_t *result = create_result_from_state(state, working_problem);
+    hopdlp_result_t *result = create_result_from_state(state, working_problem);
 
     if (presolve_info)
     {
@@ -290,7 +290,7 @@ cuhsdlp_result_t *optimize(
         {
             pslp_postsolve_dual_infeasibility_ray(presolve_info, result, working_problem);
         }
-        cuhsdlp_presolve_info_free(presolve_info);
+        hopdlp_presolve_info_free(presolve_info);
     }
 
     restore_original_objective_sense(result, original_problem->objective_sense);
@@ -384,7 +384,7 @@ static working_problem_t create_working_problem(
 }
 
 static void restore_original_objective_sense(
-    cuhsdlp_result_t *result,
+    hopdlp_result_t *result,
     objective_sense_t objective_sense)
 {
     if (objective_sense != OBJECTIVE_SENSE_MAXIMIZE)

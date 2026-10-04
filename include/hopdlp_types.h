@@ -190,7 +190,7 @@ extern "C"
         int active_set_raise_count;
         int active_set_revert_count;
         int active_set_power_iteration_count;
-    } cuhsdlp_result_t;
+    } hopdlp_result_t;
 
     typedef enum
     {

@@ -1,4 +1,4 @@
-﻿/*
+/*
 Copyright 2026 Haihao Lu
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 #include "mps_parser.h"
-#include "cuhsdlp.h"
+#include "hopdlp.h"
 #include "matrix_formats.h"
 #include "utils.h"
 #include <ctype.h>
