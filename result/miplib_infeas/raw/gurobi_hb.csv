@@ -116,7 +116,7 @@ neos-3354841-apure_ub,DUAL_INFEASIBLE,solved,7.112,3600,96,node4414
 neos-3372571-onahau_if,PRIMAL_INFEASIBLE,solved,0.862,3600,32,node2505
 neos-3372571-onahau_ub,DUAL_INFEASIBLE,solved,0.640,3600,14,node4414
 neos-3402294-bobin_if,OUT_OF_MEMORY,memory,3600.000,3600,0,
-neos-3555904-turama_if,OPTIMAL,tol_optimal,8.915,3600,52,node4414
+neos-3555904-turama_if,OPTIMAL,optimal,8.915,3600,52,node4414
 neos-3695882-vesdre_if,code_13,numerical,86.628,3600,109,node4414
 neos-3740487-motru_if,OUT_OF_MEMORY,memory,3600.000,3600,0,
 neos-4260495-otere_if,code_12,numerical,5.515,3600,48,node3603
