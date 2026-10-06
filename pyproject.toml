@@ -1,0 +1,85 @@
+[build-system]
+requires = ["scikit-build-core>=0.9.0", "pybind11>=2.12.0", "numpy", "scipy"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "hopdlp"
+version = "0.0.1"
+description = "Python bindings for HoPDLP (GPU-accelerated first-order LP solver)"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+authors = [
+  { name = "Haihao Lu" },
+  { name = "Zedong Peng" },
+  { name = "Jinwen Yang" },
+  { name = "Bo Tang" }
+]
+dependencies = ["numpy>=1.21", "scipy>=1.8"]
+
+[tool.scikit-build]
+build-dir = "build/{wheel_tag}"
+cmake.version = ">=3.24"
+cmake.build-type = "Release"
+wheel.packages = ["python/hopdlp"]
+install.components = ["hopdlp_python"]
+sdist.include = [
+  "CMakeLists.txt",
+  "src/**",
+  "include/**",
+  "internal/**",
+  "python_bindings/**",
+  "python/**/*.py",
+  "python/README.md",
+  "test/python/*.py",
+  "docs/C_API.md",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+]
+sdist.exclude = [
+  "build/**", "tmp/**", "result/**", "instances/**", "infeas/**",
+  ".agents/**", ".superpowers/**", ".worktrees/**", "**/__pycache__/**",
+]
+
+[tool.scikit-build.cmake.define]
+CMAKE_CUDA_ARCHITECTURES = "all-major"
+CMAKE_CUDA_STANDARD = "17"
+HOPDLP_BUILD_PYTHON = "ON"
+HOPDLP_BUILD_STATIC_LIB = "ON"
+HOPDLP_BUILD_SHARED_LIB = "OFF"
+HOPDLP_BUILD_CLI = "OFF"
+HOPDLP_BUILD_TESTS = "OFF"
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-cov>=4",
+  "numpy",
+  "scipy"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test/python"]
+addopts = """
+-q
+-ra
+--strict-markers
+--maxfail=1
+"""
+markers = [
+  "gpu: requires a CUDA-capable GPU"
+]
+xfail_strict = true
+filterwarnings = [
+  "error::FutureWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["hopdlp"]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true

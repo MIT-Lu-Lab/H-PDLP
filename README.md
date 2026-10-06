@@ -64,6 +64,20 @@ Optional CMake flags (for example, `-DHOPDLP_BUILD_TESTS=ON`):
 
 The CLI and tests require the static library.
 
+### Python Package
+
+Build and install the Python interface from this repository (Python 3.10+,
+NumPy, SciPy, and the CUDA build requirements above):
+
+```bash
+python -m pip install .
+```
+
+For a specific GPU architecture, use, for example,
+`python -m pip install . -Ccmake.define.CMAKE_CUDA_ARCHITECTURES=89`.
+The CUDA compiler must support the selected architecture. The Python build
+enables `HOPDLP_BUILD_PYTHON` and links the static solver into a pybind11 module.
+
 ## Usage & Interfaces
 
 ### Command-line Interface
@@ -153,6 +167,24 @@ The summary reports termination status, timing, iteration count, objective value
 The public C API supports building LPs from CSR, CSC, COO, or dense matrices, configuring solver parameters, and retrieving solutions or infeasibility rays.
 
 See the [C API Guide](docs/C_API.md) for a complete example, compilation instructions, warm starts, and termination-status details. The public headers are [`hopdlp.h`](include/hopdlp.h) and [`hopdlp_types.h`](include/hopdlp_types.h).
+
+### Python Interface
+
+The `hopdlp` package provides `Model`, `PDLP`, and `read` for building and solving LPs:
+
+```python
+import hopdlp
+
+model = hopdlp.read("problem.mps.gz")
+model.setParams(TimeLimit=60, OptimalityTol=1e-6, FeasibilityTol=1e-6)
+model.optimize()
+print(model.StatusName, model.ObjVal)
+if model.Status == hopdlp.PDLP.OPTIMAL:
+    print(model.X)
+```
+
+See the [Python API Guide](python/README.md) for matrix inputs, parameters,
+warm starts, and the interpretation of infeasibility certificates.
 
 ## License
 HoPDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.

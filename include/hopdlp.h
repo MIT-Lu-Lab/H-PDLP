@@ -17,6 +17,7 @@ limitations under the License.
 #pragma once
 
 #include "hopdlp_types.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -41,6 +42,11 @@ extern "C"
         const pdhg_parameters_t *params);
 
     void set_default_parameters(pdhg_parameters_t *params);
+
+    /* Returns 0 for valid parameters, -1 otherwise. No GPU work is performed.
+       When provided, error receives a NUL-terminated diagnostic. */
+    int hopdlp_validate_parameters(const pdhg_parameters_t *params,
+                                   char *error, size_t error_size);
 
     void hopdlp_result_free(hopdlp_result_t *results);
 

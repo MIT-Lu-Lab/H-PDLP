@@ -57,3 +57,7 @@ test/*
 /docs/*
 !/docs/C_API.md
 /infeas
+
+# Python bytecode caches
+__pycache__/
+*.pyc

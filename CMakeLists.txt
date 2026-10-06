@@ -111,9 +111,9 @@ endif()
 
 if(HOPDLP_BUILD_PYTHON)
   # Dependencies required only for Python bindings
+  set(PYBIND11_FINDPYTHON ON)
+  find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
   find_package(pybind11 CONFIG REQUIRED)
-  find_package(Python3 COMPONENTS Interpreter REQUIRED) # For versioning script
-                                                        # and pybind11
 endif()
 
 set(PSLP_VERSION_TAG "v0.0.11")
@@ -130,6 +130,7 @@ FetchContent_MakeAvailable(pslp)
 # -----------------------------------------------------------------------------
 set(CORE_SOURCES
     src/hopdlp.c
+    src/parameters.c
     src/presolver.c
     src/utils/matrix_formats.c
     src/cone_projector.cu
