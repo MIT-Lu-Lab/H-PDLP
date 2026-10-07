@@ -147,6 +147,11 @@ void compute_lp_problem_norms_device(
 
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 
+    if (state->num_variables == 0)
+        *state->objective_norm_workspace_mp = 0.0;
+    if (state->num_constraints == 0)
+        *state->bound_norm_workspace_mp = 0.0;
+
     if (!use_linf) {
         *state->objective_norm_workspace_mp =
             sqrt(*state->objective_norm_workspace_mp);
@@ -196,6 +201,11 @@ void reduce_device_abs_max(
     int length,
     double *output)
 {
+    if (length == 0)
+    {
+        CUDA_CHECK(cudaMemsetAsync(output, 0, sizeof(double), state->stream_A));
+        return;
+    }
     auto abs_input =
         thrust::make_transform_iterator(
             input,
