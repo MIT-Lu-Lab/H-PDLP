@@ -261,13 +261,13 @@ void initialize_spmv_plans(pdhg_solver_state_t *state)
         state->matA,
         state->spmv_current_primal_solution,
         state->spmv_primal_product,
-        &state->matA_spmv_plan);
+        &state->constraint_matrix_spmv_plan);
     create_spmv_plan(
         state->sparse_handle_At,
         state->matAt,
         state->spmv_reflected_dual_solution,
         state->spmv_dual_product,
-        &state->matAt_spmv_plan);
+        &state->constraint_matrix_transpose_spmv_plan);
 }
 
 static void upload_problem_data(
@@ -602,10 +602,10 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
     if (state->stream_At)
         CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
-    if (state->graphExec)
+    if (state->iteration_graph_exec)
     {
-        CUDA_CHECK(cudaGraphExecDestroy(state->graphExec));
-        state->graphExec = NULL;
+        CUDA_CHECK(cudaGraphExecDestroy(state->iteration_graph_exec));
+        state->iteration_graph_exec = NULL;
     }
 
     active_set_free(&state->active_set);
@@ -636,8 +636,8 @@ void pdhg_solver_state_free(pdhg_solver_state_t *state)
 
 static void free_sparse_resources(pdhg_solver_state_t *state)
 {
-    destroy_spmv_plan(&state->matA_spmv_plan);
-    destroy_spmv_plan(&state->matAt_spmv_plan);
+    destroy_spmv_plan(&state->constraint_matrix_spmv_plan);
+    destroy_spmv_plan(&state->constraint_matrix_transpose_spmv_plan);
 
     if (state->matA)
         CUSPARSE_CHECK(cusparseDestroySpMat(state->matA));

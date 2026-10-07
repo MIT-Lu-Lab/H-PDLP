@@ -177,7 +177,7 @@ typedef struct {
     cudaStream_t      stream_At;
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
-    cudaGraphExec_t   graphExec;
+    cudaGraphExec_t   iteration_graph_exec;
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
@@ -189,8 +189,8 @@ typedef struct {
     cusparseDnVecDescr_t spmv_delta_dual_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
-    spmv_plan_t matA_spmv_plan;
-    spmv_plan_t matAt_spmv_plan;
+    spmv_plan_t constraint_matrix_spmv_plan;
+    spmv_plan_t constraint_matrix_transpose_spmv_plan;
     void   *cub_reduce_workspace_d;
     size_t  cub_reduce_workspace_bytes;
 

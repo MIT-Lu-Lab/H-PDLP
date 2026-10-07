@@ -193,13 +193,13 @@ static void compute_matrix_products(
         state->sparse_handle_A,
         primal_vector,
         state->spmv_primal_product,
-        &state->matA_spmv_plan);
+        &state->constraint_matrix_spmv_plan);
 
     execute_spmv(
         state->sparse_handle_At,
         dual_vector,
         state->spmv_dual_product,
-        &state->matAt_spmv_plan);
+        &state->constraint_matrix_transpose_spmv_plan);
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 }

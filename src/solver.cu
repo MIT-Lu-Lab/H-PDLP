@@ -107,12 +107,12 @@ static void compute_step_sizes(
     double *step_size_primal,
     double *step_size_dual,
     double *step_size_homogeneous);
-static void hsd_run_iteration_step(
+static void run_hsd_iteration_step(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     int k_offset,
     bool is_major);
-static void hsd_update_dual_solution(
+static void update_hsd_dual_block(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     const int k_offset,
@@ -121,7 +121,6 @@ static void update_hsd_primal_block(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     const int k_offset,
-    const double reflection_coefficient,
     bool is_major);
 static void compute_fixed_point_error(
     pdhg_solver_state_t *state,
@@ -201,7 +200,7 @@ hopdlp_result_t *optimize(
         sync_inner_count_to_gpu(state);
         sync_step_sizes_to_gpu(state);
 
-        hsd_run_iteration_step(state, params, 1, true);
+        run_hsd_iteration_step(state, params, 1, true);
 
         if (restarted)
         {
@@ -211,7 +210,7 @@ hopdlp_result_t *optimize(
             restarted = false;
         }
 
-        if (!state->graphExec)
+        if (!state->iteration_graph_exec)
         {
             cudaGraph_t graph = NULL;
             CUDA_CHECK(cudaStreamBeginCapture(state->stream_A,
@@ -219,16 +218,16 @@ hopdlp_result_t *optimize(
 
             for (int i = 2; i <= params->termination_evaluation_frequency - 1; i++)
             {
-                hsd_run_iteration_step(state, params, i, false);
+                run_hsd_iteration_step(state, params, i, false);
             }
-            hsd_run_iteration_step(state, params, params->termination_evaluation_frequency, true);
+            run_hsd_iteration_step(state, params, params->termination_evaluation_frequency, true);
 
             CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
-            CUDA_CHECK(cudaGraphInstantiate(&state->graphExec, graph,
+            CUDA_CHECK(cudaGraphInstantiate(&state->iteration_graph_exec, graph,
                                             NULL, NULL, 0));
             CUDA_CHECK(cudaGraphDestroy(graph));
         }
-        CUDA_CHECK(cudaGraphLaunch(state->graphExec, state->stream_A));
+        CUDA_CHECK(cudaGraphLaunch(state->iteration_graph_exec, state->stream_A));
 
         compute_fixed_point_error(state, &params->step_size_params);
         compute_termination_metrics(state, params);
@@ -507,23 +506,17 @@ static void compute_step_sizes(
     *step_size_homogeneous = 0.99 * step_size_params->step_size_factor / *step_size_dual;
 }
 
-static void hsd_run_iteration_step(
+static void run_hsd_iteration_step(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     int k_offset,
     bool is_major)
 {
-    double reflection_coefficient = params->reflection_coefficient;
-    hsd_update_dual_solution(state, params, k_offset, is_major);
-    update_hsd_primal_block(
-        state,
-        params,
-        k_offset,
-        reflection_coefficient,
-        is_major);
+    update_hsd_dual_block(state, params, k_offset, is_major);
+    update_hsd_primal_block(state, params, k_offset, is_major);
 }
 
-static void hsd_update_dual_solution(
+static void update_hsd_dual_block(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     const int k_offset,
@@ -536,7 +529,7 @@ static void hsd_update_dual_solution(
         state->sparse_handle_A,
         state->spmv_current_primal_solution,
         state->spmv_primal_product,
-        &state->matA_spmv_plan);
+        &state->constraint_matrix_spmv_plan);
 
     update_dual_box_cone_projection(
         cone_params,
@@ -566,10 +559,10 @@ static void update_hsd_primal_block(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
     const int k_offset,
-    const double reflection_coefficient,
     bool is_major)
 {
     const cone_parameters_t *cone_params = &params->cone_params;
+    const double reflection_coefficient = params->reflection_coefficient;
 
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
@@ -577,7 +570,7 @@ static void update_hsd_primal_block(
         state->sparse_handle_At,
         state->spmv_reflected_dual_solution,
         state->spmv_dual_product,
-        &state->matAt_spmv_plan);
+        &state->constraint_matrix_transpose_spmv_plan);
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
@@ -633,7 +626,7 @@ static void compute_fixed_point_error(
         state->sparse_handle_At,
         state->spmv_delta_dual_solution,
         state->spmv_dual_product,
-        &state->matAt_spmv_plan);
+        &state->constraint_matrix_transpose_spmv_plan);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
