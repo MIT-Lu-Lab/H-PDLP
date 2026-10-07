@@ -99,6 +99,7 @@ typedef struct
     size_t constraint_capacity;
 
     char *objective_row_name;
+    char *requested_objective_row_name;
     char *current_col_name;
     int current_col_idx;
     bool in_integer_block;
@@ -121,6 +122,7 @@ typedef enum
     SEC_RANGES,
     SEC_BOUNDS,
     SEC_OBJSENSE,
+    SEC_OBJNAME,
     SEC_SOS,
     SEC_UNSUPPORTED,
     SEC_ENDATA
@@ -257,7 +259,17 @@ static int parse_mps_stream(MpsParserState *state, FastLineReader *reader)
         if (num_tokens == 0)
             continue;
 
+        if (section == SEC_OBJNAME)
+        {
+            if (parse_section_data(state, section, tokens, num_tokens) != 0)
+                return -1;
+            section = SEC_NONE;
+            continue;
+        }
+
         MpsSection next_section = identify_section(tokens, num_tokens);
+        if (!rows_finalized && num_tokens == 2 && strcmp(tokens[0], "OBJNAME") == 0)
+            next_section = SEC_OBJNAME;
         if (next_section == SEC_UNSUPPORTED)
         {
             fprintf(stderr, "ERROR: MPS section '%s' is not supported.\n",
@@ -266,7 +278,15 @@ static int parse_mps_stream(MpsParserState *state, FastLineReader *reader)
         }
         if (next_section != SEC_NONE)
         {
-            if (section == SEC_ROWS && next_section != SEC_ROWS && !rows_finalized)
+            if (next_section == SEC_OBJNAME && rows_finalized)
+            {
+                fprintf(stderr, "ERROR: OBJNAME must precede column data.\n");
+                return -1;
+            }
+            if (!rows_finalized &&
+                (next_section == SEC_COLUMNS || next_section == SEC_RHS ||
+                 next_section == SEC_RANGES || next_section == SEC_BOUNDS ||
+                 next_section == SEC_ENDATA))
             {
                 if (finalize_rows(state) != 0)
                     return -1;
@@ -275,8 +295,12 @@ static int parse_mps_stream(MpsParserState *state, FastLineReader *reader)
             section = next_section;
             if (section == SEC_ENDATA)
                 break;
-            if (section == SEC_OBJSENSE && num_tokens == 2)
-                parse_section_data(state, section, tokens + 1, 1);
+            if ((section == SEC_OBJSENSE || section == SEC_OBJNAME) && num_tokens == 2)
+            {
+                if (parse_section_data(state, section, tokens + 1, 1) != 0)
+                    return -1;
+                section = SEC_NONE;
+            }
             continue;
         }
 
@@ -287,7 +311,9 @@ static int parse_mps_stream(MpsParserState *state, FastLineReader *reader)
 
     if (reader->read_error)
         return -1;
-    if (section == SEC_ROWS && !rows_finalized)
+    if (section == SEC_OBJNAME)
+        return -1;
+    if (!rows_finalized)
         return finalize_rows(state);
     return 0;
 }
@@ -421,6 +447,7 @@ static MpsSection identify_section(char **tokens, int num_tokens)
         MpsSection section;
     } sections[] = {
         {"ROWS", SEC_ROWS},
+        {"OBJNAME", SEC_OBJNAME},
         {"COLUMNS", SEC_COLUMNS},
         {"RHS", SEC_RHS},
         {"RANGES", SEC_RANGES},
@@ -460,7 +487,9 @@ static int finalize_rows(MpsParserState *state)
 
     for (size_t i = 0; i < state->num_buffered_rows; ++i)
     {
-        if (state->buffered_rows[i].type == 'N')
+        if (state->buffered_rows[i].type == 'N' &&
+            (!state->requested_objective_row_name ||
+             strcmp(state->buffered_rows[i].name, state->requested_objective_row_name) == 0))
         {
             objective_row_idx = (int)i;
             break;
@@ -469,6 +498,12 @@ static int finalize_rows(MpsParserState *state)
 
     if (objective_row_idx == -1)
     {
+        if (state->requested_objective_row_name)
+        {
+            fprintf(stderr, "ERROR: OBJNAME '%s' does not name an N row.\n",
+                    state->requested_objective_row_name);
+            return -1;
+        }
         fprintf(stderr,
                 "WARNING: no objective (N) row found: using a zero objective.\n");
     }
@@ -623,6 +658,12 @@ static int parse_section_data(MpsParserState *state, MpsSection section,
         return parse_ranges_section(state, tokens, num_tokens);
     case SEC_BOUNDS:
         return parse_bounds_section(state, tokens, num_tokens);
+    case SEC_OBJNAME:
+        if (num_tokens != 1)
+            return -1;
+        free(state->requested_objective_row_name);
+        state->requested_objective_row_name = strdup(tokens[0]);
+        return state->requested_objective_row_name ? 0 : -1;
     case SEC_OBJSENSE:
         if (token_has_prefix_ci(tokens[0], "MAX"))
         {
@@ -1216,6 +1257,7 @@ static void free_parser_state(MpsParserState *state)
     free(state->constraint_lower_bounds);
     free(state->constraint_upper_bounds);
     free(state->objective_row_name);
+    free(state->requested_objective_row_name);
     free(state->current_col_name);
 }
 
