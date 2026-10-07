@@ -64,6 +64,25 @@ Optional CMake flags (for example, `-DHOPDLP_BUILD_TESTS=ON`):
 
 The CLI and tests require the static library.
 
+### Tests
+
+Build and run the C/CUDA suite in Release:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DHOPDLP_BUILD_TESTS=ON
+cmake --build build -j
+ctest --test-dir build --output-on-failure
+```
+
+The `cpu`, `gpu`, and `integration` labels select model/API checks, CUDA
+algorithm checks, and complete solves. For example,
+`ctest --test-dir build -L cpu --output-on-failure` runs the CPU subset
+without a GPU device, using the CUDA build environment above. GPU tests
+report a skip when no usable device is available. Run the full suite on a
+CUDA GPU for release verification.
+
+The Python package has its own pytest suite; see [Python tests](python/README.md#tests).
+
 ### Python Package
 
 Build and install the Python interface from this repository (Python 3.10+,

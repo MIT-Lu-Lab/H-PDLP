@@ -245,33 +245,7 @@ if(HOPDLP_BUILD_TESTS)
   endif()
 
   enable_testing()
-  file(GLOB TEST_SOURCES CONFIGURE_DEPENDS
-       "${CMAKE_CURRENT_SOURCE_DIR}/test/unit/*.c"
-       "${CMAKE_CURRENT_SOURCE_DIR}/test/unit/*.cu"
-       "${CMAKE_CURRENT_SOURCE_DIR}/test/integration/*.c"
-       "${CMAKE_CURRENT_SOURCE_DIR}/test/integration/*.cu")
-
-  foreach(TEST_SRC ${TEST_SOURCES})
-    get_filename_component(TEST_NAME ${TEST_SRC} NAME_WE)
-
-    add_executable(${TEST_NAME} ${TEST_SRC})
-
-    # Link tests to the core static library
-    target_link_libraries(${TEST_NAME} PRIVATE hopdlp_core)
-
-    # Set up test includes
-    target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                                   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal)
-
-    # Tests are final executables, they must resolve device symbols
-    set_target_properties(
-      ${TEST_NAME}
-      PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests"
-                 CUDA_RESOLVE_DEVICE_SYMBOLS ON)
-
-    # Register with CTest
-    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-  endforeach()
+  add_subdirectory(test)
 endif()
 
 # -----------------------------------------------------------------------------
