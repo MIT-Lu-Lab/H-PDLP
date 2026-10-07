@@ -22,13 +22,6 @@ limitations under the License.
 
 typedef struct
 {
-    int row;
-    int col;
-    double value;
-} CooEntry;
-
-typedef struct
-{
     int col;
     int position;
     double value;
@@ -51,17 +44,8 @@ static void init_empty_csr(int m, int **row_ptr, int **col_ind,
 static void sort_unsorted_rows(int m, const int *row_ptr, int *col_ind,
                                double *vals);
 static int compare_row_entries(const void *lhs, const void *rhs);
-static matrix_format_status_t build_csr_entries(
-    int m, int n,
-    int nnz_in,
-    const int *row_ptr,
-    const int *col_ind,
-    const double *input_vals,
-    CooEntry **entries_out);
-static int compare_coo_entries(const void *lhs, const void *rhs);
-static void sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
-                              int **row_ptr, int **col_ind,
-                              double **vals, int *nnz_out);
+static matrix_format_status_t validate_csr_structure(
+    int m, int n, int nnz, const int *row_ptr, const int *col_ind);
 
 const char *matrix_format_status_message(matrix_format_status_t status)
 {
@@ -472,9 +456,7 @@ matrix_format_status_t canonicalize_csr(const matrix_desc_t *desc, int **row_ptr
         return MATRIX_FORMAT_INVALID_CSR_DATA;
     }
 
-    CooEntry *entries = NULL;
-    status = build_csr_entries(m, n, nnz_in, csr_row_ptr, csr_col_ind,
-                               csr_vals, &entries);
+    status = validate_csr_structure(m, n, nnz_in, csr_row_ptr, csr_col_ind);
     if (status != MATRIX_FORMAT_OK)
     {
         return status;
@@ -485,19 +467,20 @@ matrix_format_status_t canonicalize_csr(const matrix_desc_t *desc, int **row_ptr
         return MATRIX_FORMAT_OK;
     }
 
-    qsort(entries, (size_t)nnz_in, sizeof(CooEntry), compare_coo_entries);
-    sorted_coo_to_csr(entries, m, nnz_in, row_ptr, col_ind, vals, nnz_out);
-    free(entries);
+    int *sorted_col_ind = safe_malloc((size_t)nnz_in * sizeof(int));
+    double *sorted_vals = safe_malloc((size_t)nnz_in * sizeof(double));
+    memcpy(sorted_col_ind, csr_col_ind, (size_t)nnz_in * sizeof(int));
+    memcpy(sorted_vals, csr_vals, (size_t)nnz_in * sizeof(double));
+    sort_unsorted_rows(m, csr_row_ptr, sorted_col_ind, sorted_vals);
+    canonicalize_sorted_rows_csr(m, csr_row_ptr, sorted_col_ind, sorted_vals,
+                                row_ptr, col_ind, vals, nnz_out);
+    free(sorted_vals);
+    free(sorted_col_ind);
     return MATRIX_FORMAT_OK;
 }
 
-static matrix_format_status_t build_csr_entries(
-    int m, int n,
-    int nnz_in,
-    const int *row_ptr,
-    const int *col_ind,
-    const double *input_vals,
-    CooEntry **entries_out)
+static matrix_format_status_t validate_csr_structure(
+    int m, int n, int nnz_in, const int *row_ptr, const int *col_ind)
 {
     if (row_ptr[m] != nnz_in)
     {
@@ -521,83 +504,7 @@ static matrix_format_status_t build_csr_entries(
         }
     }
 
-    if (nnz_in == 0)
-    {
-        *entries_out = NULL;
-        return MATRIX_FORMAT_OK;
-    }
-
-    CooEntry *entries = (CooEntry *)safe_malloc((size_t)nnz_in * sizeof(CooEntry));
-    for (int i = 0; i < m; ++i)
-    {
-        for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
-        {
-            entries[k].row = i;
-            entries[k].col = col_ind[k];
-            entries[k].value = input_vals[k];
-        }
-    }
-
-    *entries_out = entries;
     return MATRIX_FORMAT_OK;
-}
-
-static int compare_coo_entries(const void *lhs, const void *rhs)
-{
-    const CooEntry *a = (const CooEntry *)lhs;
-    const CooEntry *b = (const CooEntry *)rhs;
-
-    if (a->row != b->row)
-        return (a->row < b->row) ? -1 : 1;
-    if (a->col != b->col)
-        return (a->col < b->col) ? -1 : 1;
-    return 0;
-}
-
-static void sorted_coo_to_csr(const CooEntry *entries, int m, int nnz,
-                              int **row_ptr, int **col_ind,
-                              double **vals, int *nnz_out)
-{
-    *row_ptr = (int *)safe_calloc((size_t)(m + 1), sizeof(int));
-
-    int canonical_nnz = 0;
-    int last_row = -1;
-    int last_col = -1;
-    for (int k = 0; k < nnz; ++k)
-    {
-        if (entries[k].row == last_row && entries[k].col == last_col)
-            continue;
-        last_row = entries[k].row;
-        last_col = entries[k].col;
-        ++(*row_ptr)[entries[k].row + 1];
-        ++canonical_nnz;
-    }
-
-    for (int i = 0; i < m; ++i)
-        (*row_ptr)[i + 1] += (*row_ptr)[i];
-
-    const size_t alloc_nnz = (canonical_nnz > 0) ? (size_t)canonical_nnz : 1;
-    *col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    *vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
-
-    int out = 0;
-    for (int k = 0; k < nnz; ++k)
-    {
-        if (out > 0 &&
-            entries[k].row == entries[k - 1].row &&
-            entries[k].col == entries[k - 1].col)
-        {
-            (*vals)[out - 1] += entries[k].value;
-        }
-        else
-        {
-            (*col_ind)[out] = entries[k].col;
-            (*vals)[out] = entries[k].value;
-            ++out;
-        }
-    }
-
-    *nnz_out = out;
 }
 
 void transpose_csr_and_build_map(
