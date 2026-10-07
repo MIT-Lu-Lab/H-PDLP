@@ -132,7 +132,20 @@ With the package installed and a working CUDA GPU:
 
 ```bash
 python -m pip install '.[test]'
-python -m pytest
+python -m pytest --require-gpu
 ```
 
-The suite checks model inputs, parameter validation, warm starts, MPS reading, infeasibility certificates, optional vectors, result ownership, and stopping limits.
+The suite checks model inputs, sparse conversions, parameter validation, warm
+starts, MPS reading, result properties and ownership, and complete solves.
+Solution and certificate checks independently use the original model data.
+
+Run the checks that do not need a GPU device separately:
+
+```bash
+python -m pytest -m "not gpu"
+```
+
+The compiled package and its CUDA runtime dependencies must still be installed.
+Without `--require-gpu`, tests marked `gpu` skip when no usable CUDA device is
+available. The flag makes that condition fail during release verification.
+An import failure or solver failure is reported as an error.
