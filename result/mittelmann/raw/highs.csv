@@ -1,13 +1,13 @@
 instance,status,outcome,solve_time,time_limit,iters,node
-Dual2_5000,kTimeLimit,timeout,15007.605,15000,210002,node2504
-L1_sixm1000obs,kTimeLimit,timeout,15000.458,15000,227518,node2504
-L1_sixm250obs,kOptimal,solved,2704.893,15000,125997,node2504
+Dual2_5000,kTimeLimit,timeout,15004.947,15000,229894,node2505
+L1_sixm1000obs,kTimeLimit,timeout,15000.464,15000,226243,node3607
+L1_sixm250obs,kOptimal,solved,2752.806,15000,125997,node2525
 L2CTA3D,kTimeLimit,timeout,15001.448,15000,1186635,node1628
 Linf_520c,kOptimal,solved,1086.989,15000,128975,node3604
 Primal2_1000,kTimeLimit,timeout,15000.257,15000,1537048,node2525
 a2864,kTimeLimit,timeout,15160.519,15000,35002,node3313
 bdry2,kOptimal,solved,6035.984,15000,303482,node3604
-cont1,kOptimal,solved,505.807,15000,67093,node2504
+cont1,kOptimal,solved,511.580,15000,67093,node4416
 cont11,kOptimal,solved,1066.664,15000,201894,node4416
 datt256_lp,kTimeLimit,timeout,15000.187,15000,1764285,node3610
 degme,kTimeLimit,timeout,15000.183,15000,414024,node2524

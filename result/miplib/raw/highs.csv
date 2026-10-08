@@ -79,7 +79,7 @@ hgms62,kOptimal,solved,320.508,3600,186765,node2512
 highschool1-aigio,kTimeLimit,timeout,3600.056,3600,288060,node2512
 hypothyroid-k1,kOptimal,solved,2.546,3600,2749,node2512
 iis-hc-cov,kOptimal,solved,0.127,3600,379,node2512
-in,kTimeLimit,timeout,3600.218,3600,269349,node2510
+in,kTimeLimit,timeout,3600.345,3600,252926,node3604
 irish-electricity,kTimeLimit,timeout,3600.157,3600,534629,node3610
 ivu06,kOptimal,solved,462.238,3600,42768,node3610
 ivu06-big,kOptimal,solved,1375.376,18000,45587,node3610
@@ -144,12 +144,12 @@ neos-4332810-sesia,kOptimal,solved,3307.286,18000,6593894,node3308
 neos-4355351-swalm,kOptimal,solved,0.697,3600,7200,node2512
 neos-4359986-taipa,kOptimal,solved,40.975,3600,59493,node2512
 neos-4360552-sangro,kOptimal,solved,18.209,3600,26592,node2512
-neos-4391920-timok,kOptimal,solved,20.193,3600,11243,node2510
-neos-4408804-prosna,kOptimal,solved,7.028,3600,17556,node2510
-neos-4409277-trave,kOptimal,solved,6.006,3600,9779,node2510
-neos-4413714-turia,kOptimal,solved,1.680,3600,9921,node2510
-neos-4533806-waima,kOptimal,solved,30.718,3600,32438,node2510
-neos-4535459-waipa,kTimeLimit,timeout,18139.555,18000,105908,node2510
+neos-4391920-timok,kOptimal,solved,20.081,3600,11243,node3610
+neos-4408804-prosna,kOptimal,solved,7.064,3600,17556,node4416
+neos-4409277-trave,kOptimal,solved,6.063,3600,9779,node3607
+neos-4413714-turia,kOptimal,solved,1.695,3600,9921,node3610
+neos-4533806-waima,kOptimal,solved,30.834,3600,32438,node4416
+neos-4535459-waipa,kTimeLimit,timeout,18001.481,18000,114713,node2502
 neos-4545615-waita,kOptimal,solved,3323.646,18000,427554,node4415
 neos-4555749-wards,kOptimal,solved,19.796,3600,23754,node4415
 neos-4562542-watut,kOptimal,solved,120.647,3600,86796,node4415

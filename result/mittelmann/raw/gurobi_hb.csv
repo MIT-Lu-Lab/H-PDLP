@@ -1,6 +1,6 @@
 instance,status,outcome,solve_time,time_limit,iters,node
 Dual2_5000,OUT_OF_MEMORY,memory,15000.000,15000,0,
-L1_sixm1000obs,ERROR: Out of memory,crash,953.853,15000,0,node2503
+L1_sixm1000obs,ERROR: Out of memory,memory,953.853,15000,0,node2503
 L1_sixm250obs,TIME_LIMIT,timeout,15000.000,15000,0,
 L2CTA3D,OPTIMAL,solved,375.567,15000,35,node3610
 Linf_520c,OPTIMAL,solved,14.687,15000,28,node3305

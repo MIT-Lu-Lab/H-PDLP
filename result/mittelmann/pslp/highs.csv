@@ -1,7 +1,7 @@
 instance,status,outcome,solve_time,time_limit,iters,node
-Dual2_5000,kTimeLimit,timeout,15004.975,15000,209587,node2506
+Dual2_5000,kTimeLimit,timeout,15004.906,15000,212754,node2504
 L1_sixm1000obs,kTimeLimit,timeout,15000.517,15000,236023,node2506
-L1_sixm250obs,kOptimal,solved,2085.095,15000,119726,node2506
+L1_sixm250obs,kOptimal,solved,2056.431,15000,119726,node3604
 L2CTA3D,kTimeLimit,timeout,15000.821,15000,1199867,node3602
 Linf_520c,kOptimal,solved,865.217,15000,149185,node3602
 Primal2_1000,kOptimal,solved,1678.534,15000,428721,node3602

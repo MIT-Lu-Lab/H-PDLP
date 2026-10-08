@@ -84,7 +84,7 @@ irish-electricity,TIME_LIMIT,timeout,3599.801,3600,543075,node2506
 ivu06,OPTIMAL,solved,228.112,3600,3300,node2523
 ivu06-big,OPTIMAL,solved,2437.354,18000,15075,node2523
 ivu52,OPTIMAL,solved,213.650,3600,15450,node2511
-ivu59,ERROR: ScsWork allocation error!,crash,2.743,18000,0,node2523
+ivu59,TIME_LIMIT,timeout,18274.691,18000,93750,node2525
 k1mushroom,OPTIMAL,solved,361.791,3600,57525,node2523
 kosova1,OPTIMAL,solved,386.057,3600,500,node2511
 kottenpark09,TIME_LIMIT,timeout,19398.124,18000,17175,node2523
@@ -142,7 +142,7 @@ neos-4322846-ryton,OPTIMAL,solved,12.434,3600,1650,node2506
 neos-4332801-seret,DUAL_INFEASIBLE,false_infeasible,35.196,18000,0,node4512
 neos-4332810-sesia,DUAL_INFEASIBLE,false_infeasible,46.597,18000,0,node2505
 neos-4355351-swalm,OPTIMAL,solved,280.281,3600,7075,node2511
-neos-4359986-taipa,OPTIMAL,solved,3.223,3600,2000,node2511
+neos-4359986-taipa,OPTIMAL,solved,3.247,3600,2000,node1631
 neos-4360552-sangro,OPTIMAL,solved,1.966,3600,250,node2511
 neos-4391920-timok,OPTIMAL,solved,751.397,3600,106850,node4512
 neos-4408804-prosna,OPTIMAL,solved,33.480,3600,9700,node4512
