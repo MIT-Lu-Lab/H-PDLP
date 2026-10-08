@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from hopdlp import Model, PDLP
+from hpdlp import Model, PDLP
 
 
 @dataclass

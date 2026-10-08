@@ -3,9 +3,9 @@ requires = ["scikit-build-core>=0.9.0", "pybind11>=2.12.0", "numpy", "scipy"]
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "hopdlp"
+name = "hpdlp"
 version = "0.0.1"
-description = "Python bindings for HoPDLP (GPU-accelerated first-order LP solver)"
+description = "Python bindings for H-PDLP (GPU-accelerated first-order LP solver)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
@@ -21,8 +21,8 @@ dependencies = ["numpy>=1.21", "scipy>=1.8"]
 build-dir = "build/{wheel_tag}"
 cmake.version = ">=3.24"
 cmake.build-type = "Release"
-wheel.packages = ["python/hopdlp"]
-install.components = ["hopdlp_python"]
+wheel.packages = ["python/hpdlp"]
+install.components = ["hpdlp_python"]
 sdist.include = [
   "CMakeLists.txt",
   "src/**",
@@ -49,11 +49,11 @@ sdist.exclude = [
 [tool.scikit-build.cmake.define]
 CMAKE_CUDA_ARCHITECTURES = "all-major"
 CMAKE_CUDA_STANDARD = "17"
-HOPDLP_BUILD_PYTHON = "ON"
-HOPDLP_BUILD_STATIC_LIB = "ON"
-HOPDLP_BUILD_SHARED_LIB = "OFF"
-HOPDLP_BUILD_CLI = "OFF"
-HOPDLP_BUILD_TESTS = "OFF"
+HPDLP_BUILD_PYTHON = "ON"
+HPDLP_BUILD_STATIC_LIB = "ON"
+HPDLP_BUILD_SHARED_LIB = "OFF"
+HPDLP_BUILD_CLI = "OFF"
+HPDLP_BUILD_TESTS = "OFF"
 
 [project.optional-dependencies]
 test = [
@@ -81,7 +81,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 branch = true
-source = ["hopdlp"]
+source = ["hpdlp"]
 
 [tool.coverage.report]
 fail_under = 80

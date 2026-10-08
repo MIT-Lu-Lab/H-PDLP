@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from hopdlp import Model, PDLP
-from hopdlp._core import solve_once
+from hpdlp import Model, PDLP
+from hpdlp._core import solve_once
 
 
 def pytest_addoption(parser):
@@ -17,7 +17,7 @@ def cuda_available(request):
                           None, None, None, None, params={"verbose": False})
     except RuntimeError as error:
         message = str(error)
-        unavailable = message.startswith("HoPDLP requires an available CUDA GPU:") and any(
+        unavailable = message.startswith("H-PDLP requires an available CUDA GPU:") and any(
             reason in message.lower() for reason in (
                 "no devices found", "no cuda-capable device",
                 "cuda driver version is insufficient", "initialization error"))

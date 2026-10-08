@@ -17,7 +17,7 @@ limitations under the License.
 #pragma once
 
 #include "cone_projector.h"
-#include "hopdlp_types.h"
+#include "hpdlp_types.h"
 #include "pid_controller.h"
 #include "spmv_backend.h"
 #include <cublas_v2.h>

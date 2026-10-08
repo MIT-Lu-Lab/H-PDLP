@@ -2,16 +2,16 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-import hopdlp
-from hopdlp import Model, PDLP, read
+import hpdlp
+from hpdlp import Model, PDLP, read
 
 
 def test_public_exports_include_documented_api():
-    assert hopdlp.PDLP is PDLP
-    assert hopdlp.Model is Model
-    assert hopdlp.read is read
-    assert isinstance(hopdlp.__version__, str)
-    assert set(hopdlp.__all__) == {'Model', 'PDLP', 'read', '__version__'}
+    assert hpdlp.PDLP is PDLP
+    assert hpdlp.Model is Model
+    assert hpdlp.read is read
+    assert isinstance(hpdlp.__version__, str)
+    assert set(hpdlp.__all__) == {'Model', 'PDLP', 'read', '__version__'}
 
 
 def test_data_property_reads(model):
@@ -177,7 +177,7 @@ def test_optimize_forwards_model_and_parameters(model, monkeypatch):
         calls.append((args, kwargs))
         return {}
 
-    monkeypatch.setattr("hopdlp.model.solve_once", capture)
+    monkeypatch.setattr("hpdlp.model.solve_once", capture)
     model.c0 = 4.
     model.ModelSense = PDLP.MAXIMIZE
     model.setParams(TimeLimit=12., OptimalityNorm="linf")

@@ -1,13 +1,13 @@
-# HoPDLP: A GPU-Accelerated First-Order LP Solver
+# H-PDLP: A GPU-Accelerated First-Order LP Solver
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 ![Version](https://img.shields.io/badge/version-v0.0.1-blue.svg)
 
-**HoPDLP** is a GPU-accelerated first-order solver for linear programming with support for primal and dual infeasibility detection. It combines a generalized primal-dual hybrid gradient (PDHG) operator for a homogeneous self-dual (HSD) embedding with restarted reflected Halpern iteration. The embedding encodes primal-dual optimal solutions and infeasibility certificates in a single conic system.
+**H-PDLP** is a GPU-accelerated first-order solver for linear programming with support for primal and dual infeasibility detection. It combines a generalized primal-dual hybrid gradient (PDHG) operator for a homogeneous self-dual (HSD) embedding with restarted reflected Halpern iteration. The embedding encodes primal-dual optimal solutions and infeasibility certificates in a single conic system.
 
-HoPDLP represents two-sided constraint and variable bounds directly through box cones, without introducing explicit bound slacks. The box-cone projections reduce to one-dimensional root-finding problems, so each iteration uses sparse matrix-vector products, vector operations, and reductions, with no matrix factorization. The implementation also adapts practical techniques from [cuPDLPx](https://github.com/MIT-Lu-Lab/cuPDLPx), including adaptive restarting and primal-weight updates.
+H-PDLP represents two-sided constraint and variable bounds directly through box cones, without introducing explicit bound slacks. The box-cone projections reduce to one-dimensional root-finding problems, so each iteration uses sparse matrix-vector products, vector operations, and reductions, with no matrix factorization. The implementation also adapts practical techniques from [cuPDLPx](https://github.com/MIT-Lu-Lab/cuPDLPx), including adaptive restarting and primal-weight updates.
 
-HoPDLP solves linear programs of the form
+H-PDLP solves linear programs of the form
 ```math
 \begin{aligned}
 \min_{x} \quad & c^\top x + c_0 \\
@@ -30,12 +30,12 @@ CMake uses an installed **ZLIB** for `.mps.gz` decompression, or downloads it if
 ### Build from Source
 Clone the repository and compile the project using CMake.
 ```bash
-git clone https://github.com/LucasBoTang/HoPDLP.git
-cd HoPDLP
+git clone https://github.com/MIT-Lu-Lab/H-PDLP.git
+cd H-PDLP
 cmake -S . -B build
 cmake --build build -j
 ```
-On Linux, this creates `./build/hopdlp`, `./build/libhopdlp.so` (shared), and `./build/libhopdlp_core.a` (static). The default build type is Release.
+On Linux, this creates `./build/hpdlp`, `./build/libhpdlp.so` (shared), and `./build/libhpdlp_core.a` (static). The default build type is Release.
 
 ### Quick Start
 
@@ -44,7 +44,7 @@ Download an instance from MIPLIB and solve its LP relaxation:
 ```bash
 mkdir -p test
 wget -P test/ https://miplib.zib.de/WebData/instances/2club200v15p5scn.mps.gz
-./build/hopdlp test/2club200v15p5scn.mps.gz test/
+./build/hpdlp test/2club200v15p5scn.mps.gz test/
 ```
 
 The solver prints iteration statistics and writes results to `test/`. Check `test/2club200v15p5scn_summary.txt` for the termination status, objective values, and residuals. `OPTIMAL` means the solution satisfies the configured feasibility and optimality tolerances.
@@ -53,14 +53,14 @@ The solver prints iteration statistics and writes results to `test/`. Check `tes
 
 The default GPU architecture selection is `all-major`; override it with `-DCMAKE_CUDA_ARCHITECTURES=...` if needed. The SpMV backend is selected automatically at compile time: `cusparseSpMVOp` for cuSPARSE ≥ 12.8.1 with experimental APIs enabled (the default build), and `cusparseSpMV` otherwise.
 
-Optional CMake flags (for example, `-DHOPDLP_BUILD_TESTS=ON`):
+Optional CMake flags (for example, `-DHPDLP_BUILD_TESTS=ON`):
 
 | Flag | Default | Effect |
 | :--- | :--- | :--- |
-| `-DHOPDLP_BUILD_STATIC_LIB` | `ON` | Build static library `hopdlp_core` |
-| `-DHOPDLP_BUILD_SHARED_LIB` | `ON` | Build shared library |
-| `-DHOPDLP_BUILD_CLI` | `ON` | Build CLI executable |
-| `-DHOPDLP_BUILD_TESTS` | `OFF` | Build the test suite (run with `ctest`) |
+| `-DHPDLP_BUILD_STATIC_LIB` | `ON` | Build static library `hpdlp_core` |
+| `-DHPDLP_BUILD_SHARED_LIB` | `ON` | Build shared library |
+| `-DHPDLP_BUILD_CLI` | `ON` | Build CLI executable |
+| `-DHPDLP_BUILD_TESTS` | `OFF` | Build the test suite (run with `ctest`) |
 
 The CLI and tests require the static library.
 
@@ -69,7 +69,7 @@ The CLI and tests require the static library.
 Build and run the C/CUDA suite in Release:
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DHOPDLP_BUILD_TESTS=ON
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DHPDLP_BUILD_TESTS=ON
 cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
@@ -95,16 +95,16 @@ python -m pip install .
 For a specific GPU architecture, use, for example,
 `python -m pip install . -Ccmake.define.CMAKE_CUDA_ARCHITECTURES=89`.
 The CUDA compiler must support the selected architecture. The Python build
-enables `HOPDLP_BUILD_PYTHON` and links the static solver into a pybind11 module.
+enables `HPDLP_BUILD_PYTHON` and links the static solver into a pybind11 module.
 
 ## Usage & Interfaces
 
 ### Command-line Interface
 
-After building the project, the `./build/hopdlp` binary can be invoked from the command line as follows:
+After building the project, the `./build/hpdlp` binary can be invoked from the command line as follows:
 
 ```bash
-./build/hopdlp [OPTIONS] <mps_file> <output_directory>
+./build/hpdlp [OPTIONS] <mps_file> <output_directory>
 ```
 
 #### Arguments
@@ -112,16 +112,16 @@ After building the project, the `./build/hopdlp` binary can be invoked from the 
 - `<mps_file>`: The path to the input linear programming problem. Both plain (`.mps`) and gzipped (`.mps.gz`) files are supported.
 - `<output_directory>`: An existing directory where the output files will be saved.
 
-For MPS inputs with integer variables, HoPDLP solves the LP relaxation; integrality is not enforced.
+For MPS inputs with integer variables, H-PDLP solves the LP relaxation; integrality is not enforced.
 
 For example, set a time limit and tighter feasibility and optimality tolerances:
 
 ```bash
-./build/hopdlp --time_limit 60 --eps_opt 1e-6 --eps_feas 1e-6 \
+./build/hpdlp --time_limit 60 --eps_opt 1e-6 --eps_feas 1e-6 \
     test/2club200v15p5scn.mps.gz test/
 ```
 
-Use `./build/hopdlp --help` to list the available options.
+Use `./build/hpdlp --help` to list the available options.
 
 #### Solver Options
 
@@ -185,20 +185,20 @@ The summary reports termination status, timing, iteration count, objective value
 
 The public C API supports building LPs from CSR, CSC, COO, or dense matrices, configuring solver parameters, and retrieving solutions or infeasibility rays.
 
-See the [C API Guide](docs/C_API.md) for a complete example, compilation instructions, warm starts, and termination-status details. The public headers are [`hopdlp.h`](include/hopdlp.h) and [`hopdlp_types.h`](include/hopdlp_types.h).
+See the [C API Guide](docs/C_API.md) for a complete example, compilation instructions, warm starts, and termination-status details. The public headers are [`hpdlp.h`](include/hpdlp.h) and [`hpdlp_types.h`](include/hpdlp_types.h).
 
 ### Python Interface
 
-The `hopdlp` package provides `Model`, `PDLP`, and `read` for building and solving LPs:
+The `hpdlp` package provides `Model`, `PDLP`, and `read` for building and solving LPs:
 
 ```python
-import hopdlp
+import hpdlp
 
-model = hopdlp.read("problem.mps.gz")
+model = hpdlp.read("problem.mps.gz")
 model.setParams(TimeLimit=60, OptimalityTol=1e-6, FeasibilityTol=1e-6)
 model.optimize()
 print(model.StatusName, model.ObjVal)
-if model.Status == hopdlp.PDLP.OPTIMAL:
+if model.Status == hpdlp.PDLP.OPTIMAL:
     print(model.X)
 ```
 
@@ -206,4 +206,4 @@ See the [Python API Guide](python/README.md) for matrix inputs, parameters,
 warm starts, and the interpretation of infeasibility certificates.
 
 ## License
-HoPDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
+H-PDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.

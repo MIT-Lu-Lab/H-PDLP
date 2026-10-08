@@ -72,7 +72,7 @@ _PARAM_ALIAS = {
     "ASBReestimateChangeRatio": "asb_reestimate_change_ratio",
     "ASBDivergenceCeilingRatio": "asb_divergence_ceiling_ratio",
     "ASBDivergenceMargin": "asb_divergence_margin",
-    # HoPDLP-specific controls
+    # H-PDLP-specific controls
     "Diagnose": "diagnose",
     "FarkasHomogeneousTol": "eps_farkas_homogeneous",
     "FarkasDisplacementTol": "eps_farkas_displacement",

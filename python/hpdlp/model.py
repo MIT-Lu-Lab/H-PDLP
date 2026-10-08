@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Model interface for the HoPDLP LP solver."""
+"""Model interface for the H-PDLP LP solver."""
 
 from __future__ import annotations
 import os
@@ -648,7 +648,7 @@ class Model:
 
     def optimize(self):
         """
-        Solve the linear programming problem using the HoPDLP solver.
+        Solve the linear programming problem using the H-PDLP solver.
         """
         # clear cached solution
         self._clear_solution_cache()
@@ -827,7 +827,7 @@ class Model:
     def Status(self) -> Optional[int]:
         """
         Integer termination status code. Compare against the constants in
-        hopdlp.PDLP, e.g. ``model.Status == PDLP.OPTIMAL``.
+        hpdlp.PDLP, e.g. ``model.Status == PDLP.OPTIMAL``.
         """
         return self._status_code
 

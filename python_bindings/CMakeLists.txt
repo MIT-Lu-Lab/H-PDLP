@@ -6,18 +6,18 @@ cmake_minimum_required(VERSION 3.21)
 set(PYBIND_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/_core_bindings.cpp)
 
 # build the pybind11 module
-pybind11_add_module(_hopdlp_core MODULE ${PYBIND_SOURCES})
+pybind11_add_module(_hpdlp_core MODULE ${PYBIND_SOURCES})
 
-target_link_libraries(_hopdlp_core PRIVATE
-    hopdlp_core
+target_link_libraries(_hpdlp_core PRIVATE
+    hpdlp_core
 )
 
 # Isolate the private dependency's filename and SONAME from other packages.
-set_target_properties(PSLP PROPERTIES OUTPUT_NAME hopdlp_pslp)
+set_target_properties(PSLP PROPERTIES OUTPUT_NAME hpdlp_pslp)
 
 # set rpath so that the module can find the shared libraries at runtime
 if(NOT WIN32)
-  set_target_properties(_hopdlp_core PROPERTIES
+  set_target_properties(_hpdlp_core PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN"
     BUILD_RPATH   "$ORIGIN"
@@ -25,25 +25,25 @@ if(NOT WIN32)
 endif()
 
 # better error messages from pybind11
-target_compile_definitions(_hopdlp_core PRIVATE PYBIND11_DETAILED_ERROR_MESSAGES=1)
+target_compile_definitions(_hpdlp_core PRIVATE PYBIND11_DETAILED_ERROR_MESSAGES=1)
 
 # install into the Python package directory
 install(TARGETS PSLP
-  LIBRARY DESTINATION hopdlp COMPONENT hopdlp_python
-  RUNTIME DESTINATION hopdlp COMPONENT hopdlp_python
+  LIBRARY DESTINATION hpdlp COMPONENT hpdlp_python
+  RUNTIME DESTINATION hpdlp COMPONENT hpdlp_python
 )
 
-install(TARGETS _hopdlp_core
-  LIBRARY DESTINATION hopdlp COMPONENT hopdlp_python
-  RUNTIME DESTINATION hopdlp COMPONENT hopdlp_python
+install(TARGETS _hpdlp_core
+  LIBRARY DESTINATION hpdlp COMPONENT hpdlp_python
+  RUNTIME DESTINATION hpdlp COMPONENT hpdlp_python
 )
 
 if(WIN32)
   # Install runtime DLL dependencies next to the extension module so Python can
   # resolve them without additional os.add_dll_directory(...) calls.
-  install(FILES $<TARGET_RUNTIME_DLLS:_hopdlp_core>
-    DESTINATION hopdlp
-    COMPONENT hopdlp_python
+  install(FILES $<TARGET_RUNTIME_DLLS:_hpdlp_core>
+    DESTINATION hpdlp
+    COMPONENT hpdlp_python
     OPTIONAL
   )
 endif()

@@ -3,8 +3,8 @@ import pytest
 import scipy.sparse as sp
 
 
-from hopdlp import PDLP
-from hopdlp._core import solve_once
+from hpdlp import PDLP
+from hpdlp._core import solve_once
 
 
 def test_direct_core_param_value_validation(base_lp_data):

@@ -1,6 +1,6 @@
-# Python interface for HoPDLP
+# Python interface for H-PDLP
 
-The `hopdlp` package provides a Python interface to HoPDLP. It uses NumPy/SciPy for model data and pybind11 to call the C/CUDA solver directly.
+The `hpdlp` package provides a Python interface to H-PDLP. It uses NumPy/SciPy for model data and pybind11 to call the C/CUDA solver directly.
 
 ## Installation
 
@@ -22,7 +22,7 @@ Choose an architecture supported by your toolkit and GPU. Linux/WSL is the prima
 
 ```python
 import numpy as np
-from hopdlp import Model, PDLP
+from hpdlp import Model, PDLP
 
 model = Model(
     objective_vector=[1., 1.],
@@ -42,14 +42,14 @@ if model.Status == PDLP.OPTIMAL:
 
 The model represents `min c.T @ x + c0`, with `l <= A @ x <= u` and `lb <= x <= ub`. Set `model.ModelSense = PDLP.MAXIMIZE` to maximize. Omitted variable bounds are **-infinity and +infinity**, respectively; specify `variable_lower_bound=0 * np.ones(n)` for nonnegative variables. Constraint bounds may also be `None` for the corresponding infinite bound.
 
-`A` accepts a two-dimensional NumPy array or SciPy sparse matrix/array. The high-level model normalizes sparse inputs to CSR. The compiled `hopdlp._core.solve_once` entry point also accepts CSC and COO directly. Values use float64; sparse indices must fit in int32. Model inputs are copied and exposed as read-only arrays.
+`A` accepts a two-dimensional NumPy array or SciPy sparse matrix/array. The high-level model normalizes sparse inputs to CSR. The compiled `hpdlp._core.solve_once` entry point also accepts CSC and COO directly. Values use float64; sparse indices must fit in int32. Model inputs are copied and exposed as read-only arrays.
 
 ## Read MPS and modify data
 
 ```python
-import hopdlp
+import hpdlp
 
-model = hopdlp.read("problem.mps.gz")  # also accepts .mps and pathlib.Path
+model = hpdlp.read("problem.mps.gz")  # also accepts .mps and pathlib.Path
 model.optimize()
 model.setObjectiveConstant(2.)
 model.optimize()
@@ -61,7 +61,7 @@ Model setters include `setObjectiveVector`, `setObjectiveConstant`, `setConstrai
 
 ## Parameters
 
-Use `model.Params.TimeLimit = 60`, `model.Params["TimeLimit"] = 60`, `model.setParam("TimeLimit", 60)`, or `model.setParams(TimeLimit=60, Presolve=False)`. `getParam()` reads values and `resetParams()` restores HoPDLP's C defaults. `dict(model.Params.items())` lists all supported canonical keys. Invalid names raise `KeyError`; invalid values raise `TypeError` or `ValueError`. Parameter updates are transactional, including checks involving multiple values. Python numeric parameters must be finite, including `TimeLimit` and `InfiniteBound`; use a large finite value when needed.
+Use `model.Params.TimeLimit = 60`, `model.Params["TimeLimit"] = 60`, `model.setParam("TimeLimit", 60)`, or `model.setParams(TimeLimit=60, Presolve=False)`. `getParam()` reads values and `resetParams()` restores H-PDLP's C defaults. `dict(model.Params.items())` lists all supported canonical keys. Invalid names raise `KeyError`; invalid values raise `TypeError` or `ValueError`. Parameter updates are transactional, including checks involving multiple values. Python numeric parameters must be finite, including `TimeLimit` and `InfiniteBound`; use a large finite value when needed.
 
 Common parameter aliases:
 
@@ -77,7 +77,7 @@ Common parameter aliases:
 | `TermCheckFreq` | `termination_evaluation_frequency` |
 | `ActiveSetBoost` | `active_set_boost` |
 
-HoPDLP-specific controls:
+H-PDLP-specific controls:
 
 | Alias | Canonical key |
 | --- | --- |
@@ -92,7 +92,7 @@ HoPDLP-specific controls:
 | `PrimalWeightSafeguard` | `primal_weight_safeguard` |
 | `ASBRelativeTol` | `asb_relative_tol` |
 
-TimeLimit follows the C solver's iteration CPU-time accounting; it is not a wall-clock budget for preprocessing and Python conversion. Defaults come from HoPDLP. Unknown parameters are rejected. The internal `tau_trace_path` debugging output is not exposed by this interface.
+TimeLimit follows the C solver's iteration CPU-time accounting; it is not a wall-clock budget for preprocessing and Python conversion. Defaults come from H-PDLP. Unknown parameters are rejected. The internal `tau_trace_path` debugging output is not exposed by this interface.
 
 ## Warm starts
 
@@ -122,7 +122,7 @@ Vectors must have the original model dimensions and finite values. Set `Presolve
 
 Presolve can identify infeasibility without returning a certificate. A missing vector is `None`, not a zero-filled array. Check status before interpreting objective values, residuals, or vectors. A zero-valued certificate statistic does not imply a certificate is available.
 
-HoPDLP additionally exposes `FarkasMargin`, `FarkasResidual`, `HomogeneousScale`, `RestartCount`, `PresolveTime`, `PresolveStatus`, `ASBRaiseCount`, `ASBRevertCount`, `ASBPowerIterations`, and `FinalStepSizePrimal`, `FinalStepSizeDual`, `FinalStepSizeHomogeneous`. The Farkas statistics are the backend's certificate diagnostics. See [C API certificate semantics](../docs/C_API.md#results-and-termination-status).
+H-PDLP additionally exposes `FarkasMargin`, `FarkasResidual`, `HomogeneousScale`, `RestartCount`, `PresolveTime`, `PresolveStatus`, `ASBRaiseCount`, `ASBRevertCount`, `ASBPowerIterations`, and `FinalStepSizePrimal`, `FinalStepSizeDual`, `FinalStepSizeHomogeneous`. The Farkas statistics are the backend's certificate diagnostics. See [C API certificate semantics](../docs/C_API.md#results-and-termination-status).
 
 The binding releases the Python GIL during native solves and serializes native solves within the process because the solver uses CUDA global graph capture. It raises Python exceptions for invalid inputs and unavailable CUDA devices. Fatal allocation or CUDA failures deeper in the C solver still use the existing process-exit error paths.
 

@@ -31,7 +31,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "mps_parser.h"
 
 namespace py = pybind11;
@@ -240,7 +240,7 @@ static int status_to_code(termination_reason_t r)
     }
 }
 
-static void validate_result_dimensions(const hopdlp_result_t *res, int expected_n, int expected_m)
+static void validate_result_dimensions(const hpdlp_result_t *res, int expected_n, int expected_m)
 {
     if (res->num_variables != expected_n || res->num_constraints != expected_m)
     {
@@ -439,7 +439,7 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     }
 
     char validation_error[256];
-    if (hopdlp_validate_parameters(p, validation_error, sizeof(validation_error)) != 0)
+    if (hpdlp_validate_parameters(p, validation_error, sizeof(validation_error)) != 0)
     {
         throw std::invalid_argument(validation_error);
     }
@@ -756,7 +756,7 @@ static py::dict solve_once(py::object A,
     set_default_parameters(&local_params);
     parse_params_from_python(params, &local_params);
     // solve (release GIL during compute)
-    hopdlp_result_t *res = nullptr;
+    hpdlp_result_t *res = nullptr;
     {
         py::gil_scoped_release release;
         static std::mutex solve_mutex;
@@ -764,7 +764,7 @@ static py::dict solve_once(py::object A,
         int device_count = 0;
         cudaError_t cuda_status = cudaGetDeviceCount(&device_count);
         if (cuda_status != cudaSuccess || device_count == 0)
-            throw std::runtime_error("HoPDLP requires an available CUDA GPU: " +
+            throw std::runtime_error("H-PDLP requires an available CUDA GPU: " +
                 std::string(cuda_status == cudaSuccess ? "no devices found" : cudaGetErrorString(cuda_status)));
         res = solve_lp_problem(prob, &local_params);
     }
@@ -775,7 +775,7 @@ static py::dict solve_once(py::object A,
         throw std::runtime_error("solve_lp_problem returned NULL.");
     }
     // free the result even if a conversion below throws
-    std::unique_ptr<hopdlp_result_t, decltype(&hopdlp_result_free)> res_guard(res, &hopdlp_result_free);
+    std::unique_ptr<hpdlp_result_t, decltype(&hpdlp_result_free)> res_guard(res, &hpdlp_result_free);
 
     // parse result
     validate_result_dimensions(res, n, m);
@@ -887,7 +887,7 @@ static py::dict read_mps_py(const std::string &filename)
 
 // module
 // Validate a params dict the way solve_once will: defaults overlaid with the dict,
-// then hopdlp_validate_parameters. Raises ValueError on the first violation.
+// then hpdlp_validate_parameters. Raises ValueError on the first violation.
 static void validate_params_py(py::object params_obj)
 {
     pdhg_parameters_t p;
@@ -895,9 +895,9 @@ static void validate_params_py(py::object params_obj)
     parse_params_from_python(params_obj, &p);
 }
 
-PYBIND11_MODULE(_hopdlp_core, m)
+PYBIND11_MODULE(_hpdlp_core, m)
 {
-    m.doc() = "hopdlp core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
+    m.doc() = "hpdlp core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
 
     m.def("get_default_params", &get_default_params_py, "Return default PDHG parameters as a dict");
 

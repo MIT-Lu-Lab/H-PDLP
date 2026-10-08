@@ -15,7 +15,7 @@ limitations under the License.
 */
 
 #include "mps_parser.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "matrix_formats.h"
 #include "utils.h"
 #include <ctype.h>

@@ -1,5 +1,5 @@
 #include "gpu_support.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "test_checks.h"
 #include <math.h>
 #include <stdio.h>
@@ -27,7 +27,7 @@ static int check_empty_solve(const matrix_desc_t *matrix)
                 set_default_parameters(&params);
                 params.verbose = false;
                 params.presolve = presolve;
-                hopdlp_result_t *result = solve_lp_problem(problem, &params);
+                hpdlp_result_t *result = solve_lp_problem(problem, &params);
                 if (!result ||
                     result->termination_reason != TERMINATION_REASON_OPTIMAL ||
                     result->primal_objective_value != offsets[i] ||
@@ -48,7 +48,7 @@ static int check_empty_solve(const matrix_desc_t *matrix)
                             matrix->fmt, offsets[i], maximize, presolve);
                     ++failures;
                 }
-                hopdlp_result_free(result);
+                hpdlp_result_free(result);
             }
         }
         lp_problem_free(problem);
@@ -99,7 +99,7 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
     params.scaling_params.bound_objective_rescaling = false;
     params.termination_criteria.iteration_limit = 400;
 
-    hopdlp_result_t *result = solve_lp_problem(problem, &params);
+    hpdlp_result_t *result = solve_lp_problem(problem, &params);
     if (result == NULL || result->primal_solution == NULL)
     {
         printf("  FAIL: %s produced no solution\n", label);
@@ -115,7 +115,7 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
     check("x0 sits at its lower bound", fabs(result->primal_solution[0]) < 1e-6);
     check("x1 sits at its lower bound", fabs(result->primal_solution[1]) < 1e-6);
 
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(problem);
 }
 
@@ -164,7 +164,7 @@ static void check_signs(const char *label, bool presolve)
     params.verbose = false;
     params.presolve = presolve;
 
-    hopdlp_result_t *result = solve_lp_problem(problem, &params);
+    hpdlp_result_t *result = solve_lp_problem(problem, &params);
     if (result == NULL || result->reduced_cost == NULL)
     {
         printf("  FAIL: %s produced no reduced cost\n", label);
@@ -197,7 +197,7 @@ static void check_signs(const char *label, bool presolve)
         check(message, rc >= -tolerance || fabs(x - variable_upper[j]) < tolerance);
     }
 
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(problem);
 }
 

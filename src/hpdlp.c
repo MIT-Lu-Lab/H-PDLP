@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "matrix_formats.h"
 #include "solver.h"
 #include "utils.h"
@@ -162,7 +162,7 @@ static void fill_or_copy(
         (*dst)[i] = fill_val;
 }
 
-void hopdlp_result_free(hopdlp_result_t *results)
+void hpdlp_result_free(hpdlp_result_t *results)
 {
     if (results == NULL)
         return;
@@ -305,7 +305,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->active_set_params.max_reverts = 2;
 }
 
-hopdlp_result_t *solve_lp_problem(
+hpdlp_result_t *solve_lp_problem(
     const lp_problem_t *prob,
     const pdhg_parameters_t *params)
 {

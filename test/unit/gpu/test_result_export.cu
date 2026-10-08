@@ -1,6 +1,6 @@
 #include "cuda_macros.h"
 #include "gpu_support.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "result.h"
 #include "setup.h"
 #include "termination_checker.h"
@@ -65,7 +65,7 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
     }
     else
     {
-        hopdlp_result_t *result = create_result_from_state(state, problem);
+        hpdlp_result_t *result = create_result_from_state(state, problem);
         if (!(fabs(result->reduced_cost[0] - 1e-5) <= 1e-15 &&
               fabs(result->primal_solution[0] - 5e-5) <= 1e-15 &&
               result->absolute_dual_residual <= 1e-15 &&
@@ -76,7 +76,7 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
             fprintf(stderr, "small box exported certificate disagrees with its metrics\n");
             ++failures;
         }
-        hopdlp_result_free(result);
+        hpdlp_result_free(result);
     }
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
@@ -200,7 +200,7 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
 
     for (int repeat = 0; repeat < 2; ++repeat)
     {
-        hopdlp_result_t *result = create_result_from_state(state, problem);
+        hpdlp_result_t *result = create_result_from_state(state, problem);
         if (primal)
             check_values("primal", result->primal_solution, primal, 2);
         else if (result->primal_solution)
@@ -213,7 +213,7 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
             check_values("reduced cost", result->reduced_cost, reduced_cost, 2);
         else if (result->reduced_cost)
             ++failures;
-        hopdlp_result_free(result);
+        hpdlp_result_free(result);
     }
 }
 
@@ -332,11 +332,11 @@ static int check_result_export(void)
     state.var_bytes = state.con_bytes = 0;
     state.control.termination_reason = TERMINATION_REASON_OPTIMAL;
     metrics.pdhg_primal_scale = 2;
-    hopdlp_result_t *empty_result = create_result_from_state(&state, &problem);
+    hpdlp_result_t *empty_result = create_result_from_state(&state, &problem);
     if (!empty_result->primal_solution || !empty_result->dual_solution ||
         !empty_result->reduced_cost)
         ++failures;
-    hopdlp_result_free(empty_result);
+    hpdlp_result_free(empty_result);
 
     check_device_values("state primal", state.pdhg_primal_solution_d, primal_source, 2);
     check_device_values("state dual", state.pdhg_dual_solution_d, dual_source, 1);
@@ -431,7 +431,7 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
     compute_termination_metrics(state, &params);
 
     state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
-    hopdlp_result_t *result = create_result_from_state(state, problem);
+    hpdlp_result_t *result = create_result_from_state(state, problem);
     double expected_norm = 0, expected_primal = 0, expected_dual = 0;
     for (int j = 0; j < n; ++j)
     {
@@ -450,7 +450,7 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
     check_close("dual objective", result->dual_objective_value, expected_dual);
     check_close("gap", result->relative_objective_gap,
         fabs(expected_primal - expected_dual) / (1 + fabs(expected_primal) + fabs(expected_dual)));
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
 }

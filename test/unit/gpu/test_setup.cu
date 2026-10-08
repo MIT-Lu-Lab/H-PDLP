@@ -1,5 +1,5 @@
 #include "gpu_support.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "setup.h"
 #include "test_checks.h"
 #include "utils.h"

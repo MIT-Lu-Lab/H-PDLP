@@ -2,7 +2,7 @@
 #include "cone_projector.h"
 #include "cuda_macros.h"
 #include "gpu_support.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "setup.h"
 #include "termination_checker.h"
 #include "test_checks.h"

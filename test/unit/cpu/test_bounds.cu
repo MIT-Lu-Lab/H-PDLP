@@ -1,4 +1,4 @@
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "test_checks.h"
 #include "utils.h"
 #include <math.h>

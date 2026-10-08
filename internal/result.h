@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "hopdlp_types.h"
+#include "hpdlp_types.h"
 #include "internal_types.h"
 #include <stdbool.h>
 
@@ -27,7 +27,7 @@ extern "C"
 
     bool termination_has_solution(termination_reason_t reason);
 
-    hopdlp_result_t *create_result_from_state(
+    hpdlp_result_t *create_result_from_state(
         pdhg_solver_state_t *state,
         const lp_problem_t *working_problem);
 

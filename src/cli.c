@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "display.h"
 #include "mps_parser.h"
 #include "presolver.h"
@@ -128,7 +128,7 @@ static bool save_solution(const double *data, int size, const char *output_dir,
     return fclose(outfile) == 0;
 }
 
-static bool save_solver_summary(const hopdlp_result_t *result, const char *output_dir,
+static bool save_solver_summary(const hpdlp_result_t *result, const char *output_dir,
                                 const char *instance_name)
 {
     FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt",
@@ -377,7 +377,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    hopdlp_result_t *result = solve_lp_problem(problem, &params);
+    hpdlp_result_t *result = solve_lp_problem(problem, &params);
 
     int exit_code = 0;
     if (result == NULL)
@@ -397,7 +397,7 @@ int main(int argc, char *argv[])
             exit_code = 1;
         if (result->termination_reason == TERMINATION_REASON_NUMERICAL_FAILURE)
             exit_code = 1;
-        hopdlp_result_free(result);
+        hpdlp_result_free(result);
     }
 
     lp_problem_free(problem);

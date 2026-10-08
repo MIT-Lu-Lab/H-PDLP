@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 
-from hopdlp import Model, PDLP
-from hopdlp._core import get_default_params, validate_params
+from hpdlp import Model, PDLP
+from hpdlp._core import get_default_params, validate_params
 
 
 def test_set_params_is_transactional(model):

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from checks import assert_optimal
-from hopdlp import PDLP
+from hpdlp import PDLP
 
 
 RESULT_FIELDS = {
@@ -29,7 +29,7 @@ def core_result(monkeypatch):
     info = {field: index + 1 for index, field in enumerate(dict.fromkeys(RESULT_FIELDS.values()))}
     info.update(X=np.array([1., 2.]), Pi=np.array([3., 4., 5.]), RC=np.array([6., 7.]),
                 Status="OPTIMAL", StatusCode=PDLP.OPTIMAL)
-    monkeypatch.setattr("hopdlp.model.solve_once", lambda *args, **kwargs: info)
+    monkeypatch.setattr("hpdlp.model.solve_once", lambda *args, **kwargs: info)
     return info
 
 
@@ -73,7 +73,7 @@ def test_failed_solve_clears_previous_result(model, core_result, monkeypatch):
     def fail(*args, **kwargs):
         raise RuntimeError("native solve failed")
 
-    monkeypatch.setattr("hopdlp.model.solve_once", fail)
+    monkeypatch.setattr("hpdlp.model.solve_once", fail)
     with pytest.raises(RuntimeError, match="native solve failed"):
         model.optimize()
     assert model.X is None and model.Status is None and model.ObjVal is None

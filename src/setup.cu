@@ -22,7 +22,7 @@ limitations under the License.
 #include "cusparse_checks.h"
 #include "curand_checks.h"
 #include "cuda_utils.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "display.h"
 #include "matrix_formats.h"
 #include "preconditioner.h"
@@ -80,7 +80,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state);
 bool check_params_validity(const pdhg_parameters_t *params)
 {
     char error[256];
-    if (hopdlp_validate_parameters(params, error, sizeof(error)) == 0)
+    if (hpdlp_validate_parameters(params, error, sizeof(error)) == 0)
         return true;
     fprintf(stderr, "Error: %s\n", error);
     return false;

@@ -5,7 +5,7 @@ import pytest
 
 from cases import lp_case
 from checks import assert_dual_certificate, assert_optimal, assert_primal_certificate
-from hopdlp import Model, PDLP
+from hpdlp import Model, PDLP
 
 pytestmark = pytest.mark.gpu
 

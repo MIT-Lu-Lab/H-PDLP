@@ -1,5 +1,5 @@
 #include "gpu_support.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "result_check.h"
 #include "test_checks.h"
 
@@ -29,7 +29,7 @@ static void check_optimal_model(int m, int n, const double *c, const double *a,
     params.termination_criteria.iteration_limit = 20000;
     if (configuration == 2)
         params.scaling_params.bound_objective_rescaling = false;
-    hopdlp_result_t *result = solve_lp_problem(problem, &params);
+    hpdlp_result_t *result = solve_lp_problem(problem, &params);
     CHECK(result != NULL);
     if (result)
     {
@@ -43,7 +43,7 @@ static void check_optimal_model(int m, int n, const double *c, const double *a,
             CHECK(fabs(result->dual_objective_value - metrics.dual_objective) < 1e-9);
         }
     }
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(problem);
 }
 
@@ -61,7 +61,7 @@ static void check_certificates(void)
     params.verbose = params.presolve = false;
     params.termination_criteria.eps_farkas_homogeneous = 1e-7;
     params.termination_criteria.eps_farkas_displacement = 1e-7;
-    hopdlp_result_t *result = solve_lp_problem(problem, &params);
+    hpdlp_result_t *result = solve_lp_problem(problem, &params);
     CHECK(result && result->termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE);
     if (result && result->dual_solution && result->reduced_cost)
     {
@@ -73,7 +73,7 @@ static void check_certificates(void)
         CHECK(2 * y[0] + y[1] > 0);
     }
     else CHECK(0);
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(problem);
     const double decreasing = -1, zero = 0;
     matrix.m = matrix.n = 1;
@@ -86,7 +86,7 @@ static void check_certificates(void)
         CHECK(result->dual_solution == NULL && result->reduced_cost == NULL);
     }
     else CHECK(0);
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(problem);
 }
 

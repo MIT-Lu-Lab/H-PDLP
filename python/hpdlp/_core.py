@@ -12,6 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Thin re-export of the compiled HoPDLP core extension (_hopdlp_core)."""
+"""Thin re-export of the compiled H-PDLP core extension (_hpdlp_core)."""
 
-from ._hopdlp_core import solve_once, get_default_params, validate_params, read_mps
+from ._hpdlp_core import solve_once, get_default_params, validate_params, read_mps

@@ -3,7 +3,7 @@ import pytest
 import scipy.sparse as sp
 
 
-from hopdlp import Model
+from hpdlp import Model
 
 
 def test_sparse_model_arrays_are_read_only(base_lp_data):

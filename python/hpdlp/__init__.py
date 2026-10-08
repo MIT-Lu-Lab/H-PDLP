@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""HoPDLP: Python bindings for the GPU-accelerated first-order LP solver."""
+"""H-PDLP: Python bindings for the GPU-accelerated first-order LP solver."""
 
 import os
 import platform
@@ -32,7 +32,7 @@ from . import PDLP
 from importlib.metadata import version, PackageNotFoundError
 # get version from package metadata (toml file)
 try:
-    __version__ = version("hopdlp")
+    __version__ = version("hpdlp")
 except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0"
 

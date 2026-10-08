@@ -1,6 +1,6 @@
 #include "active_set_boost.h"
 #include "gpu_support.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "power_iteration.h"
 #include "setup.h"
 #include "test_checks.h"
@@ -107,7 +107,7 @@ static int solve_and_check(const char *label, const pdhg_parameters_t *params)
         ++failures;
         return 0;
     }
-    hopdlp_result_t *result = solve_lp_problem(problem, params);
+    hpdlp_result_t *result = solve_lp_problem(problem, params);
     if (result == NULL || result->primal_solution == NULL)
     {
         printf("  FAIL: %s produced no solution\n", label);
@@ -144,7 +144,7 @@ static int solve_and_check(const char *label, const pdhg_parameters_t *params)
     check(message, max_clamped_value < 1e-6);
 
     const int raise_count = result->active_set_raise_count;
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(problem);
     return raise_count;
 }

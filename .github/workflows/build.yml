@@ -44,18 +44,18 @@ jobs:
           echo "$RUNNER_TEMP/build-env/bin" >> "$GITHUB_PATH"
 
       - name: Compile Python sources
-        run: python -m compileall -q python/hopdlp
+        run: python -m compileall -q python/hpdlp
 
       - name: Configure
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CUDA_ARCHITECTURES=80 \
-            -DHOPDLP_BUILD_STATIC_LIB=ON \
-            -DHOPDLP_BUILD_SHARED_LIB=ON \
-            -DHOPDLP_BUILD_CLI=ON \
-            -DHOPDLP_BUILD_PYTHON=ON \
-            -DHOPDLP_BUILD_TESTS=OFF \
+            -DHPDLP_BUILD_STATIC_LIB=ON \
+            -DHPDLP_BUILD_SHARED_LIB=ON \
+            -DHPDLP_BUILD_CLI=ON \
+            -DHPDLP_BUILD_PYTHON=ON \
+            -DHPDLP_BUILD_TESTS=OFF \
             -DPython_EXECUTABLE="$(command -v python)" \
             -Dpybind11_DIR="$(python -m pybind11 --cmakedir)"
 

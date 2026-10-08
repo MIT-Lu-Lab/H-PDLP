@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# ROOT CMakeLists.txt for HoPDLP (Unified Build System)
+# ROOT CMakeLists.txt for H-PDLP (Unified Build System)
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.24)
 
@@ -11,15 +11,15 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
 endif()
 
 # Project config
-project(hopdlp LANGUAGES C CXX CUDA)
+project(hpdlp LANGUAGES C CXX CUDA)
 
-set(HOPDLP_VERSION_MAJOR 0)
-set(HOPDLP_VERSION_MINOR 0)
-set(HOPDLP_VERSION_PATCH 1)
+set(HPDLP_VERSION_MAJOR 0)
+set(HPDLP_VERSION_MINOR 0)
+set(HPDLP_VERSION_PATCH 1)
 
-set(HOPDLP_VERSION
-    "${HOPDLP_VERSION_MAJOR}.${HOPDLP_VERSION_MINOR}.${HOPDLP_VERSION_PATCH}")
-add_compile_definitions(HOPDLP_VERSION="${HOPDLP_VERSION}")
+set(HPDLP_VERSION
+    "${HPDLP_VERSION_MAJOR}.${HPDLP_VERSION_MINOR}.${HPDLP_VERSION_PATCH}")
+add_compile_definitions(HPDLP_VERSION="${HPDLP_VERSION}")
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
 
@@ -56,19 +56,19 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 # -----------------------------------------------------------------------------
 include(CMakeDependentOption)
 
-option(HOPDLP_BUILD_STATIC_LIB "Build the HoPDLP static library" ON)
-option(HOPDLP_BUILD_SHARED_LIB "Build the HoPDLP shared library" ON)
+option(HPDLP_BUILD_STATIC_LIB "Build the H-PDLP static library" ON)
+option(HPDLP_BUILD_SHARED_LIB "Build the H-PDLP shared library" ON)
 
 # format: cmake_dependent_option(OPTION "docstring" DEFAULT_VALUE
 # "DEPENDENCY_VARIABLE" FORCE_OFF_VALUE)
-cmake_dependent_option(HOPDLP_BUILD_PYTHON "Build the HoPDLP Python bindings" OFF
-                       "HOPDLP_BUILD_STATIC_LIB" OFF)
+cmake_dependent_option(HPDLP_BUILD_PYTHON "Build the H-PDLP Python bindings" OFF
+                       "HPDLP_BUILD_STATIC_LIB" OFF)
 
-cmake_dependent_option(HOPDLP_BUILD_CLI "Build the HoPDLP command-line executable" ON
-                       "HOPDLP_BUILD_STATIC_LIB" OFF)
+cmake_dependent_option(HPDLP_BUILD_CLI "Build the H-PDLP command-line executable" ON
+                       "HPDLP_BUILD_STATIC_LIB" OFF)
 
-cmake_dependent_option(HOPDLP_BUILD_TESTS "Build the HoPDLP test suite" OFF
-                       "HOPDLP_BUILD_STATIC_LIB" OFF)
+cmake_dependent_option(HPDLP_BUILD_TESTS "Build the H-PDLP test suite" OFF
+                       "HPDLP_BUILD_STATIC_LIB" OFF)
 
 # -----------------------------------------------------------------------------
 # FIND DEPENDENCIES
@@ -109,7 +109,7 @@ else()
   endif()
 endif()
 
-if(HOPDLP_BUILD_PYTHON)
+if(HPDLP_BUILD_PYTHON)
   # Dependencies required only for Python bindings
   set(PYBIND11_FINDPYTHON ON)
   find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
@@ -129,7 +129,7 @@ FetchContent_MakeAvailable(pslp)
 # SOURCE DISCOVERY & TARGET DEFINITION
 # -----------------------------------------------------------------------------
 set(CORE_SOURCES
-    src/hopdlp.c
+    src/hpdlp.c
     src/parameters.c
     src/presolver.c
     src/utils/matrix_formats.c
@@ -165,72 +165,72 @@ set(CORE_LINK_LIBS PUBLIC
 
 # Compile the CUDA-heavy implementation once and reuse it in both library
 # variants. Dependencies remain attached to the final public targets below.
-add_library(hopdlp_objects OBJECT ${CORE_SOURCES})
+add_library(hpdlp_objects OBJECT ${CORE_SOURCES})
 target_include_directories(
-  hopdlp_objects
+  hpdlp_objects
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal ${pslp_SOURCE_DIR}/PSLP)
-target_compile_definitions(hopdlp_objects PRIVATE PSLP_VERSION=\"${PSLP_VERSION_TAG}\")
-target_link_libraries(hopdlp_objects PRIVATE CUDA::cudart CUDA::cublas
+target_compile_definitions(hpdlp_objects PRIVATE PSLP_VERSION=\"${PSLP_VERSION_TAG}\")
+target_link_libraries(hpdlp_objects PRIVATE CUDA::cudart CUDA::cublas
                                                  CUDA::cusparse CUDA::curand
                                                  ZLIB::ZLIB PSLP)
 set_target_properties(
-  hopdlp_objects
+  hpdlp_objects
   PROPERTIES POSITION_INDEPENDENT_CODE ON CUDA_SEPARABLE_COMPILATION ON)
 
 # -----------------------------------------------------------------------------
-# 1. Core STATIC Library (hopdlp_core)
+# 1. Core STATIC Library (hpdlp_core)
 # -----------------------------------------------------------------------------
-if(HOPDLP_BUILD_STATIC_LIB)
-  add_library(hopdlp_core STATIC $<TARGET_OBJECTS:hopdlp_objects>)
-  target_include_directories(hopdlp_core ${CORE_INCLUDE_DIRS})
-  target_link_libraries(hopdlp_core ${CORE_LINK_LIBS})
+if(HPDLP_BUILD_STATIC_LIB)
+  add_library(hpdlp_core STATIC $<TARGET_OBJECTS:hpdlp_objects>)
+  target_include_directories(hpdlp_core ${CORE_INCLUDE_DIRS})
+  target_link_libraries(hpdlp_core ${CORE_LINK_LIBS})
 
   set_target_properties(
-    hopdlp_core
+    hpdlp_core
     PROPERTIES POSITION_INDEPENDENT_CODE ON
                CUDA_SEPARABLE_COMPILATION ON
                CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 endif()
 
 # -----------------------------------------------------------------------------
-# 2. Shared Library (libhopdlp.so)
+# 2. Shared Library (libhpdlp.so)
 # -----------------------------------------------------------------------------
-if(HOPDLP_BUILD_SHARED_LIB)
-  add_library(hopdlp_shared SHARED $<TARGET_OBJECTS:hopdlp_objects>)
-  target_include_directories(hopdlp_shared ${CORE_INCLUDE_DIRS})
-  target_link_libraries(hopdlp_shared ${CORE_LINK_LIBS})
+if(HPDLP_BUILD_SHARED_LIB)
+  add_library(hpdlp_shared SHARED $<TARGET_OBJECTS:hpdlp_objects>)
+  target_include_directories(hpdlp_shared ${CORE_INCLUDE_DIRS})
+  target_link_libraries(hpdlp_shared ${CORE_LINK_LIBS})
 
   # Shared library must resolve device symbols as it is a final link point
   set_target_properties(
-    hopdlp_shared
-    PROPERTIES OUTPUT_NAME "hopdlp"
+    hpdlp_shared
+    PROPERTIES OUTPUT_NAME "hpdlp"
                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
                CUDA_SEPARABLE_COMPILATION ON
                CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 endif()
 
 # -----------------------------------------------------------------------------
-# 3. CLI Executable (hopdlp)
+# 3. CLI Executable (hpdlp)
 # -----------------------------------------------------------------------------
-if(HOPDLP_BUILD_CLI)
-  if(NOT TARGET hopdlp_core)
+if(HPDLP_BUILD_CLI)
+  if(NOT TARGET hpdlp_core)
     message(FATAL_ERROR
-            "HOPDLP_BUILD_CLI=ON requires HOPDLP_BUILD_STATIC_LIB=ON.")
+            "HPDLP_BUILD_CLI=ON requires HPDLP_BUILD_STATIC_LIB=ON.")
   endif()
 
-  add_executable(hopdlp_cli src/cli.c)
+  add_executable(hpdlp_cli src/cli.c)
 
-  target_include_directories(hopdlp_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
+  target_include_directories(hpdlp_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
                                                  ${CMAKE_CURRENT_SOURCE_DIR}/internal)
 
   # Link CLI to the static core library
-  target_link_libraries(hopdlp_cli PRIVATE hopdlp_core)
+  target_link_libraries(hpdlp_cli PRIVATE hpdlp_core)
 
   # CLI is a final executable, it must resolve device symbols
   set_target_properties(
-    hopdlp_cli
-    PROPERTIES OUTPUT_NAME "hopdlp"
+    hpdlp_cli
+    PROPERTIES OUTPUT_NAME "hpdlp"
                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
                CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 endif()
@@ -238,10 +238,10 @@ endif()
 # -----------------------------------------------------------------------------
 # 4. Tests (CTest Integration)
 # -----------------------------------------------------------------------------
-if(HOPDLP_BUILD_TESTS)
-  if(NOT TARGET hopdlp_core)
+if(HPDLP_BUILD_TESTS)
+  if(NOT TARGET hpdlp_core)
     message(FATAL_ERROR
-            "HOPDLP_BUILD_TESTS=ON requires HOPDLP_BUILD_STATIC_LIB=ON.")
+            "HPDLP_BUILD_TESTS=ON requires HPDLP_BUILD_STATIC_LIB=ON.")
   endif()
 
   enable_testing()
@@ -251,10 +251,10 @@ endif()
 # -----------------------------------------------------------------------------
 # 5. Python Bindings (Conditional)
 # -----------------------------------------------------------------------------
-if(HOPDLP_BUILD_PYTHON)
-  if(NOT TARGET hopdlp_core)
+if(HPDLP_BUILD_PYTHON)
+  if(NOT TARGET hpdlp_core)
     message(FATAL_ERROR
-            "HOPDLP_BUILD_PYTHON=ON requires HOPDLP_BUILD_STATIC_LIB=ON.")
+            "HPDLP_BUILD_PYTHON=ON requires HPDLP_BUILD_STATIC_LIB=ON.")
   endif()
 
   add_subdirectory(python_bindings)
@@ -264,22 +264,22 @@ endif()
 # 6. Install Targets
 # -----------------------------------------------------------------------------
 
-if(HOPDLP_BUILD_PYTHON)
+if(HPDLP_BUILD_PYTHON)
   install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")
 else()
-  if(TARGET hopdlp_core)
-    install(TARGETS hopdlp_core ARCHIVE DESTINATION lib)
+  if(TARGET hpdlp_core)
+    install(TARGETS hpdlp_core ARCHIVE DESTINATION lib)
   endif()
 
-  if(TARGET hopdlp_shared)
+  if(TARGET hpdlp_shared)
     install(
-      TARGETS hopdlp_shared
+      TARGETS hpdlp_shared
       LIBRARY DESTINATION lib
       RUNTIME DESTINATION bin) # 'bin' for DLLs on Windows, 'lib' for .so on Linux
   endif()
 
-  if(TARGET hopdlp_cli)
-    install(TARGETS hopdlp_cli RUNTIME DESTINATION bin)
+  if(TARGET hpdlp_cli)
+    install(TARGETS hpdlp_cli RUNTIME DESTINATION bin)
   endif()
 
   install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")

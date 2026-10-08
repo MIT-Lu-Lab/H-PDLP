@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -26,7 +26,7 @@ static int parameter_error(char *error, size_t error_size,
     return -1;
 }
 
-int hopdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size_t error_size)
+int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size_t error_size)
 {
     if (error && error_size)
         error[0] = '\0';

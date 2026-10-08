@@ -12,7 +12,7 @@ def core_calls(monkeypatch):
         calls.append((args, kwargs))
         return {}
 
-    monkeypatch.setattr("hopdlp.model.solve_once", capture)
+    monkeypatch.setattr("hpdlp.model.solve_once", capture)
     return calls
 
 

@@ -1,4 +1,4 @@
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "test_checks.h"
 #include <math.h>
 #include <stdio.h>
@@ -27,11 +27,11 @@ static int check_active_set_parameters(void)
 static int expect_rejected(lp_problem_t *problem, pdhg_parameters_t *params,
                            const char *field)
 {
-    hopdlp_result_t *result = solve_lp_problem(problem, params);
+    hpdlp_result_t *result = solve_lp_problem(problem, params);
     if (result)
     {
         fprintf(stderr, "invalid %s accepted (presolve=%d)\n", field, params->presolve);
-        hopdlp_result_free(result);
+        hpdlp_result_free(result);
         return 1;
     }
     return 0;
@@ -104,7 +104,7 @@ static int check_parameter_validation(void)
     set_default_parameters(&params);
     params.verbose = false;
     char error[256];
-    failures += hopdlp_validate_parameters(&params, error, sizeof(error)) != 0;
+    failures += hpdlp_validate_parameters(&params, error, sizeof(error)) != 0;
     lp_problem_free(problem);
     printf("test_invalid_parameters: %d failure(s)\n", failures);
     return failures ? 1 : 0;

@@ -10,10 +10,10 @@ import pytest
 import scipy.sparse as sp
 
 
-import hopdlp
+import hpdlp
 
 
-from hopdlp import Model, PDLP
+from hpdlp import Model, PDLP
 
 
 MPS_MIN = """NAME          TESTLP
@@ -101,23 +101,23 @@ def _check_min_model_data(model):
 
 
 def test_read_builds_model(mps_min_file):
-    model = hopdlp.read(str(mps_min_file))
+    model = hpdlp.read(str(mps_min_file))
     _check_min_model_data(model)
     assert model.ModelSense == PDLP.MINIMIZE
 
 
 def test_read_accepts_pathlike(mps_min_file):
-    model = hopdlp.read(mps_min_file)
+    model = hpdlp.read(mps_min_file)
     _check_min_model_data(model)
 
 
 def test_read_gzip(mps_gz_file):
-    model = hopdlp.read(str(mps_gz_file))
+    model = hpdlp.read(str(mps_gz_file))
     _check_min_model_data(model)
 
 
 def test_read_objsense_maximize(mps_max_file):
-    model = hopdlp.read(str(mps_max_file))
+    model = hpdlp.read(str(mps_max_file))
     _check_min_model_data(model)
     assert model.ModelSense == PDLP.MAXIMIZE
 
@@ -125,7 +125,7 @@ def test_read_objsense_maximize(mps_max_file):
 def test_read_sections_without_set_name(tmp_path):
     path = tmp_path / 'nameless.mps'
     path.write_text(MPS_NAMELESS)
-    model = hopdlp.read(str(path))
+    model = hpdlp.read(str(path))
     assert model.num_vars == 2
     assert model.num_constrs == 3
     assert np.allclose(model.c, [1.0, 1.0])
@@ -138,7 +138,7 @@ def test_read_sections_without_set_name(tmp_path):
 
 def test_read_missing_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
-        hopdlp.read(str(tmp_path / 'no_such_file.mps'))
+        hpdlp.read(str(tmp_path / 'no_such_file.mps'))
 
 
 MPS_BOUNDS = """NAME          BOUNDS
@@ -176,7 +176,7 @@ ENDATA
 def _read_text(tmp_path, name, text):
     path = tmp_path / name
     path.write_text(text)
-    return hopdlp.read(path)
+    return hpdlp.read(path)
 
 
 def test_read_bounds_conventions(tmp_path):
@@ -259,7 +259,7 @@ def test_invalid_objective_selection(tmp_path, name):
 def test_read_then_solve(mps_min_file, sense, expected):
     from checks import assert_optimal
 
-    model = hopdlp.read(mps_min_file)
+    model = hpdlp.read(mps_min_file)
     model.ModelSense = sense
     model.setParams(OutputFlag=False, Presolve=False, OptimalityTol=1e-7, FeasibilityTol=1e-7)
     model.optimize()

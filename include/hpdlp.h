@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "hopdlp_types.h"
+#include "hpdlp_types.h"
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -37,7 +37,7 @@ extern "C"
 
     bool set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
 
-    hopdlp_result_t *solve_lp_problem(
+    hpdlp_result_t *solve_lp_problem(
         const lp_problem_t *prob,
         const pdhg_parameters_t *params);
 
@@ -45,10 +45,10 @@ extern "C"
 
     /* Returns 0 for valid parameters, -1 otherwise. No GPU work is performed.
        When provided, error receives a NUL-terminated diagnostic. */
-    int hopdlp_validate_parameters(const pdhg_parameters_t *params,
+    int hpdlp_validate_parameters(const pdhg_parameters_t *params,
                                    char *error, size_t error_size);
 
-    void hopdlp_result_free(hopdlp_result_t *results);
+    void hpdlp_result_free(hpdlp_result_t *results);
 
     void lp_problem_free(lp_problem_t *prob);
 

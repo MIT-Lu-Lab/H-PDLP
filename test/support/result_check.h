@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include <math.h>
 #include <stdlib.h>
 
@@ -31,7 +31,7 @@ static double test_bound_support(double multiplier, double lower, double upper)
 
 static test_solution_metrics_t test_evaluate_solution(
     const lp_problem_t *problem, const pdhg_parameters_t *params,
-    const hopdlp_result_t *result)
+    const hpdlp_result_t *result)
 {
     const int n = problem->num_variables;
     const int m = problem->num_constraints;

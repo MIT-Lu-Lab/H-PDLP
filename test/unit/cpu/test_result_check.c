@@ -20,13 +20,13 @@ int main(void)
     problem.constraint_matrix_row_pointers = pointers;
     problem.constraint_matrix_col_indices = indices;
     problem.constraint_matrix_values = values;
-    hopdlp_result_t result = {0};
+    hpdlp_result_t result = {0};
     result.primal_solution = x;
     result.dual_solution = y;
     result.reduced_cost = z;
     result.primal_objective_value = 123;
     result.termination_reason = TERMINATION_REASON_OPTIMAL;
-    hopdlp_result_t snapshot = result;
+    hpdlp_result_t snapshot = result;
     pdhg_parameters_t params;
     set_default_parameters(&params);
     for (int maximize = 0; maximize < 2; ++maximize)

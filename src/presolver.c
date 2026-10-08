@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "presolver.h"
 #include "PSLP_sol.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "utils.h"
 #include <float.h>
 #include <math.h>
@@ -67,7 +67,7 @@ static lp_problem_t create_reduced_problem_view(
     return view;
 }
 
-hopdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose)
+hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose)
 {
     if (working_problem->primal_start || working_problem->dual_start)
     {
@@ -80,13 +80,13 @@ hopdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool 
     }
     clock_t start_time = clock();
 
-    hopdlp_presolve_info_t *info = (hopdlp_presolve_info_t *)safe_calloc(1, sizeof(hopdlp_presolve_info_t));
+    hpdlp_presolve_info_t *info = (hpdlp_presolve_info_t *)safe_calloc(1, sizeof(hpdlp_presolve_info_t));
 
     info->settings = default_settings();
     if (!info->settings)
     {
         fprintf(stderr, "PSLP: failed to create settings.\n");
-        hopdlp_presolve_info_free(info);
+        hpdlp_presolve_info_free(info);
         return NULL;
     }
     info->settings->verbose = false;
@@ -108,7 +108,7 @@ hopdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool 
     if (!info->presolver)
     {
         fprintf(stderr, "PSLP: failed to create presolver.\n");
-        hopdlp_presolve_info_free(info);
+        hpdlp_presolve_info_free(info);
         return NULL;
     }
 
@@ -140,8 +140,8 @@ hopdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool 
     return info;
 }
 
-void copy_presolve_stats(const hopdlp_presolve_info_t *info,
-                         hopdlp_result_t *result)
+void copy_presolve_stats(const hpdlp_presolve_info_t *info,
+                         hpdlp_result_t *result)
 {
     result->num_reduced_variables = info->presolver->reduced_prob->n;
     result->num_reduced_constraints = info->presolver->reduced_prob->m;
@@ -150,9 +150,9 @@ void copy_presolve_stats(const hopdlp_presolve_info_t *info,
     result->presolve_time = info->presolve_time;
 }
 
-hopdlp_result_t *create_result_from_presolve(const hopdlp_presolve_info_t *info, const lp_problem_t *working_problem)
+hpdlp_result_t *create_result_from_presolve(const hpdlp_presolve_info_t *info, const lp_problem_t *working_problem)
 {
-    hopdlp_result_t *result = (hopdlp_result_t *)safe_calloc(1, sizeof(hopdlp_result_t));
+    hpdlp_result_t *result = (hpdlp_result_t *)safe_calloc(1, sizeof(hpdlp_result_t));
     result->num_variables = working_problem->num_variables;
     result->num_constraints = working_problem->num_constraints;
     result->num_nonzeros = working_problem->constraint_matrix_num_nonzeros;
@@ -187,8 +187,8 @@ hopdlp_result_t *create_result_from_presolve(const hopdlp_presolve_info_t *info,
     return result;
 }
 
-void pslp_postsolve(const hopdlp_presolve_info_t *info,
-                    hopdlp_result_t *result,
+void pslp_postsolve(const hpdlp_presolve_info_t *info,
+                    hpdlp_result_t *result,
                     const lp_problem_t *working_problem)
 {
     postsolve(info->presolver,
@@ -249,8 +249,8 @@ static double compute_box_support(const double *direction,
     return support;
 }
 
-void pslp_postsolve_primal_infeasibility_ray(const hopdlp_presolve_info_t *info,
-                                             hopdlp_result_t *result,
+void pslp_postsolve_primal_infeasibility_ray(const hpdlp_presolve_info_t *info,
+                                             hpdlp_result_t *result,
                                              const lp_problem_t *working_problem)
 {
     int num_constraints = working_problem->num_constraints;
@@ -315,8 +315,8 @@ void pslp_postsolve_primal_infeasibility_ray(const hopdlp_presolve_info_t *info,
     result->reduced_cost = reduced_cost_ray;
 }
 
-void pslp_postsolve_dual_infeasibility_ray(const hopdlp_presolve_info_t *info,
-                                           hopdlp_result_t *result,
+void pslp_postsolve_dual_infeasibility_ray(const hpdlp_presolve_info_t *info,
+                                           hpdlp_result_t *result,
                                            const lp_problem_t *working_problem)
 {
     int num_variables = working_problem->num_variables;
@@ -343,7 +343,7 @@ void pslp_postsolve_dual_infeasibility_ray(const hopdlp_presolve_info_t *info,
     result->primal_solution = primal_ray;
 }
 
-void hopdlp_presolve_info_free(hopdlp_presolve_info_t *info)
+void hpdlp_presolve_info_free(hpdlp_presolve_info_t *info)
 {
     if (!info)
         return;

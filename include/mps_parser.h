@@ -16,7 +16,7 @@ limitations under the License.
 
 #pragma once
 
-#include "hopdlp_types.h"
+#include "hpdlp_types.h"
 
 #ifdef __cplusplus
 extern "C"

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from hopdlp import PDLP
+from hpdlp import PDLP
 
 
 def _bounds(lower, upper, size):

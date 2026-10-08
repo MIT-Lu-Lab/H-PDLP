@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from checks import assert_optimal
-from hopdlp import PDLP
+from hpdlp import PDLP
 
 
 def optimal_result():
@@ -20,7 +20,7 @@ def test_math_check_detects_bad_results_without_repair(model, monkeypatch, defec
         info["Pi"][:] = 0
     elif defect == "objective":
         info["PrimalObj"] = 4
-    monkeypatch.setattr("hopdlp.model.solve_once", lambda *args, **kwargs: info)
+    monkeypatch.setattr("hpdlp.model.solve_once", lambda *args, **kwargs: info)
     model.optimize()
     original = {field: getattr(model, field).copy() for field in ("X", "Pi", "RC")}
     if defect is None:

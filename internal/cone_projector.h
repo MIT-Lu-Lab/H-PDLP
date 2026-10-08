@@ -17,7 +17,7 @@ limitations under the License.
 #pragma once
 
 #include "cuda_macros.h"
-#include "hopdlp_types.h"
+#include "hpdlp_types.h"
 #include <cuda_runtime.h>
 #include <stdbool.h>
 

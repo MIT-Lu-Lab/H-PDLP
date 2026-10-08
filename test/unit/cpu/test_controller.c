@@ -1,5 +1,5 @@
 #include "active_set_boost.h"
-#include "hopdlp.h"
+#include "hpdlp.h"
 #include "pid_controller.h"
 #include "termination_checker.h"
 #include "test_checks.h"

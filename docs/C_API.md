@@ -1,6 +1,6 @@
 # C API Guide
 
-The public API is defined in [`hopdlp.h`](../include/hopdlp.h), with matrix, parameter, and result types in [`hopdlp_types.h`](../include/hopdlp_types.h).
+The public API is defined in [`hpdlp.h`](../include/hpdlp.h), with matrix, parameter, and result types in [`hpdlp_types.h`](../include/hpdlp_types.h).
 
 ## Example
 
@@ -10,7 +10,7 @@ Save the following as `example.c` in the repository root:
 
 ```c
 #include <stdio.h>
-#include "hopdlp.h"
+#include "hpdlp.h"
 
 int main(void)
 {
@@ -34,7 +34,7 @@ int main(void)
     params.termination_criteria.eps_optimal_relative = 1e-6;
     params.termination_criteria.eps_feasible_relative = 1e-6;
 
-    hopdlp_result_t *result = solve_lp_problem(prob, &params);
+    hpdlp_result_t *result = solve_lp_problem(prob, &params);
     if (!result)
     {
         lp_problem_free(prob);
@@ -55,16 +55,16 @@ int main(void)
         exit_code = 1;
     }
 
-    hopdlp_result_free(result);
+    hpdlp_result_free(result);
     lp_problem_free(prob);
     return exit_code;
 }
 ```
 
-After building HoPDLP with the default shared-library option, compile and run on Linux from the repository root:
+After building H-PDLP with the default shared-library option, compile and run on Linux from the repository root:
 
 ```bash
-cc -std=c99 example.c -Iinclude -Lbuild -lhopdlp -o example
+cc -std=c99 example.c -Iinclude -Lbuild -lhpdlp -o example
 LD_LIBRARY_PATH="$PWD/build${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ./example
 ```
 
@@ -76,9 +76,9 @@ The reported objective should be approximately `1`, with `x` approximately `1` a
 - **Bounds:** A `NULL` lower-bound array means negative infinity; a `NULL` upper-bound array means positive infinity. In particular, omitting variable bounds leaves variables free. Include `<math.h>` and use `-INFINITY` or `INFINITY` for individual unbounded entries.
 - **Objective:** Problems minimize by default. Call `set_objective_sense(prob, OBJECTIVE_SENSE_MAXIMIZE)` for maximization. The last argument to `create_lp_problem` is a pointer to the objective constant, or `NULL` for zero.
 - **Parameters:** Call `set_default_parameters` before changing individual fields. The CLI option `--eps_opt` corresponds to `params.termination_criteria.eps_optimal_relative`; `--eps_feas` corresponds to `eps_feasible_relative`.
-- **Parameter validation:** `hopdlp_validate_parameters(&params, error, sizeof(error))` returns `0` on success and `-1` for invalid parameters, without GPU work. `error` is an optional character buffer for the diagnostic. The solver and Python interface use the same validation rules.
+- **Parameter validation:** `hpdlp_validate_parameters(&params, error, sizeof(error))` returns `0` on success and `-1` for invalid parameters, without GPU work. `error` is an optional character buffer for the diagnostic. The solver and Python interface use the same validation rules.
 - **Warm starts:** Call `set_start_values(prob, primal, dual)` with vectors in original problem coordinates, check its Boolean return value, and set `params.presolve = false` before solving.
-- **Ownership:** Release the result with `hopdlp_result_free` and the problem with `lp_problem_free`.
+- **Ownership:** Release the result with `hpdlp_result_free` and the problem with `lp_problem_free`.
 
 ## Results and Termination Status
 
