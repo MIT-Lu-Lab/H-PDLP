@@ -19,7 +19,6 @@ limitations under the License.
 #include "hpdlp.h"
 #include "spmv_backend.h"
 #include "termination_checker.h"
-#include <math.h>
 #include <stdio.h>
 
 #define SETTING_LABEL_WIDTH 32
@@ -44,6 +43,9 @@ limitations under the License.
             printf("  %-*s : %s\n", SETTING_LABEL_WIDTH, name, (current) ? "on" : "off"); \
         } \
     } while (0)
+
+static void print_iteration_divider(bool diagnose);
+static int get_print_frequency(int iter);
 
 const char *termination_reason_to_string(termination_reason_t reason)
 {
@@ -232,16 +234,6 @@ static const char diagnostic_header[] =
     " |  omega     tau     alpha  "
     " |   |x|      |y|   ";
 
-static void print_iteration_divider(bool diagnose)
-{
-    size_t width = sizeof(iteration_header) - 1;
-    if (diagnose)
-        width += sizeof(diagnostic_header) - 1;
-    for (size_t i = 0; i < width; ++i)
-        putchar('-');
-    putchar('\n');
-}
-
 void print_iteration_header(const pdhg_parameters_t *params)
 {
     if (!params->verbose)
@@ -260,17 +252,14 @@ void print_iteration_header(const pdhg_parameters_t *params)
     print_iteration_divider(params->diagnose);
 }
 
-int get_print_frequency(int iter)
+static void print_iteration_divider(bool diagnose)
 {
-    int print_interval = 10;
-    long long iteration_threshold = 1000;
-
-    while (iter >= iteration_threshold)
-    {
-        print_interval *= 10;
-        iteration_threshold *= 10;
-    }
-    return print_interval;
+    size_t width = sizeof(iteration_header) - 1;
+    if (diagnose)
+        width += sizeof(diagnostic_header) - 1;
+    for (size_t i = 0; i < width; ++i)
+        putchar('-');
+    putchar('\n');
 }
 
 void display_iteration_stats(
@@ -315,6 +304,19 @@ void display_iteration_stats(
         }
         printf("\n");
     }
+}
+
+static int get_print_frequency(int iter)
+{
+    int print_interval = 10;
+    long long iteration_threshold = 1000;
+
+    while (iter >= iteration_threshold)
+    {
+        print_interval *= 10;
+        iteration_threshold *= 10;
+    }
+    return print_interval;
 }
 
 void display_active_set_boost_raise(

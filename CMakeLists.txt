@@ -218,11 +218,6 @@ endif()
 # 3. CLI Executable (hpdlp)
 # -----------------------------------------------------------------------------
 if(HPDLP_BUILD_CLI)
-  if(NOT TARGET hpdlp_core)
-    message(FATAL_ERROR
-            "HPDLP_BUILD_CLI=ON requires HPDLP_BUILD_STATIC_LIB=ON.")
-  endif()
-
   add_executable(hpdlp_cli src/cli.c)
 
   target_include_directories(hpdlp_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -243,11 +238,6 @@ endif()
 # 4. Tests (CTest Integration)
 # -----------------------------------------------------------------------------
 if(HPDLP_BUILD_TESTS)
-  if(NOT TARGET hpdlp_core)
-    message(FATAL_ERROR
-            "HPDLP_BUILD_TESTS=ON requires HPDLP_BUILD_STATIC_LIB=ON.")
-  endif()
-
   enable_testing()
   add_subdirectory(test)
 endif()
@@ -256,11 +246,6 @@ endif()
 # 5. Python Bindings (Conditional)
 # -----------------------------------------------------------------------------
 if(HPDLP_BUILD_PYTHON)
-  if(NOT TARGET hpdlp_core)
-    message(FATAL_ERROR
-            "HPDLP_BUILD_PYTHON=ON requires HPDLP_BUILD_STATIC_LIB=ON.")
-  endif()
-
   add_subdirectory(python_bindings)
 endif()
 

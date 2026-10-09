@@ -1,4 +1,5 @@
 #include "active_set_boost.h"
+#include "cuda_macros.h"
 #include "gpu_support.h"
 #include "hpdlp.h"
 #include "power_iteration.h"

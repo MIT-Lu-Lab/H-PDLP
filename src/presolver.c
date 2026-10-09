@@ -19,7 +19,6 @@ limitations under the License.
 #include "error_handling.h"
 #include "hpdlp.h"
 #include "utils.h"
-#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -127,7 +126,7 @@ hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool v
                 info->presolver->reduced_prob->nnz);
     }
 
-    if (status & INFEASIBLE || status & UNBNDORINFEAS || info->presolver->reduced_prob->n == 0)
+    if (status & INFEASIBLE || info->presolver->reduced_prob->n == 0)
     {
         info->problem_solved_during_presolve = true;
     }

@@ -24,7 +24,6 @@ limitations under the License.
 #include <curand.h>
 #include <cusparse.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <time.h>
 
 typedef struct pdhg_metrics_t pdhg_metrics_t;

@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "hpdlp_types.h"
 #include "internal_types.h"
-#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C"

@@ -49,8 +49,6 @@ extern "C"
         const hpdlp_result_t *result,
         const pdhg_parameters_t *params);
 
-    int get_print_frequency(int iter);
-
 #ifdef __cplusplus
 }
 #endif

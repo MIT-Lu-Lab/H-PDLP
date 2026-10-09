@@ -32,12 +32,8 @@ limitations under the License.
 #include "utils.h"
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
-#include <cusparse.h>
 #include <math.h>
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
 typedef struct {
@@ -830,7 +826,6 @@ static void perform_restart(
         state->con_bytes,
         cudaMemcpyDeviceToDevice,
         state->stream_A));
-    state->metrics_h->current_primal_scale = state->metrics_h->pdhg_primal_scale;
 
     restart_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
         state->hsd_primal_scale_initial_d,
@@ -946,10 +941,6 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
         state->hsd_primal_scale_pdhg_d,
         state->hsd_dual_scale_pdhg_d,
         inv_scale);
-    state->metrics_h->primal_solution_norm *= inv_scale;
-    state->metrics_h->dual_solution_norm   *= inv_scale;
-    state->metrics_h->pdhg_primal_scale    *= inv_scale;
-    state->metrics_h->pdhg_dual_scale      *= inv_scale;
     return inv_scale;
 }
 

@@ -150,7 +150,6 @@ void initialize_solver_state(
     init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
 
     setup_sparse_resources(state);
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_At));
 
     allocate_zeroed_device_buffer(
         (void **)&state->constraint_rescaling_d,

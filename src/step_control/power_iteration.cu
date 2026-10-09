@@ -157,12 +157,6 @@ sv_estimator_result_t sv_estimator_run(
     const sv_estimator_opts_t *opts)
 {
     sv_estimator_result_t result = {};
-    result.status = SV_ESTIMATOR_DEGENERATE;
-
-    if (ctx->num_rows == 0 || ctx->num_columns == 0)
-    {
-        return result;
-    }
 
     bool random_start = !ctx->has_warm_start;
     if (!random_start && opts->row_mask_d)
