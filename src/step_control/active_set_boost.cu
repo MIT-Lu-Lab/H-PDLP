@@ -34,6 +34,19 @@ __global__ void update_binding_constraint_mask_kernel(
     int current_iter,
     int window_start_iter,
     int num_constraints);
+static __device__ __forceinline__ bool is_safely_between_bounds(
+    double value,
+    double lower,
+    double upper,
+    double relative_tol);
+static __device__ __forceinline__ void update_window_mask_entry(
+    bool observed_in_mask,
+    int current_iter,
+    int window_start_iter,
+    int *last_observed_iter,
+    bool *mask,
+    int *entries_added,
+    int *entries_removed);
 __global__ void update_free_variable_mask_kernel(
     const double *__restrict__ variable_primal_projection_multiplier,
     const double *__restrict__ objective_vector,
@@ -50,19 +63,6 @@ __global__ void update_free_variable_mask_kernel(
 static bool has_active_set_revert_budget(
     const pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
-static __device__ __forceinline__ bool is_safely_between_bounds(
-    double value,
-    double lower,
-    double upper,
-    double relative_tol);
-static __device__ __forceinline__ void update_window_mask_entry(
-    bool observed_in_mask,
-    int current_iter,
-    int window_start_iter,
-    int *last_observed_iter,
-    bool *mask,
-    int *entries_added,
-    int *entries_removed);
 static void collect_active_set_mask_changes(pdhg_solver_state_t *state);
 static bool is_raise_possible(
     double target_step_size,
@@ -213,46 +213,6 @@ static bool has_active_set_revert_budget(
 {
     return is_active_set_boost_enabled(params) &&
            state->active_set.revert_count < params->active_set_params.max_reverts;
-}
-
-static __device__ __forceinline__ bool is_safely_between_bounds(
-    double value,
-    double lower,
-    double upper,
-    double relative_tol)
-{
-    const bool below_upper =
-        !isfinite(upper) ||
-        upper - value >
-            relative_tol *
-                fmax(1.0, fmax(fabs(value), fabs(upper)));
-    const bool above_lower =
-        !isfinite(lower) ||
-        value - lower >
-            relative_tol *
-                fmax(1.0, fmax(fabs(value), fabs(lower)));
-    return below_upper && above_lower;
-}
-
-static __device__ __forceinline__ void update_window_mask_entry(
-    bool observed_in_mask,
-    int current_iter,
-    int window_start_iter,
-    int *last_observed_iter,
-    bool *mask,
-    int *entries_added,
-    int *entries_removed)
-{
-    if (observed_in_mask)
-    {
-        *last_observed_iter = current_iter;
-    }
-    const bool retained = *last_observed_iter >= window_start_iter;
-    if (retained != *mask)
-    {
-        *mask = retained;
-        atomicAdd(retained ? entries_added : entries_removed, 1);
-    }
 }
 
 bool should_revert_active_set_boost(
@@ -575,6 +535,46 @@ __global__ void update_binding_constraint_mask_kernel(
         &binding_constraint_mask[i],
         &mask_changes->constraints_added,
         &mask_changes->constraints_removed);
+}
+
+static __device__ __forceinline__ bool is_safely_between_bounds(
+    double value,
+    double lower,
+    double upper,
+    double relative_tol)
+{
+    const bool below_upper =
+        !isfinite(upper) ||
+        upper - value >
+            relative_tol *
+                fmax(1.0, fmax(fabs(value), fabs(upper)));
+    const bool above_lower =
+        !isfinite(lower) ||
+        value - lower >
+            relative_tol *
+                fmax(1.0, fmax(fabs(value), fabs(lower)));
+    return below_upper && above_lower;
+}
+
+static __device__ __forceinline__ void update_window_mask_entry(
+    bool observed_in_mask,
+    int current_iter,
+    int window_start_iter,
+    int *last_observed_iter,
+    bool *mask,
+    int *entries_added,
+    int *entries_removed)
+{
+    if (observed_in_mask)
+    {
+        *last_observed_iter = current_iter;
+    }
+    const bool retained = *last_observed_iter >= window_start_iter;
+    if (retained != *mask)
+    {
+        *mask = retained;
+        atomicAdd(retained ? entries_added : entries_removed, 1);
+    }
 }
 
 __global__ void update_free_variable_mask_kernel(

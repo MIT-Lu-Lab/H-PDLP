@@ -101,8 +101,6 @@ static working_problem_t create_working_problem(
 static void restore_original_objective_sense(
     hpdlp_result_t *result,
     objective_sense_t objective_sense);
-static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
@@ -113,6 +111,8 @@ static void compute_step_sizes(
     double *step_size_primal,
     double *step_size_dual,
     double *step_size_homogeneous);
+static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
+static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void run_hsd_iteration_step(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -445,34 +445,6 @@ static void restore_original_objective_sense(
     }
 }
 
-static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
-{
-    CUDA_CHECK(cudaMemcpyAsync(state->control.inner_count_d,
-                               &state->control.inner_count,
-                               sizeof(int),
-                               cudaMemcpyHostToDevice,
-                               state->stream_A));
-}
-
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
-{
-    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_primal_d,
-                               &state->control.step_size_primal,
-                               sizeof(double),
-                               cudaMemcpyHostToDevice,
-                               state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_dual_d,
-                               &state->control.step_size_dual,
-                               sizeof(double),
-                               cudaMemcpyHostToDevice,
-                               state->stream_A));
-    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_homogeneous_d,
-                               &state->control.step_size_homogeneous,
-                               sizeof(double),
-                               cudaMemcpyHostToDevice,
-                               state->stream_A));
-}
-
 static void initialize_step_size_and_primal_weight(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
@@ -519,6 +491,34 @@ static void compute_step_sizes(
     *step_size_primal = step_size / primal_weight;
     *step_size_dual = primal_weight * step_size;
     *step_size_homogeneous = 0.99 * step_size_params->step_size_factor / *step_size_dual;
+}
+
+static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
+{
+    CUDA_CHECK(cudaMemcpyAsync(state->control.inner_count_d,
+                               &state->control.inner_count,
+                               sizeof(int),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
+}
+
+static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
+{
+    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_primal_d,
+                               &state->control.step_size_primal,
+                               sizeof(double),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_dual_d,
+                               &state->control.step_size_dual,
+                               sizeof(double),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
+    CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_homogeneous_d,
+                               &state->control.step_size_homogeneous,
+                               sizeof(double),
+                               cudaMemcpyHostToDevice,
+                               state->stream_A));
 }
 
 static void run_hsd_iteration_step(
@@ -893,7 +893,6 @@ static void update_primal_weight_via_restart_pid(
                       hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG],
                       state->metrics_h->normalized_homogeneous_ratio);
 }
-
 
 static double apply_gauge_control(pdhg_solver_state_t *state)
 {

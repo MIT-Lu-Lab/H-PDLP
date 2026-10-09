@@ -19,12 +19,7 @@ limitations under the License.
 #include <stdio.h>
 
 static int parameter_error(char *error, size_t error_size,
-                           const char *requirement, double value)
-{
-    if (error && error_size)
-        snprintf(error, error_size, "%s (got %g)", requirement, value);
-    return -1;
-}
+                           const char *requirement, double value);
 
 int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size_t error_size)
 {
@@ -216,4 +211,12 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
                            params->active_set_params.max_reverts);
     }
     return 0;
+}
+
+static int parameter_error(char *error, size_t error_size,
+                           const char *requirement, double value)
+{
+    if (error && error_size)
+        snprintf(error, error_size, "%s (got %g)", requirement, value);
+    return -1;
 }

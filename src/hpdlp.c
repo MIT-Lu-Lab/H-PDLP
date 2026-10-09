@@ -31,14 +31,14 @@ static lp_problem_t *build_lp_problem(
     const double *con_lb, const double *con_ub,
     const double *var_lb, const double *var_ub,
     const double *objective_constant);
-static bool validate_bounds(const double *lower, const double *upper,
-                            int n, const char *bound_type);
-static bool validate_start_vector(const double *values, int n,
-                                  const char *vector_type);
 static void fill_or_copy(
     double **dst, int n,
     const double *src,
     double fill_val);
+static bool validate_bounds(const double *lower, const double *upper,
+                            int n, const char *bound_type);
+static bool validate_start_vector(const double *values, int n,
+                                  const char *vector_type);
 static void copy_start_vector(double **dst, const double *src, int n);
 
 lp_problem_t *create_lp_problem(
@@ -109,6 +109,29 @@ static lp_problem_t *build_lp_problem(
     return prob;
 }
 
+static void fill_or_copy(
+    double **dst, int n,
+    const double *src,
+    double fill_val)
+{
+    size_t bytes = (size_t)n * sizeof(double);
+    *dst = (double *)safe_malloc(bytes);
+    if (src)
+    {
+        memcpy(*dst, src, bytes);
+        return;
+    }
+
+    if (fill_val == 0.0)
+    {
+        memset(*dst, 0, bytes);
+        return;
+    }
+
+    for (int i = 0; i < n; ++i)
+        (*dst)[i] = fill_val;
+}
+
 bool validate_lp_problem_data(const lp_problem_t *prob)
 {
     if (!prob || prob->num_variables < 0 || prob->num_constraints < 0 ||
@@ -164,29 +187,6 @@ static bool validate_bounds(const double *lower, const double *upper,
         }
     }
     return true;
-}
-
-static void fill_or_copy(
-    double **dst, int n,
-    const double *src,
-    double fill_val)
-{
-    size_t bytes = (size_t)n * sizeof(double);
-    *dst = (double *)safe_malloc(bytes);
-    if (src)
-    {
-        memcpy(*dst, src, bytes);
-        return;
-    }
-
-    if (fill_val == 0.0)
-    {
-        memset(*dst, 0, bytes);
-        return;
-    }
-
-    for (int i = 0; i < n; ++i)
-        (*dst)[i] = fill_val;
 }
 
 void hpdlp_result_free(hpdlp_result_t *results)

@@ -29,6 +29,14 @@ limitations under the License.
 #define PSLP_VERSION "unknown"
 #endif
 
+static lp_problem_t create_reduced_problem_view(
+    const PresolvedProblem *reduced_prob,
+    const lp_problem_t *working_problem);
+static double compute_box_support(const double *direction,
+                                  const double *lower_bound,
+                                  const double *upper_bound,
+                                  int n);
+
 const char *get_presolve_status_str(int status)
 {
     if ((status & UNBNDORINFEAS) == UNBNDORINFEAS)
@@ -40,31 +48,6 @@ const char *get_presolve_status_str(int status)
     if (status == UNCHANGED)
         return "UNCHANGED";
     return "UNKNOWN_STATUS";
-}
-
-static lp_problem_t create_reduced_problem_view(
-    const PresolvedProblem *reduced_prob,
-    const lp_problem_t *working_problem)
-{
-    lp_problem_t view = {0};
-
-    view.objective_constant = working_problem->objective_constant + reduced_prob->obj_offset;
-    view.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
-    view.objective_vector = reduced_prob->c;
-    view.constraint_lower_bound = reduced_prob->lhs;
-    view.constraint_upper_bound = reduced_prob->rhs;
-    view.variable_lower_bound = reduced_prob->lbs;
-    view.variable_upper_bound = reduced_prob->ubs;
-
-    view.constraint_matrix_num_nonzeros = reduced_prob->nnz;
-    view.constraint_matrix_row_pointers = reduced_prob->Ap;
-    view.constraint_matrix_col_indices = reduced_prob->Ai;
-    view.constraint_matrix_values = reduced_prob->Ax;
-
-    view.num_variables = reduced_prob->n;
-    view.num_constraints = reduced_prob->m;
-
-    return view;
 }
 
 hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose)
@@ -137,6 +120,31 @@ hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool v
             create_reduced_problem_view(info->presolver->reduced_prob, working_problem);
     }
     return info;
+}
+
+static lp_problem_t create_reduced_problem_view(
+    const PresolvedProblem *reduced_prob,
+    const lp_problem_t *working_problem)
+{
+    lp_problem_t view = {0};
+
+    view.objective_constant = working_problem->objective_constant + reduced_prob->obj_offset;
+    view.objective_sense = OBJECTIVE_SENSE_MINIMIZE;
+    view.objective_vector = reduced_prob->c;
+    view.constraint_lower_bound = reduced_prob->lhs;
+    view.constraint_upper_bound = reduced_prob->rhs;
+    view.variable_lower_bound = reduced_prob->lbs;
+    view.variable_upper_bound = reduced_prob->ubs;
+
+    view.constraint_matrix_num_nonzeros = reduced_prob->nnz;
+    view.constraint_matrix_row_pointers = reduced_prob->Ap;
+    view.constraint_matrix_col_indices = reduced_prob->Ai;
+    view.constraint_matrix_values = reduced_prob->Ax;
+
+    view.num_variables = reduced_prob->n;
+    view.num_constraints = reduced_prob->m;
+
+    return view;
 }
 
 void copy_presolve_stats(const hpdlp_presolve_info_t *info,
@@ -228,26 +236,6 @@ void pslp_postsolve(const hpdlp_presolve_info_t *info,
     return;
 }
 
-static double compute_box_support(const double *direction,
-                                  const double *lower_bound,
-                                  const double *upper_bound,
-                                  int n)
-{
-    double support = 0.0;
-    for (int i = 0; i < n; i++)
-    {
-        if (direction[i] > 0.0 && isfinite(lower_bound[i]))
-        {
-            support += lower_bound[i] * direction[i];
-        }
-        else if (direction[i] < 0.0 && isfinite(upper_bound[i]))
-        {
-            support += upper_bound[i] * direction[i];
-        }
-    }
-    return support;
-}
-
 void pslp_postsolve_primal_infeasibility_ray(const hpdlp_presolve_info_t *info,
                                              hpdlp_result_t *result,
                                              const lp_problem_t *working_problem)
@@ -312,6 +300,26 @@ void pslp_postsolve_primal_infeasibility_ray(const hpdlp_presolve_info_t *info,
     free(result->reduced_cost);
     result->dual_solution = dual_ray;
     result->reduced_cost = reduced_cost_ray;
+}
+
+static double compute_box_support(const double *direction,
+                                  const double *lower_bound,
+                                  const double *upper_bound,
+                                  int n)
+{
+    double support = 0.0;
+    for (int i = 0; i < n; i++)
+    {
+        if (direction[i] > 0.0 && isfinite(lower_bound[i]))
+        {
+            support += lower_bound[i] * direction[i];
+        }
+        else if (direction[i] < 0.0 && isfinite(upper_bound[i]))
+        {
+            support += upper_bound[i] * direction[i];
+        }
+    }
+    return support;
 }
 
 void pslp_postsolve_dual_infeasibility_ray(const hpdlp_presolve_info_t *info,

@@ -28,193 +28,19 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
-static char *get_output_path(const char *output_dir, const char *instance_name,
-                             const char *suffix)
-{
-    size_t path_len =
-        strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
-    char *full_path = safe_malloc(path_len * sizeof(char));
-    snprintf(full_path, path_len, "%s/%s%s", output_dir, instance_name, suffix);
-    return full_path;
-}
-
-static void strip_suffix(char *name, const char *suffix)
-{
-    size_t name_len = strlen(name);
-    size_t suffix_len = strlen(suffix);
-    if (name_len > suffix_len &&
-        strcmp(name + name_len - suffix_len, suffix) == 0)
-        name[name_len - suffix_len] = '\0';
-}
-
-static char *extract_instance_name(const char *filename)
-{
-    char *filename_copy = strdup(filename);
-    if (filename_copy == NULL)
-    {
-        fprintf(stderr, "ERROR: out of memory\n");
-        return NULL;
-    }
-
-    char *base = basename(filename_copy);
-    strip_suffix(base, ".gz");
-    strip_suffix(base, ".mps");
-
-    char *instance_name = strdup(base);
-    free(filename_copy);
-    return instance_name;
-}
-
-static FILE *open_output_file(const char *output_dir, const char *instance_name,
-                              const char *suffix)
-{
-    char *file_path = get_output_path(output_dir, instance_name, suffix);
-
-    FILE *outfile = fopen(file_path, "w");
-    if (outfile == NULL)
-        fprintf(stderr, "ERROR: could not open '%s' for writing: %s\n",
-                file_path, strerror(errno));
-
-    free(file_path);
-    return outfile;
-}
-
-static bool parse_int_arg(const char *option_name, const char *value, int *out)
-{
-    char *end = NULL;
-    errno = 0;
-    long parsed = strtol(value, &end, 10);
-    if (errno != 0 || end == value || *end != '\0' ||
-        parsed < INT_MIN || parsed > INT_MAX)
-    {
-        fprintf(stderr, "ERROR: invalid integer for %s: '%s'\n", option_name, value);
-        return false;
-    }
-
-    *out = (int)parsed;
-    return true;
-}
-
-static bool parse_double_arg(const char *option_name, const char *value, double *out)
-{
-    char *end = NULL;
-    errno = 0;
-    double parsed = strtod(value, &end);
-    if (errno != 0 || end == value || *end != '\0')
-    {
-        fprintf(stderr, "ERROR: invalid floating-point value for %s: '%s'\n",
-                option_name, value);
-        return false;
-    }
-
-    *out = parsed;
-    return true;
-}
-
-static bool save_solution(const double *data, int size, const char *output_dir,
-                          const char *instance_name, const char *suffix)
-{
-    if (data == NULL)
-        return true;
-
-    FILE *outfile = open_output_file(output_dir, instance_name, suffix);
-    if (outfile == NULL)
-        return false;
-
-    for (int i = 0; i < size; ++i)
-        fprintf(outfile, "%.10g\n", data[i]);
-
-    return fclose(outfile) == 0;
-}
-
+static void print_usage(const char *prog_name);
+static bool parse_int_arg(const char *option_name, const char *value, int *out);
+static bool parse_double_arg(const char *option_name, const char *value, double *out);
+static char *extract_instance_name(const char *filename);
+static void strip_suffix(char *name, const char *suffix);
 static bool save_solver_summary(const hpdlp_result_t *result, const char *output_dir,
-                                const char *instance_name)
-{
-    FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt");
-    if (outfile == NULL)
-        return false;
-
-    fprintf(outfile, "Termination Reason: %s\n",
-            termination_reason_to_string(result->termination_reason));
-    if (result->presolve_time > 0.0)
-    {
-        fprintf(outfile, "Presolve Status: %s\n", get_presolve_status_str(result->presolve_status));
-        fprintf(outfile, "Presolve Time (sec): %e\n", result->presolve_time);
-        fprintf(outfile, "Reduced Rows: %d\n", result->num_reduced_constraints);
-        fprintf(outfile, "Reduced Columns: %d\n", result->num_reduced_variables);
-        fprintf(outfile, "Reduced Nonzeros: %d\n", result->num_reduced_nonzeros);
-    }
-    fprintf(outfile, "Precondition time (sec): %e\n", result->rescaling_time_sec);
-    fprintf(outfile, "Runtime (sec): %e\n", result->cumulative_time_sec);
-    fprintf(outfile, "Iterations Count: %d\n", result->total_count);
-    fprintf(outfile, "Primal Objective Value: %e\n", result->primal_objective_value);
-    fprintf(outfile, "Dual Objective Value: %e\n", result->dual_objective_value);
-    fprintf(outfile, "Relative Primal Residual: %e\n", result->relative_primal_residual);
-    fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
-    fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
-    fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
-    fprintf(outfile, "Restarts: %d\n", result->restart_count);
-    fprintf(outfile, "Rows: %d\n", result->num_constraints);
-    fprintf(outfile, "Columns: %d\n", result->num_variables);
-    fprintf(outfile, "Nonzeros: %d\n", result->num_nonzeros);
-    return fclose(outfile) == 0;
-}
-
-static void print_usage(const char *prog_name)
-{
-    pdhg_parameters_t defaults;
-    set_default_parameters(&defaults);
-
-    fprintf(stderr, "Usage: %s [OPTIONS] <mps_file> <output_dir>\n\n", prog_name);
-
-    fprintf(stderr, "Arguments:\n");
-    fprintf(stderr, "  <mps_file>               Path to the input problem in MPS format (.mps or .mps.gz).\n");
-    fprintf(stderr, "  <output_dir>             Directory where output files will be saved.\n\n");
-
-    fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  -h, --help                            Display this help message.\n");
-    fprintf(stderr, "\n  Preprocessing/scaling:\n");
-    fprintf(stderr, "      --no_presolve                     Disable presolve.\n");
-    fprintf(stderr, "      --l_inf_ruiz_iter <int>           Iterations for L-inf Ruiz rescaling (default: %d).\n",
-            defaults.scaling_params.l_inf_ruiz_iterations);
-    fprintf(stderr, "      --no_pock_chambolle               Disable Pock-Chambolle rescaling.\n");
-    fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: %g).\n",
-            defaults.scaling_params.pock_chambolle_alpha);
-    fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
-    fprintf(stderr, "\n  Solver algorithm:\n");
-    fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: %d).\n",
-            defaults.power_iter_params.max_iter);
-    fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: %g).\n",
-            defaults.power_iter_params.tol);
-    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: %g).\n",
-            defaults.step_size_params.step_size_factor);
-    fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding (default: enabled).\n");
-    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: %d).\n",
-            defaults.cone_params.max_iter);
-    fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: %g).\n",
-            defaults.cone_params.tol);
-    fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
-    fprintf(stderr, "\n  Termination:\n");
-    fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
-    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: %d).\n",
-            defaults.termination_evaluation_frequency);
-    fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: %g).\n",
-            defaults.termination_criteria.eps_optimal_relative);
-    fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: %g).\n",
-            defaults.termination_criteria.eps_feasible_relative);
-    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: %g).\n",
-            defaults.termination_criteria.eps_farkas_homogeneous);
-    fprintf(stderr, "      --eps_farkas_displacement <tol>   Displacement-certificate infeasibility ratio (default: %g).\n",
-            defaults.termination_criteria.eps_farkas_displacement);
-    fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: %g).\n",
-            defaults.termination_criteria.time_sec_limit);
-    fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n",
-            defaults.termination_criteria.iteration_limit);
-    fprintf(stderr, "\n  Output:\n");
-    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: true).\n");
-    fprintf(stderr, "  -q, --quiet                           Disable verbose logging.\n");
-    fprintf(stderr, "  -d, --diagnose                        Add HSD scale, step-size, weight and norm columns.\n");
-}
+                                const char *instance_name);
+static FILE *open_output_file(const char *output_dir, const char *instance_name,
+                              const char *suffix);
+static char *get_output_path(const char *output_dir, const char *instance_name,
+                             const char *suffix);
+static bool save_solution(const double *data, int size, const char *output_dir,
+                          const char *instance_name, const char *suffix);
 
 int main(int argc, char *argv[])
 {
@@ -415,4 +241,192 @@ int main(int argc, char *argv[])
     free(instance_name);
 
     return exit_code;
+}
+
+static void print_usage(const char *prog_name)
+{
+    pdhg_parameters_t defaults;
+    set_default_parameters(&defaults);
+
+    fprintf(stderr, "Usage: %s [OPTIONS] <mps_file> <output_dir>\n\n", prog_name);
+
+    fprintf(stderr, "Arguments:\n");
+    fprintf(stderr, "  <mps_file>               Path to the input problem in MPS format (.mps or .mps.gz).\n");
+    fprintf(stderr, "  <output_dir>             Directory where output files will be saved.\n\n");
+
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  -h, --help                            Display this help message.\n");
+    fprintf(stderr, "\n  Preprocessing/scaling:\n");
+    fprintf(stderr, "      --no_presolve                     Disable presolve.\n");
+    fprintf(stderr, "      --l_inf_ruiz_iter <int>           Iterations for L-inf Ruiz rescaling (default: %d).\n",
+            defaults.scaling_params.l_inf_ruiz_iterations);
+    fprintf(stderr, "      --no_pock_chambolle               Disable Pock-Chambolle rescaling.\n");
+    fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: %g).\n",
+            defaults.scaling_params.pock_chambolle_alpha);
+    fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
+    fprintf(stderr, "\n  Solver algorithm:\n");
+    fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: %d).\n",
+            defaults.power_iter_params.max_iter);
+    fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: %g).\n",
+            defaults.power_iter_params.tol);
+    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: %g).\n",
+            defaults.step_size_params.step_size_factor);
+    fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding (default: enabled).\n");
+    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: %d).\n",
+            defaults.cone_params.max_iter);
+    fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: %g).\n",
+            defaults.cone_params.tol);
+    fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
+    fprintf(stderr, "\n  Termination:\n");
+    fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
+    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: %d).\n",
+            defaults.termination_evaluation_frequency);
+    fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: %g).\n",
+            defaults.termination_criteria.eps_optimal_relative);
+    fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: %g).\n",
+            defaults.termination_criteria.eps_feasible_relative);
+    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_homogeneous);
+    fprintf(stderr, "      --eps_farkas_displacement <tol>   Displacement-certificate infeasibility ratio (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_displacement);
+    fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: %g).\n",
+            defaults.termination_criteria.time_sec_limit);
+    fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n",
+            defaults.termination_criteria.iteration_limit);
+    fprintf(stderr, "\n  Output:\n");
+    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: true).\n");
+    fprintf(stderr, "  -q, --quiet                           Disable verbose logging.\n");
+    fprintf(stderr, "  -d, --diagnose                        Add HSD scale, step-size, weight and norm columns.\n");
+}
+
+static bool parse_int_arg(const char *option_name, const char *value, int *out)
+{
+    char *end = NULL;
+    errno = 0;
+    long parsed = strtol(value, &end, 10);
+    if (errno != 0 || end == value || *end != '\0' ||
+        parsed < INT_MIN || parsed > INT_MAX)
+    {
+        fprintf(stderr, "ERROR: invalid integer for %s: '%s'\n", option_name, value);
+        return false;
+    }
+
+    *out = (int)parsed;
+    return true;
+}
+
+static bool parse_double_arg(const char *option_name, const char *value, double *out)
+{
+    char *end = NULL;
+    errno = 0;
+    double parsed = strtod(value, &end);
+    if (errno != 0 || end == value || *end != '\0')
+    {
+        fprintf(stderr, "ERROR: invalid floating-point value for %s: '%s'\n",
+                option_name, value);
+        return false;
+    }
+
+    *out = parsed;
+    return true;
+}
+
+static char *extract_instance_name(const char *filename)
+{
+    char *filename_copy = strdup(filename);
+    if (filename_copy == NULL)
+    {
+        fprintf(stderr, "ERROR: out of memory\n");
+        return NULL;
+    }
+
+    char *base = basename(filename_copy);
+    strip_suffix(base, ".gz");
+    strip_suffix(base, ".mps");
+
+    char *instance_name = strdup(base);
+    free(filename_copy);
+    return instance_name;
+}
+
+static void strip_suffix(char *name, const char *suffix)
+{
+    size_t name_len = strlen(name);
+    size_t suffix_len = strlen(suffix);
+    if (name_len > suffix_len &&
+        strcmp(name + name_len - suffix_len, suffix) == 0)
+        name[name_len - suffix_len] = '\0';
+}
+
+static bool save_solver_summary(const hpdlp_result_t *result, const char *output_dir,
+                                const char *instance_name)
+{
+    FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt");
+    if (outfile == NULL)
+        return false;
+
+    fprintf(outfile, "Termination Reason: %s\n",
+            termination_reason_to_string(result->termination_reason));
+    if (result->presolve_time > 0.0)
+    {
+        fprintf(outfile, "Presolve Status: %s\n", get_presolve_status_str(result->presolve_status));
+        fprintf(outfile, "Presolve Time (sec): %e\n", result->presolve_time);
+        fprintf(outfile, "Reduced Rows: %d\n", result->num_reduced_constraints);
+        fprintf(outfile, "Reduced Columns: %d\n", result->num_reduced_variables);
+        fprintf(outfile, "Reduced Nonzeros: %d\n", result->num_reduced_nonzeros);
+    }
+    fprintf(outfile, "Precondition time (sec): %e\n", result->rescaling_time_sec);
+    fprintf(outfile, "Runtime (sec): %e\n", result->cumulative_time_sec);
+    fprintf(outfile, "Iterations Count: %d\n", result->total_count);
+    fprintf(outfile, "Primal Objective Value: %e\n", result->primal_objective_value);
+    fprintf(outfile, "Dual Objective Value: %e\n", result->dual_objective_value);
+    fprintf(outfile, "Relative Primal Residual: %e\n", result->relative_primal_residual);
+    fprintf(outfile, "Relative Dual Residual: %e\n", result->relative_dual_residual);
+    fprintf(outfile, "Absolute Objective Gap: %e\n", result->objective_gap);
+    fprintf(outfile, "Relative Objective Gap: %e\n", result->relative_objective_gap);
+    fprintf(outfile, "Restarts: %d\n", result->restart_count);
+    fprintf(outfile, "Rows: %d\n", result->num_constraints);
+    fprintf(outfile, "Columns: %d\n", result->num_variables);
+    fprintf(outfile, "Nonzeros: %d\n", result->num_nonzeros);
+    return fclose(outfile) == 0;
+}
+
+static FILE *open_output_file(const char *output_dir, const char *instance_name,
+                              const char *suffix)
+{
+    char *file_path = get_output_path(output_dir, instance_name, suffix);
+
+    FILE *outfile = fopen(file_path, "w");
+    if (outfile == NULL)
+        fprintf(stderr, "ERROR: could not open '%s' for writing: %s\n",
+                file_path, strerror(errno));
+
+    free(file_path);
+    return outfile;
+}
+
+static char *get_output_path(const char *output_dir, const char *instance_name,
+                             const char *suffix)
+{
+    size_t path_len =
+        strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
+    char *full_path = safe_malloc(path_len * sizeof(char));
+    snprintf(full_path, path_len, "%s/%s%s", output_dir, instance_name, suffix);
+    return full_path;
+}
+
+static bool save_solution(const double *data, int size, const char *output_dir,
+                          const char *instance_name, const char *suffix)
+{
+    if (data == NULL)
+        return true;
+
+    FILE *outfile = open_output_file(output_dir, instance_name, suffix);
+    if (outfile == NULL)
+        return false;
+
+    for (int i = 0; i < size; ++i)
+        fprintf(outfile, "%.10g\n", data[i]);
+
+    return fclose(outfile) == 0;
 }

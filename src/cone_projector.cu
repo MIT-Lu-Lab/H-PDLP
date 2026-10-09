@@ -43,9 +43,6 @@ struct newton_bracket_t
     double previous_step;
 };
 
-template <typename Kernel, typename... Args>
-static void launch_box_cone_kernel(
-    Kernel kernel, int num_blocks, cudaStream_t stream, Args... args);
 template <bool COOPERATIVE>
 __global__ void update_dual_box_cone_projection_kernel(
     double *__restrict__ current_dual,
@@ -154,6 +151,9 @@ __device__ __forceinline__ void initialize_newton_bracket(
     double scale,
     double slope_floor,
     newton_bracket_t &bracket);
+template <typename Kernel, typename... Args>
+static void launch_box_cone_kernel(
+    Kernel kernel, int num_blocks, cudaStream_t stream, Args... args);
 static int compute_max_cooperative_blocks(const void *kernel);
 
 void update_dual_box_cone_projection(
@@ -221,6 +221,87 @@ static void launch_box_cone_kernel(
     config.numAttrs = num_blocks > 1 ? 1 : 0;
 
     CUDA_CHECK(cudaLaunchKernelEx(&config, kernel, args...));
+}
+
+void update_primal_box_cone_resolvent(
+    const cone_parameters_t *cone_params,
+    box_newton_state_t *primal_state,
+    double *current_primal,
+    double *reflected_primal,
+    double *evaluation_primal,
+    double *variable_primal_projection_multiplier,
+    const double *initial_primal,
+    const double *gradient,
+    const double *objective_d,
+    const double *step_size_d,
+    const double *step_size_homogeneous_d,
+    const double *homogeneous_dual_gradient,
+    const int *base_count_d,
+    int k_offset,
+    double reflection_coefficient,
+    double *initial_primal_scale,
+    double *current_primal_scale,
+    double *evaluation_primal_scale,
+    double *reflected_primal_scale,
+    bool is_major,
+    cudaStream_t stream)
+{
+    const box_newton_state_t state = *primal_state;
+    launch_box_cone_kernel(
+        state.num_blocks_newton > 1
+            ? update_primal_box_cone_resolvent_kernel<true>
+            : update_primal_box_cone_resolvent_kernel<false>,
+        state.num_blocks_newton,
+        stream,
+        current_primal,
+        reflected_primal,
+        evaluation_primal,
+        variable_primal_projection_multiplier,
+        initial_primal,
+        gradient,
+        objective_d,
+        step_size_d,
+        step_size_homogeneous_d,
+        homogeneous_dual_gradient,
+        base_count_d,
+        k_offset,
+        reflection_coefficient,
+        initial_primal_scale,
+        current_primal_scale,
+        evaluation_primal_scale,
+        reflected_primal_scale,
+        is_major,
+        state,
+        cone_params->max_iter,
+        cone_params->tol);
+}
+
+int compute_max_cooperative_dual_box_cone_blocks()
+{
+    return compute_max_cooperative_blocks(
+        (const void *)update_dual_box_cone_projection_kernel<true>);
+}
+
+static int compute_max_cooperative_blocks(const void *kernel)
+{
+    int device = 0;
+    CUDA_CHECK(cudaGetDevice(&device));
+
+    int sm_count = 0;
+    CUDA_CHECK(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, device));
+    int active = 0;
+    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &active,
+        kernel,
+        THREADS_PER_BLOCK,
+        0));
+    return active * sm_count;
+}
+
+int compute_max_cooperative_primal_box_cone_blocks()
+{
+    return compute_max_cooperative_blocks(
+        (const void *)update_primal_box_cone_resolvent_kernel<true>);
 }
 
 template <bool COOPERATIVE>
@@ -527,59 +608,6 @@ __device__ __forceinline__ void update_scale_history(double *history, double sca
     history[BOX_CONE_SCALE_LATEST]   = scale;
 }
 
-void update_primal_box_cone_resolvent(
-    const cone_parameters_t *cone_params,
-    box_newton_state_t *primal_state,
-    double *current_primal,
-    double *reflected_primal,
-    double *evaluation_primal,
-    double *variable_primal_projection_multiplier,
-    const double *initial_primal,
-    const double *gradient,
-    const double *objective_d,
-    const double *step_size_d,
-    const double *step_size_homogeneous_d,
-    const double *homogeneous_dual_gradient,
-    const int *base_count_d,
-    int k_offset,
-    double reflection_coefficient,
-    double *initial_primal_scale,
-    double *current_primal_scale,
-    double *evaluation_primal_scale,
-    double *reflected_primal_scale,
-    bool is_major,
-    cudaStream_t stream)
-{
-    const box_newton_state_t state = *primal_state;
-    launch_box_cone_kernel(
-        state.num_blocks_newton > 1
-            ? update_primal_box_cone_resolvent_kernel<true>
-            : update_primal_box_cone_resolvent_kernel<false>,
-        state.num_blocks_newton,
-        stream,
-        current_primal,
-        reflected_primal,
-        evaluation_primal,
-        variable_primal_projection_multiplier,
-        initial_primal,
-        gradient,
-        objective_d,
-        step_size_d,
-        step_size_homogeneous_d,
-        homogeneous_dual_gradient,
-        base_count_d,
-        k_offset,
-        reflection_coefficient,
-        initial_primal_scale,
-        current_primal_scale,
-        evaluation_primal_scale,
-        reflected_primal_scale,
-        is_major,
-        state,
-        cone_params->max_iter,
-        cone_params->tol);
-}
-
 template <bool COOPERATIVE>
 __global__ void update_primal_box_cone_resolvent_kernel(
     double *__restrict__ current_primal,
@@ -758,32 +786,4 @@ __device__ __forceinline__ void initialize_newton_bracket(
         bracket.scale_low = scale_bound;
         bracket.scale_high = fmax(0.0, scale);
     }
-}
-
-int compute_max_cooperative_dual_box_cone_blocks()
-{
-    return compute_max_cooperative_blocks(
-        (const void *)update_dual_box_cone_projection_kernel<true>);
-}
-
-static int compute_max_cooperative_blocks(const void *kernel)
-{
-    int device = 0;
-    CUDA_CHECK(cudaGetDevice(&device));
-
-    int sm_count = 0;
-    CUDA_CHECK(cudaDeviceGetAttribute(&sm_count, cudaDevAttrMultiProcessorCount, device));
-    int active = 0;
-    CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-        &active,
-        kernel,
-        THREADS_PER_BLOCK,
-        0));
-    return active * sm_count;
-}
-
-int compute_max_cooperative_primal_box_cone_blocks()
-{
-    return compute_max_cooperative_blocks(
-        (const void *)update_primal_box_cone_resolvent_kernel<true>);
 }

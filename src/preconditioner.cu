@@ -65,6 +65,9 @@ __global__ void compute_csr_row_powsum_kernel(
     int n_rows,
     double degree,
     double *__restrict__ row_powsum_values);
+__device__ __forceinline__ double pow_fast(
+    double v,
+    double p);
 __global__ void compute_bound_objective_scales_kernel(
     double *cons_scale_d,
     double *obj_scale_d,
@@ -114,22 +117,22 @@ __global__ void fill_vector_kernel(
     double *__restrict__ values,
     int n,
     double value);
-static void scale_problem(
-    pdhg_solver_state_t *state,
-    double *constraint_rescaling,
-    double *variable_rescaling);
 static void geometric_mean_rescaling(
     pdhg_solver_state_t *state,
     int num_iterations,
     double *constraint_rescaling,
     double *variable_rescaling);
+static void compute_longest_csr_rows(
+    pdhg_solver_state_t *state,
+    int *longest);
 static int compute_log2_vector_width(
     long long num_nonzeros,
     int num_rows,
     int longest_row);
-static void compute_longest_csr_rows(
+static void scale_problem(
     pdhg_solver_state_t *state,
-    int *longest);
+    double *constraint_rescaling,
+    double *variable_rescaling);
 static void ruiz_rescaling(
     pdhg_solver_state_t *state,
     int num_iterations,
@@ -143,54 +146,117 @@ static void pock_chambolle_rescaling(
 static void bound_objective_rescaling(
     pdhg_solver_state_t *state);
 
-static void scale_problem(
-    pdhg_solver_state_t *state,
-    double *constraint_rescaling,
-    double *variable_rescaling)
+void rescale_problem(
+    const pdhg_parameters_t *params,
+    pdhg_solver_state_t *state)
 {
+    const scaling_parameters_t *scaling_params = &params->scaling_params;
+    const power_iteration_parameters_t *power_iter_params = &params->power_iter_params;
+    norm_type_t optimality_norm = params->optimality_norm;
+    bool verbose = params->verbose;
+
+    if (verbose)
+    {
+        printf("\nPreconditioning...\n");
+    }
+
     int num_variables = state->num_variables;
     int num_constraints = state->num_constraints;
-    int num_nonzeros = state->constraint_matrix->num_nonzeros;
 
-    scale_variables_kernel<<<
-        state->num_blocks_primal,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->objective_vector_d,
-        state->variable_lower_bound_d,
-        state->variable_upper_bound_d,
-        state->initial_primal_solution_d,
-        variable_rescaling,
-        num_variables);
-    CUDA_CHECK(cudaGetLastError());
+    clock_t start_rescaling = clock();
 
-    scale_constraints_kernel<<<
-        state->num_blocks_dual,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->constraint_lower_bound_d,
-        state->constraint_upper_bound_d,
-        state->initial_dual_solution_d,
-        constraint_rescaling,
-        num_constraints);
-    CUDA_CHECK(cudaGetLastError());
+    fill_vector_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        state->constraint_rescaling_d, num_constraints, 1.0);
+    fill_vector_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        state->variable_rescaling_d, num_variables, 1.0);
 
-    scale_csr_nnz_kernel<<<
-        state->num_blocks_nnz,
-        THREADS_PER_BLOCK,
-        0,
-        state->stream_A>>>(
-        state->constraint_matrix->row_ind,
-        state->constraint_matrix->col_ind,
-        state->constraint_matrix->val,
-        state->constraint_matrix_t->val,
-        state->constraint_matrix->transpose_map,
-        variable_rescaling,
-        constraint_rescaling,
-        num_nonzeros);
-    CUDA_CHECK(cudaGetLastError());
+    double *constraint_rescaling = state->constraint_reduction_entries_d;
+    double *variable_rescaling = state->variable_reduction_entries_d;
+
+    if (scaling_params->geometric_mean_iterations > 0)
+    {
+        if (verbose)
+        {
+            printf("  Geometric-mean scaling (%d iterations)\n", scaling_params->geometric_mean_iterations);
+        }
+
+        geometric_mean_rescaling(
+            state,
+            scaling_params->geometric_mean_iterations,
+            constraint_rescaling,
+            variable_rescaling);
+    }
+    if (scaling_params->l_inf_ruiz_iterations > 0)
+    {
+        if (verbose)
+        {
+            printf("  Ruiz scaling (%d iterations)\n", scaling_params->l_inf_ruiz_iterations);
+        }
+        ruiz_rescaling(state, scaling_params->l_inf_ruiz_iterations, constraint_rescaling, variable_rescaling);
+    }
+    if (scaling_params->has_pock_chambolle_alpha)
+    {
+        if (verbose)
+        {
+            printf("  Pock-Chambolle scaling (alpha=%.4f)\n", scaling_params->pock_chambolle_alpha);
+        }
+        pock_chambolle_rescaling(state, scaling_params->pock_chambolle_alpha, constraint_rescaling, variable_rescaling);
+    }
+
+    state->constraint_bound_rescaling = 1.0;
+    state->objective_vector_rescaling = 1.0;
+    if (scaling_params->bound_objective_rescaling)
+    {
+        if (verbose)
+        {
+            printf("  Bound-objective scaling\n");
+        }
+        bound_objective_rescaling(state);
+    }
+
+    initialize_spmv_plans(state);
+
+    compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
+    if (state->constraint_matrix->num_nonzeros == 0)
+    {
+        state->rescaled_constraint_norm = 0.0;
+    }
+    else
+    {
+        sv_estimator_opts_t opts = {};
+        opts.max_iter = power_iter_params->max_iter;
+        opts.tol = power_iter_params->tol;
+        sv_estimator_ctx_t *estimator = sv_estimator_create(
+            state->sparse_handle_A,
+            state->blas_handle_A,
+            state->stream_A,
+            state->curand_gen,
+            state->constraint_matrix,
+            state->constraint_matrix_t,
+            state->num_constraints,
+            state->num_variables);
+        const sv_estimator_result_t estimate =
+            sv_estimator_run(estimator, &opts);
+        sv_estimator_free(estimator);
+        state->rescaled_constraint_norm = estimate.max_singular_value;
+    }
+    state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
+
+    if (verbose)
+    {
+        if (params->diagnose)
+        {
+            printf("  %-20s %15s %15s\n", "", "original", "rescaled");
+            printf("  %-20s %15s %15.6e\n", "||A||",
+                   "-", state->rescaled_constraint_norm);
+            printf("  %-20s %15.6e %15.6e\n", "||c||",
+                   state->original_objective_norm, state->rescaled_objective_norm);
+            printf("  %-20s %15.6e %15.6e\n", "||b||",
+                   state->original_bound_norm, state->rescaled_bound_norm);
+        }
+        printf("  %-20s : %.3g sec\n", "precondition time", state->rescaling_time_sec);
+        printf("\n");
+    }
 }
 
 static void geometric_mean_rescaling(
@@ -266,23 +332,6 @@ static void geometric_mean_rescaling(
     scale_problem(state, constraint_rescaling, variable_rescaling);
 }
 
-static int compute_log2_vector_width(
-    long long num_nonzeros,
-    int num_rows,
-    int longest_row)
-{
-    if (longest_row >= 512)
-        return MAX_LOG2_VECTOR_WIDTH;
-    if (num_rows <= 0)
-        return 0;
-
-    const long long mean_nnz = (num_nonzeros + num_rows - 1) / num_rows;
-    int log2_width = 0;
-    while (log2_width < MAX_LOG2_VECTOR_WIDTH && (1LL << log2_width) < mean_nnz)
-        ++log2_width;
-    return log2_width;
-}
-
 static void compute_longest_csr_rows(
     pdhg_solver_state_t *state,
     int *longest)
@@ -316,6 +365,73 @@ static void compute_longest_csr_rows(
         state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     CUDA_CHECK(cudaFree(longest_d));
+}
+
+static int compute_log2_vector_width(
+    long long num_nonzeros,
+    int num_rows,
+    int longest_row)
+{
+    if (longest_row >= 512)
+        return MAX_LOG2_VECTOR_WIDTH;
+    if (num_rows <= 0)
+        return 0;
+
+    const long long mean_nnz = (num_nonzeros + num_rows - 1) / num_rows;
+    int log2_width = 0;
+    while (log2_width < MAX_LOG2_VECTOR_WIDTH && (1LL << log2_width) < mean_nnz)
+        ++log2_width;
+    return log2_width;
+}
+
+static void scale_problem(
+    pdhg_solver_state_t *state,
+    double *constraint_rescaling,
+    double *variable_rescaling)
+{
+    int num_variables = state->num_variables;
+    int num_constraints = state->num_constraints;
+    int num_nonzeros = state->constraint_matrix->num_nonzeros;
+
+    scale_variables_kernel<<<
+        state->num_blocks_primal,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->objective_vector_d,
+        state->variable_lower_bound_d,
+        state->variable_upper_bound_d,
+        state->initial_primal_solution_d,
+        variable_rescaling,
+        num_variables);
+    CUDA_CHECK(cudaGetLastError());
+
+    scale_constraints_kernel<<<
+        state->num_blocks_dual,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->constraint_lower_bound_d,
+        state->constraint_upper_bound_d,
+        state->initial_dual_solution_d,
+        constraint_rescaling,
+        num_constraints);
+    CUDA_CHECK(cudaGetLastError());
+
+    scale_csr_nnz_kernel<<<
+        state->num_blocks_nnz,
+        THREADS_PER_BLOCK,
+        0,
+        state->stream_A>>>(
+        state->constraint_matrix->row_ind,
+        state->constraint_matrix->col_ind,
+        state->constraint_matrix->val,
+        state->constraint_matrix_t->val,
+        state->constraint_matrix->transpose_map,
+        variable_rescaling,
+        constraint_rescaling,
+        num_nonzeros);
+    CUDA_CHECK(cudaGetLastError());
 }
 
 static void ruiz_rescaling(
@@ -475,132 +591,6 @@ static void bound_objective_rescaling(
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
-void rescale_problem(
-    const pdhg_parameters_t *params,
-    pdhg_solver_state_t *state)
-{
-    const scaling_parameters_t *scaling_params = &params->scaling_params;
-    const power_iteration_parameters_t *power_iter_params = &params->power_iter_params;
-    norm_type_t optimality_norm = params->optimality_norm;
-    bool verbose = params->verbose;
-
-    if (verbose)
-    {
-        printf("\nPreconditioning...\n");
-    }
-
-    int num_variables = state->num_variables;
-    int num_constraints = state->num_constraints;
-
-    clock_t start_rescaling = clock();
-
-    fill_vector_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->constraint_rescaling_d, num_constraints, 1.0);
-    fill_vector_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        state->variable_rescaling_d, num_variables, 1.0);
-
-    double *constraint_rescaling = state->constraint_reduction_entries_d;
-    double *variable_rescaling = state->variable_reduction_entries_d;
-
-    if (scaling_params->geometric_mean_iterations > 0)
-    {
-        if (verbose)
-        {
-            printf("  Geometric-mean scaling (%d iterations)\n", scaling_params->geometric_mean_iterations);
-        }
-
-        geometric_mean_rescaling(
-            state,
-            scaling_params->geometric_mean_iterations,
-            constraint_rescaling,
-            variable_rescaling);
-    }
-    if (scaling_params->l_inf_ruiz_iterations > 0)
-    {
-        if (verbose)
-        {
-            printf("  Ruiz scaling (%d iterations)\n", scaling_params->l_inf_ruiz_iterations);
-        }
-        ruiz_rescaling(state, scaling_params->l_inf_ruiz_iterations, constraint_rescaling, variable_rescaling);
-    }
-    if (scaling_params->has_pock_chambolle_alpha)
-    {
-        if (verbose)
-        {
-            printf("  Pock-Chambolle scaling (alpha=%.4f)\n", scaling_params->pock_chambolle_alpha);
-        }
-        pock_chambolle_rescaling(state, scaling_params->pock_chambolle_alpha, constraint_rescaling, variable_rescaling);
-    }
-
-    state->constraint_bound_rescaling = 1.0;
-    state->objective_vector_rescaling = 1.0;
-    if (scaling_params->bound_objective_rescaling)
-    {
-        if (verbose)
-        {
-            printf("  Bound-objective scaling\n");
-        }
-        bound_objective_rescaling(state);
-    }
-
-    initialize_spmv_plans(state);
-
-    compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
-    if (state->constraint_matrix->num_nonzeros == 0)
-    {
-        state->rescaled_constraint_norm = 0.0;
-    }
-    else
-    {
-        sv_estimator_opts_t opts = {};
-        opts.max_iter = power_iter_params->max_iter;
-        opts.tol = power_iter_params->tol;
-        sv_estimator_ctx_t *estimator = sv_estimator_create(
-            state->sparse_handle_A,
-            state->blas_handle_A,
-            state->stream_A,
-            state->curand_gen,
-            state->constraint_matrix,
-            state->constraint_matrix_t,
-            state->num_constraints,
-            state->num_variables);
-        const sv_estimator_result_t estimate =
-            sv_estimator_run(estimator, &opts);
-        sv_estimator_free(estimator);
-        state->rescaled_constraint_norm = estimate.max_singular_value;
-    }
-    state->rescaling_time_sec = (double)(clock() - start_rescaling) / CLOCKS_PER_SEC;
-
-    if (verbose)
-    {
-        if (params->diagnose)
-        {
-            printf("  %-20s %15s %15s\n", "", "original", "rescaled");
-            printf("  %-20s %15s %15.6e\n", "||A||",
-                   "-", state->rescaled_constraint_norm);
-            printf("  %-20s %15.6e %15.6e\n", "||c||",
-                   state->original_objective_norm, state->rescaled_objective_norm);
-            printf("  %-20s %15.6e %15.6e\n", "||b||",
-                   state->original_bound_norm, state->rescaled_bound_norm);
-        }
-        printf("  %-20s : %.3g sec\n", "precondition time", state->rescaling_time_sec);
-        printf("\n");
-    }
-}
-
-__device__ __forceinline__ double pow_fast(
-    double v, 
-    double p)
-{
-    if (p == 2.0)
-        return v * v;
-    if (p == 1.0)
-        return v;
-    if (p == 0.5)
-        return sqrt(v);
-    return pow(v, p);
-}
-
 __global__ void scale_variables_kernel(double *__restrict__ obj_vec,
                                        double *__restrict__ var_lb,
                                        double *__restrict__ var_ub,
@@ -699,6 +689,19 @@ __global__ void compute_csr_row_powsum_kernel(
         acc += pow_fast(v, degree);
     }
     row_powsum_values[i] = acc;
+}
+
+__device__ __forceinline__ double pow_fast(
+    double v,
+    double p)
+{
+    if (p == 2.0)
+        return v * v;
+    if (p == 1.0)
+        return v;
+    if (p == 0.5)
+        return sqrt(v);
+    return pow(v, p);
 }
 
 __global__ void compute_bound_objective_scales_kernel(
