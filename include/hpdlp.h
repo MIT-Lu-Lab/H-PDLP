@@ -52,6 +52,8 @@ extern "C"
 
     void lp_problem_free(lp_problem_t *prob);
 
+    const char *hpdlp_last_error(void);
+
 #ifdef __cplusplus
 }
 #endif

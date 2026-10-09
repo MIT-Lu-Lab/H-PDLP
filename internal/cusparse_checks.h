@@ -16,18 +16,14 @@ limitations under the License.
 
 #pragma once
 
+#include "error_handling.h"
 #include <cusparse.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#define CUSPARSE_CHECK(call)                                           \
-    do                                                                 \
-    {                                                                  \
-        cusparseStatus_t status = call;                                \
-        if (status != CUSPARSE_STATUS_SUCCESS)                         \
-        {                                                              \
-            fprintf(stderr, "cuSPARSE Error at %s:%d: %s\n", __FILE__, \
-                    __LINE__, cusparseGetErrorName(status));           \
-            exit(EXIT_FAILURE);                                        \
-        }                                                              \
+#define CUSPARSE_CHECK(call)                                     \
+    do                                                           \
+    {                                                            \
+        cusparseStatus_t status = call;                          \
+        if (status != CUSPARSE_STATUS_SUCCESS)                   \
+            raise_error("cuSPARSE error at %s:%d: %s", __FILE__, \
+                        __LINE__, cusparseGetErrorName(status)); \
     } while (0)

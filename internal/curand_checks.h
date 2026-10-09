@@ -16,18 +16,14 @@ limitations under the License.
 
 #pragma once
 
+#include "error_handling.h"
 #include <curand.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#define CURAND_CHECK(call)                                              \
-    do                                                                  \
-    {                                                                   \
-        curandStatus_t status = call;                                   \
-        if (status != CURAND_STATUS_SUCCESS)                            \
-        {                                                               \
-            fprintf(stderr, "cuRAND Error at %s:%d: %d\n", __FILE__,    \
-                    __LINE__, (int)status);                             \
-            exit(EXIT_FAILURE);                                         \
-        }                                                               \
+#define CURAND_CHECK(call)                                     \
+    do                                                         \
+    {                                                          \
+        curandStatus_t status = call;                          \
+        if (status != CURAND_STATUS_SUCCESS)                   \
+            raise_error("cuRAND error at %s:%d: %d", __FILE__, \
+                        __LINE__, (int)status);                \
     } while (0)

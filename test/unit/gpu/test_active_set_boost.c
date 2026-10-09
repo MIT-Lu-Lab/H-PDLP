@@ -7,6 +7,7 @@
 #include <cuda_runtime_api.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 enum { HADAMARD_ORDER = 16,
        NUM_VARIABLES = 2 * HADAMARD_ORDER,
@@ -154,7 +155,9 @@ static void check_active_set_resources(bool step_size_boost)
     pdhg_parameters_t params;
     set_test_parameters(&params, step_size_boost);
     lp_problem_t *problem = create_hadamard_problem();
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     active_set_state_t *active_set = &state->active_set;
 
     check("active-set constraint observations follow enablement",
@@ -187,7 +190,9 @@ static void check_zero_revert_budget_disables_resources(void)
     set_test_parameters(&params, true);
     params.active_set_params.max_reverts = 0;
     lp_problem_t *problem = create_hadamard_problem();
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     active_set_state_t *active_set = &state->active_set;
 
     check("a zero revert budget allocates no active-set buffers",
@@ -211,7 +216,9 @@ static void check_estimator_owns_work_vectors(void)
     pdhg_parameters_t params;
     set_test_parameters(&params, true);
     lp_problem_t *problem = create_hadamard_problem();
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
 
     double primal_product[NUM_CONSTRAINTS];
     double dual_product[NUM_VARIABLES];
@@ -267,7 +274,9 @@ static void check_empty_mask_skips_estimation(bool empty_variables)
     pdhg_parameters_t params;
     set_test_parameters(&params, true);
     lp_problem_t *problem = create_hadamard_problem();
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     active_set_state_t *active_set = &state->active_set;
     state->control.step_size_base = 1.0;
     state->control.step_size = 1.0;
@@ -322,7 +331,9 @@ static void check_estimator_retry_policy(bool degenerate)
     params.scaling_params.bound_objective_rescaling = false;
     lp_problem_t *problem = create_lp_problem(
         objective, &matrix, lower, upper, lower, upper, &constant);
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     active_set_state_t *active_set = &state->active_set;
     state->control.step_size_base = 0.01;
     state->control.step_size = 0.01;
@@ -376,7 +387,9 @@ static void check_active_set_revert_state(void)
     pdhg_parameters_t params;
     set_test_parameters(&params, true);
     lp_problem_t *problem = create_hadamard_problem();
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     state->control.step_size_base = 1.0;
     state->control.step_size = 2.0;
     state->control.total_count = 123;

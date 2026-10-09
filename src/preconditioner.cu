@@ -24,9 +24,6 @@ limitations under the License.
 #include <cuda_runtime.h>
 #include <math.h>
 #include <stdio.h>
-#include <thrust/execution_policy.h>
-#include <thrust/fill.h>
-#include <thrust/system/cuda/execution_policy.h>
 #include <time.h>
 
 #define SCALING_EPSILON 1e-12
@@ -113,6 +110,10 @@ __global__ void finalize_geometric_mean_scaling_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
     int n);
+__global__ void fill_vector_kernel(
+    double *__restrict__ values,
+    int n,
+    double value);
 static void scale_problem(
     pdhg_solver_state_t *state,
     double *constraint_rescaling,
@@ -201,16 +202,10 @@ static void geometric_mean_rescaling(
     const int num_constraints = state->num_constraints;
     const int num_variables = state->num_variables;
 
-    thrust::fill_n(
-        thrust::cuda::par.on(state->stream_A),
-        constraint_rescaling,
-        num_constraints,
-        1.0);
-    thrust::fill_n(
-        thrust::cuda::par.on(state->stream_A),
-        variable_rescaling,
-        num_variables,
-        1.0);
+    fill_vector_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        constraint_rescaling, num_constraints, 1.0);
+    fill_vector_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        variable_rescaling, num_variables, 1.0);
 
     int longest[2] = {0, 0};
     compute_longest_csr_rows(state, longest);
@@ -499,16 +494,10 @@ void rescale_problem(
 
     clock_t start_rescaling = clock();
 
-    thrust::fill_n(
-        thrust::cuda::par.on(state->stream_A),
-        state->constraint_rescaling_d,
-        num_constraints,
-        1.0);
-    thrust::fill_n(
-        thrust::cuda::par.on(state->stream_A),
-        state->variable_rescaling_d,
-        num_variables,
-        1.0);
+    fill_vector_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        state->constraint_rescaling_d, num_constraints, 1.0);
+    fill_vector_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        state->variable_rescaling_d, num_variables, 1.0);
 
     double *constraint_rescaling = state->constraint_reduction_entries_d;
     double *variable_rescaling = state->variable_reduction_entries_d;
@@ -864,4 +853,14 @@ __global__ void finalize_geometric_mean_scaling_kernel(
         cumulative_rescaling[t] *= divisor;
         scaling_factors[t] = divisor;
     }
+}
+
+__global__ void fill_vector_kernel(
+    double *__restrict__ values,
+    int n,
+    double value)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n)
+        values[i] = value;
 }

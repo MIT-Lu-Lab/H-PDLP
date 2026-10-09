@@ -82,17 +82,16 @@ bool check_params_validity(const pdhg_parameters_t *params)
     char error[256];
     if (hpdlp_validate_parameters(params, error, sizeof(error)) == 0)
         return true;
-    fprintf(stderr, "Error: %s\n", error);
+    report_error("%s", error);
     return false;
 }
 
-pdhg_solver_state_t *initialize_solver_state(
+void initialize_solver_state(
+    pdhg_solver_state_t *state,
     const lp_problem_t *working_problem,
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params)
 {
-    pdhg_solver_state_t *state = (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
-
     int n_vars = working_problem->num_variables;
     int n_cons = working_problem->num_constraints;
     int nnz = working_problem->constraint_matrix_num_nonzeros;
@@ -104,8 +103,8 @@ pdhg_solver_state_t *initialize_solver_state(
     state->objective_constant = working_problem->objective_constant;
     state->objective_sign = (original_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE) ? -1.0 : 1.0;
 
-    state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
-    state->constraint_matrix_t = (cu_sparse_matrix_csr_t *)safe_malloc(sizeof(cu_sparse_matrix_csr_t));
+    state->constraint_matrix = (cu_sparse_matrix_csr_t *)safe_calloc(1, sizeof(cu_sparse_matrix_csr_t));
+    state->constraint_matrix_t = (cu_sparse_matrix_csr_t *)safe_calloc(1, sizeof(cu_sparse_matrix_csr_t));
 
     state->constraint_matrix->num_nonzeros = nnz;
 
@@ -174,8 +173,6 @@ pdhg_solver_state_t *initialize_solver_state(
     initialize_convergence_tracking(state);
 
     print_iteration_header(params);
-
-    return state;
 }
 
 static void create_csr_descriptor(

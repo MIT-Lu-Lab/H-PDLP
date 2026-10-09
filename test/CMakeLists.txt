@@ -23,6 +23,7 @@ hpdlp_add_test(test_parameters unit/cpu/test_parameters.c "cpu")
 hpdlp_add_test(test_controller unit/cpu/test_controller.c "cpu")
 hpdlp_add_test(test_bounds unit/cpu/test_bounds.cu "cpu")
 hpdlp_add_test(test_result_check unit/cpu/test_result_check.c "cpu")
+hpdlp_add_test(test_error_handling unit/cpu/test_error_handling.c "cpu")
 
 hpdlp_add_test(test_setup unit/gpu/test_setup.cu "gpu")
 hpdlp_add_test(test_projection unit/gpu/test_projection.cu "gpu")

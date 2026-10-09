@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "utils.h"
+#include "error_handling.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,10 +34,7 @@ void *safe_malloc(size_t size)
 
     void *ptr = malloc(size);
     if (ptr == NULL)
-    {
-        perror("Fatal error: malloc failed");
-        exit(EXIT_FAILURE);
-    }
+        raise_error("host malloc failed");
     return ptr;
 }
 
@@ -50,10 +48,7 @@ void *safe_calloc(size_t num, size_t size)
 
     void *ptr = calloc(num, size);
     if (ptr == NULL)
-    {
-        perror("Fatal error: calloc failed");
-        exit(EXIT_FAILURE);
-    }
+        raise_error("host calloc failed");
     return ptr;
 }
 
@@ -64,10 +59,7 @@ void *safe_realloc(void *ptr, size_t new_size)
 
     void *tmp = realloc(ptr, new_size);
     if (!tmp)
-    {
-        perror("Fatal error: realloc failed");
-        exit(EXIT_FAILURE);
-    }
+        raise_error("host realloc failed");
     return tmp;
 }
 
@@ -109,9 +101,9 @@ void filter_constraint_matrix_entries(
 
     if (num_large_entries > 0)
     {
-        fprintf(stderr,
-                "WARNING: %d constraint matrix %s |value| >= %.1e (largest %.3e): "
-                "the problem is badly scaled.\n",
+        report_warning(
+                "%d constraint matrix %s |value| >= %.1e (largest %.3e): "
+                "the problem is badly scaled",
                 num_large_entries,
                 (num_large_entries == 1 ? "entry has" : "entries have"),
                 MATRIX_LARGE_VALUE,
@@ -175,9 +167,9 @@ void warn_on_large_objective_coefficients(const lp_problem_t *problem)
 
     if (num_large_coefficients > 0)
     {
-        fprintf(stderr,
-                "WARNING: %d objective %s |value| >= %.1e (largest %.3e): "
-                "the problem is badly scaled.\n",
+        report_warning(
+                "%d objective %s |value| >= %.1e (largest %.3e): "
+                "the problem is badly scaled",
                 num_large_coefficients,
                 (num_large_coefficients == 1 ? "coefficient has" : "coefficients have"),
                 OBJECTIVE_LARGE_VALUE,

@@ -22,7 +22,7 @@ static int parameter_error(char *error, size_t error_size,
                            const char *requirement, double value)
 {
     if (error && error_size)
-        snprintf(error, error_size, "%s (got %g).", requirement, value);
+        snprintf(error, error_size, "%s (got %g)", requirement, value);
     return -1;
 }
 

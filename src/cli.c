@@ -53,7 +53,7 @@ static char *extract_instance_name(const char *filename)
     char *filename_copy = strdup(filename);
     if (filename_copy == NULL)
     {
-        perror("Memory allocation failed");
+        fprintf(stderr, "ERROR: out of memory\n");
         return NULL;
     }
 
@@ -67,13 +67,14 @@ static char *extract_instance_name(const char *filename)
 }
 
 static FILE *open_output_file(const char *output_dir, const char *instance_name,
-                              const char *suffix, const char *description)
+                              const char *suffix)
 {
     char *file_path = get_output_path(output_dir, instance_name, suffix);
 
     FILE *outfile = fopen(file_path, "w");
     if (outfile == NULL)
-        perror(description);
+        fprintf(stderr, "ERROR: could not open '%s' for writing: %s\n",
+                file_path, strerror(errno));
 
     free(file_path);
     return outfile;
@@ -87,7 +88,7 @@ static bool parse_int_arg(const char *option_name, const char *value, int *out)
     if (errno != 0 || end == value || *end != '\0' ||
         parsed < INT_MIN || parsed > INT_MAX)
     {
-        fprintf(stderr, "Error: invalid integer for %s: %s\n", option_name, value);
+        fprintf(stderr, "ERROR: invalid integer for %s: '%s'\n", option_name, value);
         return false;
     }
 
@@ -102,7 +103,7 @@ static bool parse_double_arg(const char *option_name, const char *value, double 
     double parsed = strtod(value, &end);
     if (errno != 0 || end == value || *end != '\0')
     {
-        fprintf(stderr, "Error: invalid floating-point value for %s: %s\n",
+        fprintf(stderr, "ERROR: invalid floating-point value for %s: '%s'\n",
                 option_name, value);
         return false;
     }
@@ -117,8 +118,7 @@ static bool save_solution(const double *data, int size, const char *output_dir,
     if (data == NULL)
         return true;
 
-    FILE *outfile = open_output_file(output_dir, instance_name, suffix,
-                                     "Error opening solution file");
+    FILE *outfile = open_output_file(output_dir, instance_name, suffix);
     if (outfile == NULL)
         return false;
 
@@ -131,8 +131,7 @@ static bool save_solution(const double *data, int size, const char *output_dir,
 static bool save_solver_summary(const hpdlp_result_t *result, const char *output_dir,
                                 const char *instance_name)
 {
-    FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt",
-                                     "Error opening summary file");
+    FILE *outfile = open_output_file(output_dir, instance_name, "_summary.txt");
     if (outfile == NULL)
         return false;
 
@@ -344,7 +343,7 @@ int main(int argc, char *argv[])
                 params.optimality_norm = NORM_TYPE_L_INF;
             else
             {
-                fprintf(stderr, "Error: opt_norm must be 'l2' or 'linf'\n");
+                fprintf(stderr, "ERROR: --opt_norm must be 'l2' or 'linf'\n");
                 return 1;
             }
         }
@@ -356,7 +355,7 @@ int main(int argc, char *argv[])
 
     if (argc - optind != 2)
     {
-        fprintf(stderr, "Error: You must specify an input file and an output directory.\n\n");
+        fprintf(stderr, "ERROR: missing input file or output directory\n\n");
         print_usage(argv[0]);
         return 1;
     }
@@ -372,7 +371,6 @@ int main(int argc, char *argv[])
 
     if (problem == NULL)
     {
-        fprintf(stderr, "Failed to read or parse the file.\n");
         free(instance_name);
         return 1;
     }
@@ -381,10 +379,7 @@ int main(int argc, char *argv[])
 
     int exit_code = 0;
     if (result == NULL)
-    {
-        fprintf(stderr, "Solver failed.\n");
         exit_code = 1;
-    }
     else
     {
         if (!save_solver_summary(result, output_dir, instance_name))

@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "hpdlp.h"
+#include "error_handling.h"
 #include "matrix_formats.h"
 #include "solver.h"
 #include "utils.h"
@@ -24,6 +25,12 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 
+static lp_problem_t *build_lp_problem(
+    const double *objective_c,
+    const matrix_desc_t *A_desc,
+    const double *con_lb, const double *con_ub,
+    const double *var_lb, const double *var_ub,
+    const double *objective_constant);
 static bool validate_bounds(const double *lower, const double *upper,
                             int n, const char *bound_type);
 static bool validate_start_vector(const double *values, int n,
@@ -35,6 +42,26 @@ static void fill_or_copy(
 static void copy_start_vector(double **dst, const double *src, int n);
 
 lp_problem_t *create_lp_problem(
+    const double *objective_c,
+    const matrix_desc_t *A_desc,
+    const double *con_lb, const double *con_ub,
+    const double *var_lb, const double *var_ub,
+    const double *objective_constant)
+{
+    error_scope_t scope;
+    enter_error_scope(&scope);
+    if (setjmp(scope.env) != 0)
+    {
+        leave_error_scope();
+        return NULL;
+    }
+    lp_problem_t *prob = build_lp_problem(objective_c, A_desc, con_lb, con_ub,
+                                             var_lb, var_ub, objective_constant);
+    leave_error_scope();
+    return prob;
+}
+
+static lp_problem_t *build_lp_problem(
     const double *objective_c,
     const matrix_desc_t *A_desc,
     const double *con_lb, const double *con_ub,
@@ -53,8 +80,8 @@ lp_problem_t *create_lp_problem(
         &nnz);
     if (matrix_status != MATRIX_FORMAT_OK)
     {
-        fprintf(stderr, "invalid input matrix: %s.\n",
-                matrix_format_status_message(matrix_status));
+        report_error("invalid input matrix: %s",
+                     matrix_format_status_message(matrix_status));
         return NULL;
     }
 
@@ -92,19 +119,19 @@ bool validate_lp_problem_data(const lp_problem_t *prob)
          (!prob->constraint_lower_bound || !prob->constraint_upper_bound)) ||
         (prob->constraint_matrix_num_nonzeros > 0 && !prob->constraint_matrix_values))
     {
-        fprintf(stderr, "invalid model: missing data or invalid dimensions.\n");
+        report_error("invalid model: missing data or invalid dimensions");
         return false;
     }
     if (!isfinite(prob->objective_constant))
     {
-        fprintf(stderr, "invalid model: objective constant must be finite.\n");
+        report_error("invalid model: objective constant must be finite");
         return false;
     }
     for (int j = 0; j < prob->num_variables; ++j)
     {
         if (!isfinite(prob->objective_vector[j]))
         {
-            fprintf(stderr, "invalid model: objective coefficient at index %d must be finite.\n", j);
+            report_error("invalid model: objective coefficient at index %d must be finite", j);
             return false;
         }
     }
@@ -112,7 +139,7 @@ bool validate_lp_problem_data(const lp_problem_t *prob)
     {
         if (!isfinite(prob->constraint_matrix_values[k]))
         {
-            fprintf(stderr, "invalid input matrix: coefficients must be finite.\n");
+            report_error("invalid input matrix: coefficients must be finite");
             return false;
         }
     }
@@ -131,8 +158,8 @@ static bool validate_bounds(const double *lower, const double *upper,
             lower[i] == INFINITY || upper[i] == -INFINITY ||
             lower[i] > upper[i])
         {
-            fprintf(stderr, "invalid %s bounds at index %d: [%g, %g].\n",
-                    bound_type, i, lower[i], upper[i]);
+            report_error("invalid %s bounds at index %d: [%g, %g]",
+                         bound_type, i, lower[i], upper[i]);
             return false;
         }
     }
@@ -212,6 +239,13 @@ bool set_start_values(
         !validate_start_vector(dual, m, "dual"))
         return false;
 
+    error_scope_t scope;
+    enter_error_scope(&scope);
+    if (setjmp(scope.env) != 0)
+    {
+        leave_error_scope();
+        return false;
+    }
     double *new_primal_start = NULL;
     double *new_dual_start = NULL;
     if (primal)
@@ -222,6 +256,8 @@ bool set_start_values(
     {
         copy_start_vector(&new_dual_start, dual, m);
     }
+    leave_error_scope();
+
     free(prob->primal_start);
     free(prob->dual_start);
     prob->primal_start = new_primal_start;
@@ -238,8 +274,8 @@ static bool validate_start_vector(const double *values, int n,
     {
         if (!isfinite(values[i]))
         {
-            fprintf(stderr, "invalid %s start value at index %d: %g.\n",
-                    vector_type, i, values[i]);
+            report_error("invalid %s start value at index %d: %g",
+                         vector_type, i, values[i]);
             return false;
         }
     }
@@ -311,7 +347,7 @@ hpdlp_result_t *solve_lp_problem(
 {
     if (!prob)
     {
-        fprintf(stderr, "[interface] solve_lp_problem: invalid arguments.\n");
+        report_error("solve_lp_problem: problem must not be NULL");
         return NULL;
     }
 

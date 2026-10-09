@@ -16,20 +16,16 @@ limitations under the License.
 
 #pragma once
 
+#include "error_handling.h"
 #include <cuda_runtime.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#define CUDA_CHECK(call)                                           \
-    do                                                             \
-    {                                                              \
-        cudaError_t err = call;                                    \
-        if (err != cudaSuccess)                                    \
-        {                                                          \
-            fprintf(stderr, "CUDA Error at %s:%d: %s\n", __FILE__, \
-                    __LINE__, cudaGetErrorName(err));              \
-            exit(EXIT_FAILURE);                                    \
-        }                                                          \
+#define CUDA_CHECK(call)                                     \
+    do                                                       \
+    {                                                        \
+        cudaError_t err = call;                              \
+        if (err != cudaSuccess)                              \
+            raise_error("CUDA error at %s:%d: %s", __FILE__, \
+                        __LINE__, cudaGetErrorName(err));    \
     } while (0)
 
 #define THREADS_PER_BLOCK 256

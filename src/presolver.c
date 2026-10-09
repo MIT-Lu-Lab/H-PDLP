@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "presolver.h"
 #include "PSLP_sol.h"
+#include "error_handling.h"
 #include "hpdlp.h"
 #include "utils.h"
 #include <float.h>
@@ -71,8 +72,7 @@ hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool v
 {
     if (working_problem->primal_start || working_problem->dual_start)
     {
-        printf("Warning: Warm-starting is currently not supported when presolve is enabled.\n"
-               "The provided initial solutions will be ignored.\n");
+        report_warning("warm start ignored: presolve does not support warm starts");
     }
     if (verbose)
     {
@@ -85,7 +85,7 @@ hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool v
     info->settings = default_settings();
     if (!info->settings)
     {
-        fprintf(stderr, "PSLP: failed to create settings.\n");
+        report_error("presolve: failed to create PSLP settings");
         hpdlp_presolve_info_free(info);
         return NULL;
     }
@@ -107,7 +107,7 @@ hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool v
 
     if (!info->presolver)
     {
-        fprintf(stderr, "PSLP: failed to create presolver.\n");
+        report_error("presolve: failed to create PSLP presolver");
         hpdlp_presolve_info_free(info);
         return NULL;
     }

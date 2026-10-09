@@ -306,7 +306,8 @@ static void check_projection_path(int num_variables, bool expect_cooperative)
     }
 
     pdhg_solver_state_t *state =
-        initialize_solver_state(problem, problem, &params);
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     check(expect_cooperative ? "large fixture uses cooperative projector"
                              : "scalar fixture uses single-block projector",
           expect_cooperative

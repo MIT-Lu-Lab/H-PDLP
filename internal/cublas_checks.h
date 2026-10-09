@@ -16,18 +16,14 @@ limitations under the License.
 
 #pragma once
 
+#include "error_handling.h"
 #include <cublas_v2.h>
-#include <stdio.h>
-#include <stdlib.h>
 
-#define CUBLAS_CHECK(call)                                           \
-    do                                                               \
-    {                                                                \
-        cublasStatus_t status = call;                                \
-        if (status != CUBLAS_STATUS_SUCCESS)                         \
-        {                                                            \
-            fprintf(stderr, "cuBLAS Error at %s:%d: %s\n", __FILE__, \
-                    __LINE__, cublasGetStatusName(status));          \
-            exit(EXIT_FAILURE);                                      \
-        }                                                            \
+#define CUBLAS_CHECK(call)                                      \
+    do                                                          \
+    {                                                           \
+        cublasStatus_t status = call;                           \
+        if (status != CUBLAS_STATUS_SUCCESS)                    \
+            raise_error("cuBLAS error at %s:%d: %s", __FILE__,  \
+                        __LINE__, cublasGetStatusName(status)); \
     } while (0)

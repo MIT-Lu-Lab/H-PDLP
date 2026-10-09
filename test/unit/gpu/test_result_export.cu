@@ -10,6 +10,7 @@
 #include <initializer_list>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <time.h>
 
 static void check_small_box_certificate(bool scaled, norm_type_t norm)
@@ -41,7 +42,9 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
         params.scaling_params.has_pock_chambolle_alpha = false;
         params.scaling_params.bound_objective_rescaling = false;
     }
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     double column_scale, row_scale;
     CUDA_CHECK(cudaMemcpy(&column_scale, state->variable_rescaling_d,
                           sizeof(double), cudaMemcpyDeviceToHost));
@@ -105,7 +108,9 @@ static void check_bound_candidates(norm_type_t norm)
     params.scaling_params.l_inf_ruiz_iterations = 0;
     params.scaling_params.has_pock_chambolle_alpha = false;
     params.scaling_params.bound_objective_rescaling = false;
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     const double tau = 1;
     CUDA_CHECK(cudaMemcpy(state->hsd_primal_scale_pdhg_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, x, sizeof(x), cudaMemcpyHostToDevice));
@@ -416,7 +421,9 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
         params.scaling_params.has_pock_chambolle_alpha = false;
         params.scaling_params.bound_objective_rescaling = false;
     }
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
     double scales[n], homogeneous_x[n];
     CUDA_CHECK(cudaMemcpy(scales, state->variable_rescaling_d, sizeof(scales), cudaMemcpyDeviceToHost));
     for (int j = 0; j < n; ++j)

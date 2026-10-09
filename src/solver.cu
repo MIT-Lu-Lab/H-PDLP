@@ -20,6 +20,7 @@ limitations under the License.
 #include "cublas_checks.h"
 #include "hpdlp.h"
 #include "display.h"
+#include "error_handling.h"
 #include "internal_types.h"
 #include "pid_controller.h"
 #include "presolver.h"
@@ -51,6 +52,13 @@ typedef struct {
     int *owned_constraint_matrix_col_indices;
     double *owned_constraint_matrix_values;
 } working_problem_t;
+
+typedef struct {
+    working_problem_t working;
+    hpdlp_presolve_info_t *presolve_info;
+    pdhg_solver_state_t *state;
+    hpdlp_result_t *result;
+} solve_resources_t;
 
 __global__ void compute_delta_kernel(
     const double *__restrict__ initial_primal,
@@ -87,14 +95,16 @@ __global__ void scale_hsd_scalars_kernel(
     double *primal_scale_pdhg,
     double *dual_scale_pdhg,
     double  inv_scale);
+static void run_optimization(
+    solve_resources_t *resources,
+    const pdhg_parameters_t *params,
+    const lp_problem_t *original_problem);
 static working_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
 static void restore_original_objective_sense(
     hpdlp_result_t *result,
     objective_sense_t objective_sense);
-static void working_problem_free(
-    working_problem_t *working);
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
 static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
 static void initialize_step_size_and_primal_weight(
@@ -138,52 +148,78 @@ static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
 static double apply_gauge_control(pdhg_solver_state_t *state);
+static void release_solve_resources(solve_resources_t *resources);
+static void working_problem_free(
+    working_problem_t *working);
 
 hpdlp_result_t *optimize(
     const pdhg_parameters_t *params,
     const lp_problem_t *original_problem)
 {
-    if (!check_params_validity(params))
-        return NULL;
+    solve_resources_t *volatile resources = NULL;
+    hpdlp_result_t *volatile result = NULL;
+    error_scope_t scope;
+    enter_error_scope(&scope);
+    if (setjmp(scope.env) == 0)
+    {
+        resources = (solve_resources_t *)safe_calloc(1, sizeof(solve_resources_t));
+        run_optimization(resources, params, original_problem);
+        result = resources->result;
+        resources->result = NULL;
+    }
+    scope.is_releasing = true;
+    release_solve_resources(resources);
+    leave_error_scope();
+    return result;
+}
 
-    working_problem_t working = create_working_problem(original_problem, params);
-    lp_problem_t *working_problem = &working.view;
+static void run_optimization(
+    solve_resources_t *resources,
+    const pdhg_parameters_t *params,
+    const lp_problem_t *original_problem)
+{
+    if (!check_params_validity(params))
+        return;
+
+    resources->working = create_working_problem(original_problem, params);
+    lp_problem_t *working_problem = &resources->working.view;
     print_initial_info(params, working_problem);
 
     if (working_problem->num_variables == 0 && working_problem->num_constraints == 0)
     {
         hpdlp_result_t *result = (hpdlp_result_t *)safe_calloc(1, sizeof(hpdlp_result_t));
+        resources->result = result;
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
         result->primal_objective_value = working_problem->objective_constant;
         result->dual_objective_value = working_problem->objective_constant;
         result->homogeneous_scale = 1.0;
         restore_original_objective_sense(result, original_problem->objective_sense);
         pdhg_final_log(result, params);
-        working_problem_free(&working);
-        return result;
+        return;
     }
 
-    hpdlp_presolve_info_t *presolve_info = NULL;
     if (params->presolve)
     {
-        presolve_info = pslp_presolve(working_problem, params->verbose);
-        if (!presolve_info)
+        resources->presolve_info = pslp_presolve(working_problem, params->verbose);
+        if (!resources->presolve_info)
+            return;
+        if (resources->presolve_info->problem_solved_during_presolve)
         {
-            working_problem_free(&working);
-            return NULL;
-        }
-        if (presolve_info->problem_solved_during_presolve)
-        {
-            hpdlp_result_t *result = create_result_from_presolve(presolve_info, working_problem);
-            hpdlp_presolve_info_free(presolve_info);
+            hpdlp_result_t *result =
+                create_result_from_presolve(resources->presolve_info, working_problem);
+            resources->result = result;
             restore_original_objective_sense(result, original_problem->objective_sense);
             pdhg_final_log(result, params);
-            working_problem_free(&working);
-            return result;
+            return;
         }
     }
+    hpdlp_presolve_info_t *presolve_info = resources->presolve_info;
 
-    pdhg_solver_state_t *state = initialize_solver_state(
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)safe_calloc(1, sizeof(pdhg_solver_state_t));
+    resources->state = state;
+    initialize_solver_state(
+        state,
         presolve_info ? &presolve_info->reduced_problem_view : working_problem,
         original_problem,
         params);
@@ -274,6 +310,7 @@ hpdlp_result_t *optimize(
     }
 
     hpdlp_result_t *result = create_result_from_state(state, working_problem);
+    resources->result = result;
 
     if (presolve_info)
     {
@@ -290,15 +327,11 @@ hpdlp_result_t *optimize(
         {
             pslp_postsolve_dual_infeasibility_ray(presolve_info, result, working_problem);
         }
-        hpdlp_presolve_info_free(presolve_info);
     }
 
     restore_original_objective_sense(result, original_problem->objective_sense);
     pdhg_final_log(result, params);
-    pdhg_solver_state_free(state);
     CUDA_CHECK(cudaGetLastError());
-    working_problem_free(&working);
-    return result;
 }
 
 static working_problem_t create_working_problem(
@@ -414,20 +447,6 @@ static void restore_original_objective_sense(
             result->reduced_cost[j] = -result->reduced_cost[j];
         }
     }
-}
-
-static void working_problem_free(
-    working_problem_t *working)
-{
-    free(working->owned_objective_vector);
-    free(working->owned_dual_start);
-    free(working->owned_variable_lower_bound);
-    free(working->owned_variable_upper_bound);
-    free(working->owned_constraint_lower_bound);
-    free(working->owned_constraint_upper_bound);
-    free(working->owned_constraint_matrix_row_pointers);
-    free(working->owned_constraint_matrix_col_indices);
-    free(working->owned_constraint_matrix_values);
 }
 
 static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
@@ -932,6 +951,31 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
     state->metrics_h->pdhg_primal_scale    *= inv_scale;
     state->metrics_h->pdhg_dual_scale      *= inv_scale;
     return inv_scale;
+}
+
+static void release_solve_resources(solve_resources_t *resources)
+{
+    if (!resources)
+        return;
+    pdhg_solver_state_free(resources->state);
+    hpdlp_presolve_info_free(resources->presolve_info);
+    working_problem_free(&resources->working);
+    hpdlp_result_free(resources->result);
+    free(resources);
+}
+
+static void working_problem_free(
+    working_problem_t *working)
+{
+    free(working->owned_objective_vector);
+    free(working->owned_dual_start);
+    free(working->owned_variable_lower_bound);
+    free(working->owned_variable_upper_bound);
+    free(working->owned_constraint_lower_bound);
+    free(working->owned_constraint_upper_bound);
+    free(working->owned_constraint_matrix_row_pointers);
+    free(working->owned_constraint_matrix_col_indices);
+    free(working->owned_constraint_matrix_values);
 }
 
 __global__ void compute_delta_kernel(

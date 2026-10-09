@@ -8,6 +8,7 @@
 #include "test_checks.h"
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -82,7 +83,9 @@ static int check_solution_norms(void)
     params.scaling_params.l_inf_ruiz_iterations = 0;
     params.scaling_params.has_pock_chambolle_alpha = false;
     params.scaling_params.bound_objective_rescaling = false;
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, &params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, &params);
 
     const double negative[] = {-3., -2.};
     CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, negative, sizeof(negative), cudaMemcpyHostToDevice));

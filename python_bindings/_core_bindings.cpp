@@ -250,6 +250,13 @@ static void validate_result_dimensions(const hpdlp_result_t *res, int expected_n
     }
 }
 
+// append the library's last recorded error to a failure summary
+static std::string describe_failure(const std::string &summary)
+{
+    const char *detail = hpdlp_last_error();
+    return detail[0] ? summary + ": " + detail : summary;
+}
+
 // get default parameters as Python dict
 static py::dict get_default_params_py()
 {
@@ -729,7 +736,7 @@ static py::dict solve_once(py::object A,
     );
     if (!prob)
     {
-        throw std::runtime_error("create_lp_problem failed.");
+        throw std::runtime_error(describe_failure("create_lp_problem failed"));
     }
     // free the problem even if a conversion/validation below throws
     std::unique_ptr<lp_problem_t, decltype(&lp_problem_free)> prob_guard(prob, &lp_problem_free);
@@ -772,7 +779,7 @@ static py::dict solve_once(py::object A,
     prob_guard.reset();
     if (!res)
     {
-        throw std::runtime_error("solve_lp_problem returned NULL.");
+        throw std::runtime_error(describe_failure("solve_lp_problem returned NULL"));
     }
     // free the result even if a conversion below throws
     std::unique_ptr<hpdlp_result_t, decltype(&hpdlp_result_free)> res_guard(res, &hpdlp_result_free);
@@ -840,7 +847,7 @@ static py::dict read_mps_py(const std::string &filename)
     }
     if (!prob)
     {
-        throw std::runtime_error("Failed to read MPS file: " + filename);
+        throw std::runtime_error(describe_failure("Failed to read MPS file: " + filename));
     }
     // free the problem even if a conversion below throws
     std::unique_ptr<lp_problem_t, decltype(&lp_problem_free)> guard(prob, &lp_problem_free);

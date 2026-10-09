@@ -148,7 +148,9 @@ static double measure_initial_norm(const double *values, const pdhg_parameters_t
         ++failures;
         return NAN;
     }
-    pdhg_solver_state_t *state = initialize_solver_state(problem, problem, params);
+    pdhg_solver_state_t *state =
+        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
+    initialize_solver_state(state, problem, problem, params);
     const double norm = state->rescaled_constraint_norm;
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
