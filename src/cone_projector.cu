@@ -301,10 +301,12 @@ __global__ void update_dual_box_cone_projection_kernel(
             reflected, current, initial_dual[i], reflection_coefficient, weight);
     }
 
-    if constexpr (COOPERATIVE)
+    if (newton_max_iter == 0)
     {
-        if (newton_max_iter == 0)
+        if constexpr (COOPERATIVE)
             cg::this_grid().sync();
+        else
+            __syncthreads();
     }
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
@@ -666,10 +668,12 @@ __global__ void update_primal_box_cone_resolvent_kernel(
             reflected, current, initial_primal[i], reflection_coefficient, weight);
     }
 
-    if constexpr (COOPERATIVE)
+    if (newton_max_iter == 0)
     {
-        if (newton_max_iter == 0)
+        if constexpr (COOPERATIVE)
             cg::this_grid().sync();
+        else
+            __syncthreads();
     }
 
     if (blockIdx.x == 0 && threadIdx.x == 0)
