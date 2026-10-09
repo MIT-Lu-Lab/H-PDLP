@@ -18,6 +18,12 @@ limitations under the License.
 
 #include <stdbool.h>
 
+#if defined(__GNUC__)
+#define HPDLP_API __attribute__((visibility("default")))
+#else
+#define HPDLP_API
+#endif
+
 #ifdef __cplusplus
 extern "C"
 {

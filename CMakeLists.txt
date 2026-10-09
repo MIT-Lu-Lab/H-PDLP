@@ -177,7 +177,10 @@ target_link_libraries(hpdlp_objects PRIVATE CUDA::cudart CUDA::cublas
                                                  ZLIB::ZLIB PSLP)
 set_target_properties(
   hpdlp_objects
-  PROPERTIES POSITION_INDEPENDENT_CODE ON CUDA_SEPARABLE_COMPILATION ON)
+  PROPERTIES POSITION_INDEPENDENT_CODE ON
+             CUDA_SEPARABLE_COMPILATION ON
+             C_VISIBILITY_PRESET hidden
+             CUDA_VISIBILITY_PRESET hidden)
 
 # -----------------------------------------------------------------------------
 # 1. Core STATIC Library (hpdlp_core)

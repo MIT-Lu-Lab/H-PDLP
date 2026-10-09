@@ -24,7 +24,7 @@ extern "C"
 {
 #endif
 
-    lp_problem_t *create_lp_problem(
+    HPDLP_API lp_problem_t *create_lp_problem(
         const double *objective_c,
         const matrix_desc_t *A_desc,
         const double *con_lb,
@@ -33,26 +33,26 @@ extern "C"
         const double *var_ub,
         const double *objective_constant);
 
-    void set_objective_sense(lp_problem_t *prob, objective_sense_t sense);
+    HPDLP_API void set_objective_sense(lp_problem_t *prob, objective_sense_t sense);
 
-    bool set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
+    HPDLP_API bool set_start_values(lp_problem_t *prob, const double *primal, const double *dual);
 
-    hpdlp_result_t *solve_lp_problem(
+    HPDLP_API hpdlp_result_t *solve_lp_problem(
         const lp_problem_t *prob,
         const pdhg_parameters_t *params);
 
-    void set_default_parameters(pdhg_parameters_t *params);
+    HPDLP_API void set_default_parameters(pdhg_parameters_t *params);
 
     /* Returns 0 for valid parameters, -1 otherwise. No GPU work is performed.
        When provided, error receives a NUL-terminated diagnostic. */
-    int hpdlp_validate_parameters(const pdhg_parameters_t *params,
-                                   char *error, size_t error_size);
+    HPDLP_API int hpdlp_validate_parameters(const pdhg_parameters_t *params,
+                                             char *error, size_t error_size);
 
-    void hpdlp_result_free(hpdlp_result_t *results);
+    HPDLP_API void hpdlp_result_free(hpdlp_result_t *results);
 
-    void lp_problem_free(lp_problem_t *prob);
+    HPDLP_API void lp_problem_free(lp_problem_t *prob);
 
-    const char *hpdlp_last_error(void);
+    HPDLP_API const char *hpdlp_last_error(void);
 
 #ifdef __cplusplus
 }

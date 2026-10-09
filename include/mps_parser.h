@@ -23,7 +23,7 @@ extern "C"
 {
 #endif
 
-    lp_problem_t *read_mps_file(const char *filename);
+    HPDLP_API lp_problem_t *read_mps_file(const char *filename);
 
 #ifdef __cplusplus
 }
