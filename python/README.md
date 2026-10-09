@@ -1,22 +1,26 @@
 # Python interface for H-PDLP
 
-The `hpdlp` package provides a Python interface to H-PDLP. It uses NumPy/SciPy for model data and pybind11 to call the C/CUDA solver directly.
+`hpdlp` is the Python interface to H-PDLP, a first-order LP solver for NVIDIA GPUs. It accepts NumPy and SciPy model data.
 
 ## Installation
 
-From the repository root, with Python 3.10+, CMake 3.24+, a C/C++ toolchain, CUDA 12.4+ (including NVCC), and an NVIDIA GPU:
+Build from source with Python 3.10+, CMake 3.24+, Git, a C/C++ toolchain, CUDA 12.4+ (including NVCC), and an NVIDIA GPU supported by the toolkit:
 
 ```bash
+git clone https://github.com/MIT-Lu-Lab/H-PDLP.git
+cd H-PDLP
 python -m pip install .
 ```
 
-The build uses `scikit-build-core` and `pybind11`, and installs NumPy/SciPy runtime dependencies. Set `CUDACXX` to select a CUDA compiler if needed. To override GPU architecture selection:
+If you already have a checkout, run the install command from its root. The first build needs network access to fetch PSLP and, if not installed, ZLIB.
+
+The install command also installs NumPy and SciPy. Set `CUDACXX` to select a CUDA compiler. To specify a GPU architecture:
 
 ```bash
 python -m pip install . -Ccmake.define.CMAKE_CUDA_ARCHITECTURES=89
 ```
 
-Choose an architecture supported by your toolkit and GPU. Linux/WSL is the primary build environment. The package includes Windows DLL lookup support, but native Windows builds require a compatible CUDA/MSVC toolchain.
+Choose an architecture supported by your toolkit and GPU. Linux and WSL2 are the primary build environments. Native Windows builds have not been validated.
 
 ## Build and solve a model
 
@@ -49,11 +53,13 @@ The model represents `min c.T @ x + c0`, with `l <= A @ x <= u` and `lb <= x <= 
 ```python
 import hpdlp
 
-model = hpdlp.read("problem.mps.gz")  # also accepts .mps and pathlib.Path
+model = hpdlp.read("examples/2club200v15p5scn.mps.gz")  # also accepts .mps and pathlib.Path
 model.optimize()
 model.setObjectiveConstant(2.)
 model.optimize()
 ```
+
+Run this example from the repository root. The first solve should return `OPTIMAL` with an objective near -121.2; adding the objective constant shifts it by 2. See [example details](https://github.com/MIT-Lu-Lab/H-PDLP/blob/main/examples/README.md).
 
 MPS `OBJSENSE` is preserved. Integer variables are treated as continuous: the interface solves the LP relaxation.
 
@@ -92,7 +98,7 @@ H-PDLP-specific controls:
 | `PrimalWeightSafeguard` | `primal_weight_safeguard` |
 | `ASBRelativeTol` | `asb_relative_tol` |
 
-TimeLimit follows the C solver's iteration CPU-time accounting; it is not a wall-clock budget for preprocessing and Python conversion. Defaults come from H-PDLP. Unknown parameters are rejected. The internal `tau_trace_path` debugging output is not exposed by this interface.
+`TimeLimit` is the iteration CPU-time limit in seconds, measured by C `clock()`. It excludes presolve, initialization, and Python conversion and is checked at termination evaluations. It is not a wall-clock limit.
 
 ## Warm starts
 
@@ -122,7 +128,7 @@ Vectors must have the original model dimensions and finite values. Set `Presolve
 
 Presolve can identify infeasibility without returning a certificate. A missing vector is `None`, not a zero-filled array. Check status before interpreting objective values, residuals, or vectors. A zero-valued certificate statistic does not imply a certificate is available.
 
-H-PDLP additionally exposes `FarkasMargin`, `FarkasResidual`, `HomogeneousScale`, `RestartCount`, `PresolveTime`, `PresolveStatus`, `ASBRaiseCount`, `ASBRevertCount`, `ASBPowerIterations`, and `FinalStepSizePrimal`, `FinalStepSizeDual`, `FinalStepSizeHomogeneous`. The Farkas statistics are the backend's certificate diagnostics. See [C API certificate semantics](../docs/C_API.md#results-and-termination-status).
+H-PDLP additionally exposes `FarkasMargin`, `FarkasResidual`, `HomogeneousScale`, `RestartCount`, `PresolveTime`, `PresolveStatus`, `ASBRaiseCount`, `ASBRevertCount`, `ASBPowerIterations`, and `FinalStepSizePrimal`, `FinalStepSizeDual`, `FinalStepSizeHomogeneous`. The Farkas statistics are the backend's certificate diagnostics. See [C API certificate semantics](https://github.com/MIT-Lu-Lab/H-PDLP/blob/main/docs/C_API.md#results-and-termination-status).
 
 The binding releases the Python GIL during native solves and serializes native solves within the process because the solver uses CUDA global graph capture. It raises Python exceptions for invalid inputs and unavailable CUDA devices. Fatal allocation or CUDA failures deeper in the C solver still use the existing process-exit error paths.
 
@@ -135,9 +141,7 @@ python -m pip install '.[test]'
 python -m pytest --require-gpu
 ```
 
-The suite checks model inputs, sparse conversions, parameter validation, warm
-starts, MPS reading, result properties and ownership, and complete solves.
-Solution and certificate checks independently use the original model data.
+The suite checks model inputs, sparse conversions, parameter validation, warm starts, MPS reading, result properties and ownership, and complete solves. Solution and certificate checks independently use the original model data.
 
 Run the checks that do not need a GPU device separately:
 
@@ -145,7 +149,4 @@ Run the checks that do not need a GPU device separately:
 python -m pytest -m "not gpu"
 ```
 
-The compiled package and its CUDA runtime dependencies must still be installed.
-Without `--require-gpu`, tests marked `gpu` skip when no usable CUDA device is
-available. The flag makes that condition fail during release verification.
-An import failure or solver failure is reported as an error.
+The compiled package and its CUDA runtime dependencies must still be installed. Without `--require-gpu`, tests marked `gpu` skip when no usable CUDA device is available. The flag makes that condition fail during release verification. An import failure or solver failure is reported as an error.

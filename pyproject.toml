@@ -6,7 +6,7 @@ build-backend = "scikit_build_core.build"
 name = "hpdlp"
 version = "0.0.1"
 description = "Python bindings for H-PDLP (GPU-accelerated first-order LP solver)"
-readme = "README.md"
+readme = "python/README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.10"
 authors = [
@@ -37,6 +37,11 @@ sdist.include = [
   "test/integration/**",
   "test/support/**",
   "docs/C_API.md",
+  "docs/CLI.md",
+  "docs/BUILD.md",
+  "test/README.md",
+  "examples/README.md",
+  "examples/2club200v15p5scn.mps.gz",
   "pyproject.toml",
   "README.md",
   "LICENSE",

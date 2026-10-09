@@ -1,13 +1,18 @@
 # H-PDLP: A GPU-Accelerated First-Order LP Solver
 
+[![Build](https://github.com/MIT-Lu-Lab/H-PDLP/actions/workflows/build.yml/badge.svg)](https://github.com/MIT-Lu-Lab/H-PDLP/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-![Version](https://img.shields.io/badge/version-v0.0.1-blue.svg)
 
-**H-PDLP** is a GPU-accelerated first-order solver for linear programming with support for primal and dual infeasibility detection. It combines a generalized primal-dual hybrid gradient (PDHG) operator for a homogeneous self-dual (HSD) embedding with restarted reflected Halpern iteration. The embedding encodes primal-dual optimal solutions and infeasibility certificates in a single conic system.
+**H-PDLP** is a first-order linear programming solver for NVIDIA GPUs. It supports primal and dual infeasibility detection.
 
-H-PDLP represents two-sided constraint and variable bounds directly through box cones, without introducing explicit bound slacks. The box-cone projections reduce to one-dimensional root-finding problems, so each iteration uses sparse matrix-vector products, vector operations, and reductions, with no matrix factorization. The implementation also adapts practical techniques from [cuPDLPx](https://github.com/MIT-Lu-Lab/cuPDLPx), including adaptive restarting and primal-weight updates.
+- A generalized PDHG method solves a homogeneous self-dual (HSD) embedding that encodes optimal solutions and infeasibility certificates.
+- Box cones handle two-sided constraints and variable bounds without explicit bound slacks.
+- Each iteration uses sparse matrix-vector products, vector operations, and reductions, with no matrix factorization.
+
+[Quick Start](#quick-start) · [CLI](docs/CLI.md) · [Python](python/README.md) · [C API](docs/C_API.md)
 
 H-PDLP solves linear programs of the form
+
 ```math
 \begin{aligned}
 \min_{x} \quad & c^\top x + c_0 \\
@@ -16,57 +21,93 @@ H-PDLP solves linear programs of the form
 \end{aligned}
 ```
 
-Maximization is supported through MPS `OBJSENSE` or `set_objective_sense` in the C API.
+Maximization is supported through MPS `OBJSENSE` and the C/Python APIs. For MPS inputs with integer variables, H-PDLP solves the **LP relaxation**; integrality is not enforced.
 
 ## Installation
 
-### Requirements
+Linux and WSL2 are the primary build environments. Native Windows builds have not been validated.
 
-* **GPU:** NVIDIA GPU with CUDA 12.4+ (cuBLAS, cuSPARSE, cuRAND).
-* **Build Tools:** CMake (≥ 3.24), a C99 / C++17 compiler, NVCC.
+- **GPU:** an NVIDIA GPU supported by the selected CUDA toolkit.
+- **CUDA Toolkit:** 12.4+ with NVCC, cuBLAS, cuSPARSE, and cuRAND.
+- **Build tools:** CMake 3.24+, Git, and a C99 / C++17 compiler compatible with the toolkit.
 
-CMake uses an installed **ZLIB** for `.mps.gz` decompression, or downloads it if unavailable. It fetches **[PSLP](https://github.com/dance858/PSLP)** (v0.0.11) for presolve.
+CMake fetches [PSLP](https://github.com/dance858/PSLP) (v0.0.11) for presolve and uses ZLIB to read `.mps.gz` files. The first build needs network access; ZLIB is also downloaded if not installed.
 
-### Build from Source
-Clone the repository and compile the project using CMake.
 ```bash
 git clone https://github.com/MIT-Lu-Lab/H-PDLP.git
 cd H-PDLP
 cmake -S . -B build
 cmake --build build -j
 ```
-On Linux, this creates `./build/hpdlp`, `./build/libhpdlp.so` (shared), and `./build/libhpdlp_core.a` (static). The default build type is Release.
 
-### Quick Start
+On Linux, this creates `build/hpdlp`, `build/libhpdlp.so` (shared), and `build/libhpdlp_core.a` (static). The default build type is Release. See [Build Options](docs/BUILD.md) for GPU architecture selection, library targets, and SpMV backends.
 
-Download an instance from MIPLIB and solve its LP relaxation:
+## Quick Start
+
+Solve the LP relaxation of the bundled [MIPLIB instance `2club200v15p5scn`](https://miplib.zib.de/instance_details_2club200v15p5scn.html) from the repository root:
 
 ```bash
-mkdir -p test
-wget -P test/ https://miplib.zib.de/WebData/instances/2club200v15p5scn.mps.gz
-./build/hpdlp test/2club200v15p5scn.mps.gz test/
+mkdir -p result
+./build/hpdlp examples/2club200v15p5scn.mps.gz result/
 ```
 
-The solver prints iteration statistics and writes results to `test/`. Check `test/2club200v15p5scn_summary.txt` for the termination status, objective values, and residuals. `OPTIMAL` means the solution satisfies the configured feasibility and optimality tolerances.
+At default tolerances, expect `OPTIMAL` and a primal objective of approximately **-121.2**. Results are written to `result/2club200v15p5scn_summary.txt`. See [example details](examples/README.md) for the data source and interpretation.
 
-### Build Options
+`OPTIMAL` means the configured feasibility and optimality tolerances are satisfied. `TIME_LIMIT` and `ITERATION_LIMIT` do not guarantee feasibility or optimality. Infeasibility statuses may return rays instead of solutions. Check the [termination status](docs/C_API.md#results-and-termination-status) before using returned vectors.
 
-The default GPU architecture selection is `all-major`; override it with `-DCMAKE_CUDA_ARCHITECTURES=...` if needed. The SpMV backend is selected automatically at compile time: `cusparseSpMVOp` for cuSPARSE ≥ 12.8.1 with experimental APIs enabled (the default build), and `cusparseSpMV` otherwise.
+## Interfaces
 
-Optional CMake flags (for example, `-DHPDLP_BUILD_TESTS=ON`):
+### Command Line
 
-| Flag | Default | Effect |
+```bash
+./build/hpdlp --time_limit 60 --eps_opt 1e-6 --eps_feas 1e-6 examples/2club200v15p5scn.mps.gz result/
+```
+
+Both `.mps` and `.mps.gz` inputs are supported. The output directory must already exist.
+
+| Option | Default | Meaning |
 | :--- | :--- | :--- |
-| `-DHPDLP_BUILD_STATIC_LIB` | `ON` | Build static library `hpdlp_core` |
-| `-DHPDLP_BUILD_SHARED_LIB` | `ON` | Build shared library |
-| `-DHPDLP_BUILD_CLI` | `ON` | Build CLI executable |
-| `-DHPDLP_BUILD_TESTS` | `OFF` | Build the test suite (run with `ctest`) |
+| `--time_limit` | `3600.0` | Iteration CPU-time limit in seconds. |
+| `--eps_opt` | `1e-4` | Relative optimality tolerance. |
+| `--eps_feas` | `1e-4` | Relative feasibility tolerance. |
+| `--quiet` | Off | Disable verbose logging. |
 
-The CLI and tests require the static library.
+The time limit excludes presolve and initialization; it is not a wall-clock limit. Run `./build/hpdlp --help` for all options. The [CLI Guide](docs/CLI.md) explains parameters, preprocessing, output files, and diagnostic logs.
 
-### Tests
+### Python
 
-Build and run the C/CUDA suite in Release:
+With Python 3.10+ and the CUDA build requirements above, install from the repository root:
+
+```bash
+python -m pip install .
+```
+
+The install command also installs NumPy and SciPy. To solve the bundled instance:
+
+```python
+import hpdlp
+
+model = hpdlp.read("examples/2club200v15p5scn.mps.gz")
+model.setParams(TimeLimit=60, OptimalityTol=1e-6, FeasibilityTol=1e-6)
+model.optimize()
+print(model.StatusName)
+if model.Status == hpdlp.PDLP.OPTIMAL:
+    print(model.ObjVal, model.X)
+```
+
+See the [Python API Guide](python/README.md) for building models with NumPy/SciPy, installation options, parameters, warm starts, and certificates.
+
+### C
+
+The C API accepts CSR, CSC, COO, and dense matrices. See the [C API Guide](docs/C_API.md) for an example, compilation instructions, parameters, and warm starts. Public headers: [`hpdlp.h`](include/hpdlp.h) and [`hpdlp_types.h`](include/hpdlp_types.h).
+
+## Algorithm Overview
+
+H-PDLP applies restarted reflected Halpern iteration to a generalized primal-dual hybrid gradient (PDHG) operator for the HSD embedding. The primal and dual box-cone subproblems reduce to one-dimensional root finding and are solved by a warm-started safeguarded Newton method.
+
+The implementation uses PSLP presolve and geometric-mean, Ruiz, Pock-Chambolle, and bound/objective scaling. See the [CLI Guide](docs/CLI.md#solver-options) for defaults and controls.
+
+## Tests
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DHPDLP_BUILD_TESTS=ON
@@ -74,136 +115,20 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-The `cpu`, `gpu`, and `integration` labels select model/API checks, CUDA
-algorithm checks, and complete solves. For example,
-`ctest --test-dir build -L cpu --output-on-failure` runs the CPU subset
-without a GPU device, using the CUDA build environment above. GPU tests
-report a skip when no usable device is available. Run the full suite on a
-CUDA GPU for release verification.
+See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. Build CI checks compilation only.
 
-The Python package has its own pytest suite; see [Python tests](python/README.md#tests).
+## Acknowledgements
 
-### Python Package
+H-PDLP uses adaptive restart and primal-weight update techniques from [cuPDLPx](https://github.com/MIT-Lu-Lab/cuPDLPx).
 
-Build and install the Python interface from this repository (Python 3.10+,
-NumPy, SciPy, and the CUDA build requirements above):
+## Citation
 
-```bash
-python -m pip install .
-```
+Citation information will be added here.
 
-For a specific GPU architecture, use, for example,
-`python -m pip install . -Ccmake.define.CMAKE_CUDA_ARCHITECTURES=89`.
-The CUDA compiler must support the selected architecture. The Python build
-enables `HPDLP_BUILD_PYTHON` and links the static solver into a pybind11 module.
+## Support
 
-## Usage & Interfaces
-
-### Command-line Interface
-
-After building the project, the `./build/hpdlp` binary can be invoked from the command line as follows:
-
-```bash
-./build/hpdlp [OPTIONS] <mps_file> <output_directory>
-```
-
-#### Arguments
-
-- `<mps_file>`: The path to the input linear programming problem. Both plain (`.mps`) and gzipped (`.mps.gz`) files are supported.
-- `<output_directory>`: An existing directory where the output files will be saved.
-
-For MPS inputs with integer variables, H-PDLP solves the LP relaxation; integrality is not enforced.
-
-For example, set a time limit and tighter feasibility and optimality tolerances:
-
-```bash
-./build/hpdlp --time_limit 60 --eps_opt 1e-6 --eps_feas 1e-6 \
-    test/2club200v15p5scn.mps.gz test/
-```
-
-Use `./build/hpdlp --help` to list the available options.
-
-#### Solver Options
-
-**Termination**
-
-| Option | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--time_limit` | `double` | Iteration time limit in CPU seconds. | `3600.0` |
-| `--iter_limit` | `int` | Iteration limit. | `2147483647` |
-| `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
-| `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
-| `--eps_farkas_homogeneous` | `double` | Residual-to-margin tolerance for homogeneous infeasibility certificates. | `1e-9` |
-| `--eps_farkas_displacement` | `double` | Residual-to-margin tolerance for displacement infeasibility certificates. | `1e-10` |
-| `--eval_freq` | `int` | Termination-check frequency (iterations), at least 3. | `200` |
-| `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf`. | `l2` |
-
-**General**
-
-| Option | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `-h`, `--help` | `flag` | Display the help message. | N/A |
-| `-v`, `--verbose` | `flag` | Enable verbose logging. | `true` |
-| `-q`, `--quiet` | `flag` | Disable verbose logging. | `false` |
-| `-d`, `--diagnose` | `flag` | Add HSD scale, step-size, primal-weight and block-norm columns to the iteration log. | `false` |
-
-**Preprocessing / Scaling**
-
-| Option | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--no_presolve` | `flag` | Disable presolve (PSLP). | `false` |
-| `--l_inf_ruiz_iter` | `int` | Iterations for L-∞ Ruiz rescaling. | `10` |
-| `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling. | `false` |
-| `--pock_chambolle_alpha` | `float` | Pock-Chambolle α. | `1.0` |
-| `--no_bound_obj_rescaling` | `flag` | Disable bound / objective rescaling. | `false` |
-
-**Solver algorithm**
-
-| Option | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--step_size_factor` | `float` | Step-size scaling factor in (0, 1). | `0.998` |
-| `--no_active_set_step_size_boost` | `flag` | Disable active-set step-size boosting. | `false` |
-| `--singular_value_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
-| `--singular_value_tol` | `float` | Power-iteration tolerance. | `1e-4` |
-| `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `100` |
-| `--cone_newton_tol` | `float` | Newton tolerance for cone projection. | `1e-6` |
-
-#### Output Files
-The solver writes a summary and any available primal/dual vectors to `<output_directory>`. For an input `INSTANCE.mps.gz`, the filenames are:
-```
-<output_directory>/
-├── INSTANCE_summary.txt          # Statistics, timings, and termination status
-├── INSTANCE_primal_solution.txt  # Candidate solution or primal ray, when available
-└── INSTANCE_dual_solution.txt    # Candidate dual solution or dual ray, when available
-```
-
-The summary reports termination status, timing, iteration count, objective values, and residuals. Vector files are written when available; check the termination status to distinguish solution candidates from infeasibility rays.
-
-`TIME_LIMIT` and `ITERATION_LIMIT` do not guarantee feasibility or optimality. Presolve may detect infeasibility without returning a ray. See the [termination-status reference](docs/C_API.md#results-and-termination-status) for details.
-
-### C Interface
-
-The public C API supports building LPs from CSR, CSC, COO, or dense matrices, configuring solver parameters, and retrieving solutions or infeasibility rays.
-
-See the [C API Guide](docs/C_API.md) for a complete example, compilation instructions, warm starts, and termination-status details. The public headers are [`hpdlp.h`](include/hpdlp.h) and [`hpdlp_types.h`](include/hpdlp_types.h).
-
-### Python Interface
-
-The `hpdlp` package provides `Model`, `PDLP`, and `read` for building and solving LPs:
-
-```python
-import hpdlp
-
-model = hpdlp.read("problem.mps.gz")
-model.setParams(TimeLimit=60, OptimalityTol=1e-6, FeasibilityTol=1e-6)
-model.optimize()
-print(model.StatusName, model.ObjVal)
-if model.Status == hpdlp.PDLP.OPTIMAL:
-    print(model.X)
-```
-
-See the [Python API Guide](python/README.md) for matrix inputs, parameters,
-warm starts, and the interpretation of infeasibility certificates.
+Use [GitHub Issues](https://github.com/MIT-Lu-Lab/H-PDLP/issues) for bug reports and feature requests. Include the H-PDLP commit or version, OS, GPU, CUDA version, a reproducing command or example, and relevant logs.
 
 ## License
-H-PDLP is licensed under the Apache 2.0 License. See the [LICENSE](LICENSE) file for details.
+
+H-PDLP is licensed under the Apache 2.0 License. See [LICENSE](LICENSE) for details. The bundled MIPLIB instance is third-party data; its source is documented in [examples/README.md](examples/README.md).
