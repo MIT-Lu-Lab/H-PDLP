@@ -24,7 +24,6 @@ limitations under the License.
 #include <limits.h>
 #include <libgen.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -163,6 +162,9 @@ static bool save_solver_summary(const hpdlp_result_t *result, const char *output
 
 static void print_usage(const char *prog_name)
 {
+    pdhg_parameters_t defaults;
+    set_default_parameters(&defaults);
+
     fprintf(stderr, "Usage: %s [OPTIONS] <mps_file> <output_dir>\n\n", prog_name);
 
     fprintf(stderr, "Arguments:\n");
@@ -173,27 +175,41 @@ static void print_usage(const char *prog_name)
     fprintf(stderr, "  -h, --help                            Display this help message.\n");
     fprintf(stderr, "\n  Preprocessing/scaling:\n");
     fprintf(stderr, "      --no_presolve                     Disable presolve.\n");
-    fprintf(stderr, "      --l_inf_ruiz_iter <int>           Iterations for L-inf Ruiz rescaling (default: 10).\n");
+    fprintf(stderr, "      --l_inf_ruiz_iter <int>           Iterations for L-inf Ruiz rescaling (default: %d).\n",
+            defaults.scaling_params.l_inf_ruiz_iterations);
     fprintf(stderr, "      --no_pock_chambolle               Disable Pock-Chambolle rescaling.\n");
-    fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: 1.0).\n");
+    fprintf(stderr, "      --pock_chambolle_alpha <float>    Value for Pock-Chambolle alpha (default: %g).\n",
+            defaults.scaling_params.pock_chambolle_alpha);
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
-    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: 0.998).\n");
-    fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
+    fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: %d).\n",
+            defaults.power_iter_params.max_iter);
+    fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: %g).\n",
+            defaults.power_iter_params.tol);
+    fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: %g).\n",
+            defaults.step_size_params.step_size_factor);
     fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding (default: enabled).\n");
-    fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: 5000).\n");
-    fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: 1e-4).\n");
-    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: 100).\n");
-    fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: 1e-6).\n");
+    fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: %d).\n",
+            defaults.cone_params.max_iter);
+    fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: %g).\n",
+            defaults.cone_params.tol);
+    fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
     fprintf(stderr, "\n  Termination:\n");
-    fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: 3600.0).\n");
-    fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n", INT32_MAX);
-    fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: 1e-4).\n");
-    fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: 1e-4).\n");
-    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: 1e-9).\n");
-    fprintf(stderr, "      --eps_farkas_displacement <tol>   Displacement-certificate infeasibility ratio (default: 1e-10).\n");
-    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: 200).\n");
     fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
+    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: %d).\n",
+            defaults.termination_evaluation_frequency);
+    fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: %g).\n",
+            defaults.termination_criteria.eps_optimal_relative);
+    fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: %g).\n",
+            defaults.termination_criteria.eps_feasible_relative);
+    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_homogeneous);
+    fprintf(stderr, "      --eps_farkas_displacement <tol>   Displacement-certificate infeasibility ratio (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_displacement);
+    fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: %g).\n",
+            defaults.termination_criteria.time_sec_limit);
+    fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n",
+            defaults.termination_criteria.iteration_limit);
     fprintf(stderr, "\n  Output:\n");
     fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: true).\n");
     fprintf(stderr, "  -q, --quiet                           Disable verbose logging.\n");

@@ -30,60 +30,8 @@ ArrayLike = Union[np.ndarray, list, tuple]
 # sentinel for "argument not provided" (distinct from None, which means "clear")
 _UNSET = object()
 
-_BOOL_PARAMS = frozenset({
-    "verbose",
-    "diagnose",
-    "presolve",
-    "has_pock_chambolle_alpha",
-    "bound_objective_rescaling",
-    "primal_weight_safeguard",
-    "active_set_boost",
-})
-_INT_PARAMS = frozenset({
-    "termination_evaluation_frequency",
-    "iteration_limit",
-    "geometric_mean_iterations",
-    "l_inf_ruiz_iterations",
-    "sv_max_iter",
-    "cone_newton_max_iter",
-    "asb_window_iter",
-    "asb_max_reverts",
-})
-_FLOAT_PARAMS = frozenset({
-    "reflection_coefficient",
-    "eps_optimal_relative",
-    "eps_feasible_relative",
-    "eps_farkas_homogeneous",
-    "eps_farkas_displacement",
-    "time_sec_limit",
-    "pock_chambolle_alpha",
-    "matrix_zero_tol",
-    "infinite_bound",
-    "artificial_restart_threshold",
-    "sufficient_reduction_for_restart",
-    "necessary_reduction_for_restart",
-    "step_size_factor",
-    "k_p",
-    "k_i",
-    "k_d",
-    "i_smooth",
-    "sv_tol",
-    "cone_newton_tol",
-    "asb_relative_tol",
-    "asb_safety_factor",
-    "asb_min_raise_ratio",
-    "asb_reestimate_change_ratio",
-    "asb_divergence_ceiling_ratio",
-    "asb_divergence_margin",
-})
-_STRING_PARAMS = frozenset({"optimality_norm"})
 # int params are stored as C int32 on the backend
 _INT32_MAX = np.iinfo(np.int32).max
-
-# every backend param must fall in one typed set, else it goes uncoerced; value
-# ranges are not mirrored here: setParam hands the full dict to validate_params,
-# the same C check optimize() runs, so range rules live in one place
-_CLASSIFIED_PARAMS = _BOOL_PARAMS | _INT_PARAMS | _FLOAT_PARAMS | _STRING_PARAMS
 
 def _as_dense_f64_c(a: ArrayLike) -> np.ndarray:
     """
@@ -319,10 +267,6 @@ class Model:
         self._params: dict[str, Any] = dict(self._default_params)
         # canonical set of backend parameter keys, used to reject typos in setParam
         self._valid_param_keys = frozenset(self._params)
-        # fail loudly if the backend exposes a param the typed sets don't cover
-        unclassified = self._valid_param_keys - _CLASSIFIED_PARAMS
-        if unclassified:
-            raise RuntimeError(f"Unclassified solver parameters (update model.py): {sorted(unclassified)}")
         self.Params = _ParamsView(self)
         # initialize warm start values
         self._primal_start: Optional[np.ndarray] = None # warm start primal solution
@@ -568,7 +512,8 @@ class Model:
         # type conversion only: turn what the user passed (numpy scalars, 0/1, integer-valued
         # floats, mixed-case norm names) into the Python type the backend expects; value
         # ranges are checked by validate_params, the same C rules optimize() applies
-        if key in _BOOL_PARAMS:
+        kind = type(self._default_params[key])
+        if kind is bool:
             # accept a real bool, numpy bool, or an integer 0/1; store a Python bool
             if isinstance(value, (bool, np.bool_)):
                 return bool(value)
@@ -578,7 +523,7 @@ class Model:
                 return bool(value)
             raise TypeError(f"Parameter '{key}' must be a bool (or 0/1).")
 
-        if key in _INT_PARAMS:
+        if kind is int:
             # accept any Python/numpy integer or an integer-valued float; store a Python int
             if isinstance(value, (bool, np.bool_)):
                 raise TypeError(f"Parameter '{key}' must be an int.")
@@ -592,7 +537,7 @@ class Model:
                 raise ValueError(f"Parameter '{key}' must fit in an int32.")
             return value
 
-        if key in _FLOAT_PARAMS:
+        if kind is float:
             # accept any real number (Python/numpy int or float); store a Python float
             if isinstance(value, (bool, np.bool_)):
                 raise TypeError(f"Parameter '{key}' must be a number.")
@@ -600,14 +545,11 @@ class Model:
                 raise TypeError(f"Parameter '{key}' must be a number.")
             return float(value)
 
-        if key in _STRING_PARAMS:
-            if not isinstance(value, str):
-                raise TypeError(f"Parameter '{key}' must be str.")
-            value = value.lower()
-            if value not in ("l2", "linf"):
-                raise ValueError("Parameter 'optimality_norm' must be 'l2' or 'linf'.")
-            return value
-
+        if not isinstance(value, str):
+            raise TypeError(f"Parameter '{key}' must be str.")
+        value = value.lower()
+        if value not in ("l2", "linf"):
+            raise ValueError("Parameter 'optimality_norm' must be 'l2' or 'linf'.")
         return value
 
     def setParam(self, name: str, value: Any) -> None:

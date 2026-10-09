@@ -257,55 +257,127 @@ static std::string describe_failure(const std::string &summary)
     return detail[0] ? summary + ": " + detail : summary;
 }
 
+// visit every user-settable parameter with its Python key
+template <typename Visitor>
+static void visit_params(pdhg_parameters_t &p, Visitor &&visit)
+{
+    visit("presolve", p.presolve);
+    visit("verbose", p.verbose);
+    visit("diagnose", p.diagnose);
+    visit("optimality_norm", p.optimality_norm);
+    visit("reflection_coefficient", p.reflection_coefficient);
+    visit("termination_evaluation_frequency", p.termination_evaluation_frequency);
+    visit("geometric_mean_iterations", p.scaling_params.geometric_mean_iterations);
+    visit("l_inf_ruiz_iterations", p.scaling_params.l_inf_ruiz_iterations);
+    visit("has_pock_chambolle_alpha", p.scaling_params.has_pock_chambolle_alpha);
+    visit("pock_chambolle_alpha", p.scaling_params.pock_chambolle_alpha);
+    visit("bound_objective_rescaling", p.scaling_params.bound_objective_rescaling);
+    visit("matrix_zero_tol", p.scaling_params.matrix_zero_tol);
+    visit("infinite_bound", p.scaling_params.infinite_bound);
+    visit("sv_max_iter", p.power_iter_params.max_iter);
+    visit("sv_tol", p.power_iter_params.tol);
+    visit("step_size_factor", p.step_size_params.step_size_factor);
+    visit("k_p", p.step_size_params.k_p);
+    visit("k_i", p.step_size_params.k_i);
+    visit("k_d", p.step_size_params.k_d);
+    visit("i_smooth", p.step_size_params.i_smooth);
+    visit("primal_weight_safeguard", p.step_size_params.primal_weight_safeguard);
+    visit("cone_newton_max_iter", p.cone_params.max_iter);
+    visit("cone_newton_tol", p.cone_params.tol);
+    visit("eps_optimal_relative", p.termination_criteria.eps_optimal_relative);
+    visit("eps_feasible_relative", p.termination_criteria.eps_feasible_relative);
+    visit("eps_farkas_homogeneous", p.termination_criteria.eps_farkas_homogeneous);
+    visit("eps_farkas_displacement", p.termination_criteria.eps_farkas_displacement);
+    visit("time_sec_limit", p.termination_criteria.time_sec_limit);
+    visit("iteration_limit", p.termination_criteria.iteration_limit);
+    visit("artificial_restart_threshold", p.restart_params.artificial_restart_threshold);
+    visit("sufficient_reduction_for_restart", p.restart_params.sufficient_reduction_for_restart);
+    visit("necessary_reduction_for_restart", p.restart_params.necessary_reduction_for_restart);
+    visit("active_set_boost", p.active_set_params.step_size_boost);
+    visit("asb_window_iter", p.active_set_params.window_iterations);
+    visit("asb_relative_tol", p.active_set_params.relative_tol);
+    visit("asb_safety_factor", p.active_set_params.safety_factor);
+    visit("asb_min_raise_ratio", p.active_set_params.min_raise_ratio);
+    visit("asb_reestimate_change_ratio", p.active_set_params.reestimate_change_ratio);
+    visit("asb_divergence_ceiling_ratio", p.active_set_params.divergence_ceiling_ratio);
+    visit("asb_divergence_margin", p.active_set_params.divergence_margin);
+    visit("asb_max_reverts", p.active_set_params.max_reverts);
+}
+
+// convert a parameter value to its Python representation
+template <typename T>
+static T param_to_python(T value)
+{
+    return value;
+}
+
+static const char *param_to_python(norm_type_t value)
+{
+    return value == NORM_TYPE_L_INF ? "linf" : "l2";
+}
+
+// read a Python value into a parameter of the matching C type
+static void param_from_python(py::object val, const char *key, double &target)
+{
+    if (py::isinstance<py::bool_>(val))
+    {
+        throw std::invalid_argument(std::string(key) + " must be a number.");
+    }
+    try
+    {
+        target = py::cast<double>(val);
+    }
+    catch (const py::cast_error &)
+    {
+        throw std::invalid_argument(std::string(key) + " must be a number.");
+    }
+    if (!std::isfinite(target))
+    {
+        throw std::invalid_argument(std::string(key) + " must be finite.");
+    }
+}
+
+static void param_from_python(py::object val, const char *key, int &target)
+{
+    if (py::isinstance<py::bool_>(val) || !py::isinstance<py::int_>(val))
+    {
+        throw std::invalid_argument(std::string(key) + " must be an int.");
+    }
+    try
+    {
+        target = py::cast<int>(val);
+    }
+    catch (const py::cast_error &)
+    {
+        throw std::invalid_argument(std::string(key) + " must fit in an int32.");
+    }
+}
+
+static void param_from_python(py::object val, const char *key, bool &target)
+{
+    if (!py::isinstance<py::bool_>(val))
+    {
+        throw std::invalid_argument(std::string(key) + " must be a bool.");
+    }
+    target = py::cast<bool>(val);
+}
+
+static void param_from_python(py::object val, const char *, norm_type_t &target)
+{
+    if (!py::isinstance<py::str>(val))
+    {
+        throw std::invalid_argument("optimality_norm must be a string ('l2'/'linf')");
+    }
+    target = parse_norm_string(py::cast<std::string>(val));
+}
+
 // get default parameters as Python dict
 static py::dict get_default_params_py()
 {
     pdhg_parameters_t p;
     set_default_parameters(&p);
     py::dict d;
-
-    d["verbose"] = p.verbose;
-    d["diagnose"] = p.diagnose;
-    d["presolve"] = p.presolve;
-    d["termination_evaluation_frequency"] = p.termination_evaluation_frequency;
-    d["reflection_coefficient"] = p.reflection_coefficient;
-    d["eps_optimal_relative"] = p.termination_criteria.eps_optimal_relative;
-    d["eps_feasible_relative"] = p.termination_criteria.eps_feasible_relative;
-    d["eps_farkas_homogeneous"] = p.termination_criteria.eps_farkas_homogeneous;
-    d["eps_farkas_displacement"] = p.termination_criteria.eps_farkas_displacement;
-    d["time_sec_limit"] = p.termination_criteria.time_sec_limit;
-    d["iteration_limit"] = p.termination_criteria.iteration_limit;
-    d["geometric_mean_iterations"] = p.scaling_params.geometric_mean_iterations;
-    d["l_inf_ruiz_iterations"] = p.scaling_params.l_inf_ruiz_iterations;
-    d["has_pock_chambolle_alpha"] = p.scaling_params.has_pock_chambolle_alpha;
-    d["bound_objective_rescaling"] = p.scaling_params.bound_objective_rescaling;
-    d["pock_chambolle_alpha"] = p.scaling_params.pock_chambolle_alpha;
-    d["matrix_zero_tol"] = p.scaling_params.matrix_zero_tol;
-    d["infinite_bound"] = p.scaling_params.infinite_bound;
-    d["artificial_restart_threshold"] = p.restart_params.artificial_restart_threshold;
-    d["sufficient_reduction_for_restart"] = p.restart_params.sufficient_reduction_for_restart;
-    d["necessary_reduction_for_restart"] = p.restart_params.necessary_reduction_for_restart;
-    d["step_size_factor"] = p.step_size_params.step_size_factor;
-    d["k_p"] = p.step_size_params.k_p;
-    d["k_i"] = p.step_size_params.k_i;
-    d["k_d"] = p.step_size_params.k_d;
-    d["i_smooth"] = p.step_size_params.i_smooth;
-    d["primal_weight_safeguard"] = p.step_size_params.primal_weight_safeguard;
-    d["sv_max_iter"] = p.power_iter_params.max_iter;
-    d["sv_tol"] = p.power_iter_params.tol;
-    d["cone_newton_max_iter"] = p.cone_params.max_iter;
-    d["cone_newton_tol"] = p.cone_params.tol;
-    d["active_set_boost"] = p.active_set_params.step_size_boost;
-    d["asb_window_iter"] = p.active_set_params.window_iterations;
-    d["asb_relative_tol"] = p.active_set_params.relative_tol;
-    d["asb_safety_factor"] = p.active_set_params.safety_factor;
-    d["asb_min_raise_ratio"] = p.active_set_params.min_raise_ratio;
-    d["asb_reestimate_change_ratio"] = p.active_set_params.reestimate_change_ratio;
-    d["asb_divergence_ceiling_ratio"] = p.active_set_params.divergence_ceiling_ratio;
-    d["asb_divergence_margin"] = p.active_set_params.divergence_margin;
-    d["asb_max_reverts"] = p.active_set_params.max_reverts;
-    d["optimality_norm"] = p.optimality_norm == NORM_TYPE_L_INF ? "linf" : "l2";
-
+    visit_params(p, [&](const char *key, auto &value) { d[key] = param_to_python(value); });
     return d;
 }
 
@@ -316,125 +388,14 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
         return;
     py::dict d = params_obj.cast<py::dict>();
 
-    // every key the readers below look at; anything else in the dict is a typo
+    // every key the table knows; anything else in the dict is a typo
     std::unordered_set<std::string> known_keys;
-
-    auto getf = [&](const char *k, double &tgt)
+    visit_params(*p, [&](const char *key, auto &value)
     {
-        known_keys.insert(k);
-        if (d.contains(k))
-        {
-            py::object val = d[k];
-            if (py::isinstance<py::bool_>(val))
-            {
-                throw std::invalid_argument(std::string(k) + " must be a number.");
-            }
-            try
-            {
-                tgt = py::cast<double>(val);
-            }
-            catch (const py::cast_error &)
-            {
-                throw std::invalid_argument(std::string(k) + " must be a number.");
-            }
-            if (!std::isfinite(tgt))
-            {
-                throw std::invalid_argument(std::string(k) + " must be finite.");
-            }
-        }
-    };
-    auto geti = [&](const char *k, int &tgt)
-    {
-        known_keys.insert(k);
-        if (d.contains(k))
-        {
-            py::object val = d[k];
-            if (py::isinstance<py::bool_>(val) || !py::isinstance<py::int_>(val))
-            {
-                throw std::invalid_argument(std::string(k) + " must be an int.");
-            }
-            try
-            {
-                tgt = py::cast<int>(val);
-            }
-            catch (const py::cast_error &)
-            {
-                throw std::invalid_argument(std::string(k) + " must fit in an int32.");
-            }
-        }
-    };
-    auto getb = [&](const char *k, bool &tgt)
-    {
-        known_keys.insert(k);
-        if (d.contains(k))
-        {
-            py::object val = d[k];
-            if (!py::isinstance<py::bool_>(val))
-            {
-                throw std::invalid_argument(std::string(k) + " must be a bool.");
-            }
-            tgt = py::cast<bool>(val);
-        }
-    };
-    auto get_norm = [&](const char *k, norm_type_t &tgt)
-    {
-        known_keys.insert(k);
-        if (d.contains(k))
-        {
-            py::object val = d[k];
-            if (py::isinstance<py::str>(val))
-            {
-                std::string sval = py::cast<std::string>(val);
-                tgt = parse_norm_string(sval);
-            }
-            else
-            {
-                throw std::invalid_argument("optimality_norm must be a string ('l2'/'linf')");
-            }
-        }
-    };
-
-    getb("verbose", p->verbose);
-    getb("diagnose", p->diagnose);
-    getb("presolve", p->presolve);
-    geti("termination_evaluation_frequency", p->termination_evaluation_frequency);
-    getf("reflection_coefficient", p->reflection_coefficient);
-    getf("eps_optimal_relative", p->termination_criteria.eps_optimal_relative);
-    getf("eps_feasible_relative", p->termination_criteria.eps_feasible_relative);
-    getf("eps_farkas_homogeneous", p->termination_criteria.eps_farkas_homogeneous);
-    getf("eps_farkas_displacement", p->termination_criteria.eps_farkas_displacement);
-    getf("time_sec_limit", p->termination_criteria.time_sec_limit);
-    geti("iteration_limit", p->termination_criteria.iteration_limit);
-    geti("geometric_mean_iterations", p->scaling_params.geometric_mean_iterations);
-    geti("l_inf_ruiz_iterations", p->scaling_params.l_inf_ruiz_iterations);
-    getb("has_pock_chambolle_alpha", p->scaling_params.has_pock_chambolle_alpha);
-    getb("bound_objective_rescaling", p->scaling_params.bound_objective_rescaling);
-    getf("pock_chambolle_alpha", p->scaling_params.pock_chambolle_alpha);
-    getf("matrix_zero_tol", p->scaling_params.matrix_zero_tol);
-    getf("infinite_bound", p->scaling_params.infinite_bound);
-    getf("artificial_restart_threshold", p->restart_params.artificial_restart_threshold);
-    getf("sufficient_reduction_for_restart", p->restart_params.sufficient_reduction_for_restart);
-    getf("necessary_reduction_for_restart", p->restart_params.necessary_reduction_for_restart);
-    getf("step_size_factor", p->step_size_params.step_size_factor);
-    getf("k_p", p->step_size_params.k_p);
-    getf("k_i", p->step_size_params.k_i);
-    getf("k_d", p->step_size_params.k_d);
-    getf("i_smooth", p->step_size_params.i_smooth);
-    getb("primal_weight_safeguard", p->step_size_params.primal_weight_safeguard);
-    geti("sv_max_iter", p->power_iter_params.max_iter);
-    getf("sv_tol", p->power_iter_params.tol);
-    geti("cone_newton_max_iter", p->cone_params.max_iter);
-    getf("cone_newton_tol", p->cone_params.tol);
-    getb("active_set_boost", p->active_set_params.step_size_boost);
-    geti("asb_window_iter", p->active_set_params.window_iterations);
-    getf("asb_relative_tol", p->active_set_params.relative_tol);
-    getf("asb_safety_factor", p->active_set_params.safety_factor);
-    getf("asb_min_raise_ratio", p->active_set_params.min_raise_ratio);
-    getf("asb_reestimate_change_ratio", p->active_set_params.reestimate_change_ratio);
-    getf("asb_divergence_ceiling_ratio", p->active_set_params.divergence_ceiling_ratio);
-    getf("asb_divergence_margin", p->active_set_params.divergence_margin);
-    geti("asb_max_reverts", p->active_set_params.max_reverts);
-    get_norm("optimality_norm", p->optimality_norm);
+        known_keys.insert(key);
+        if (d.contains(key))
+            param_from_python(d[key], key, value);
+    });
 
     for (auto item : d)
     {

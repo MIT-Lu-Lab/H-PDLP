@@ -34,16 +34,16 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
         return parameter_error(error, error_size, "parameters must not be NULL", 0);
     if (params->optimality_norm != NORM_TYPE_L2 && params->optimality_norm != NORM_TYPE_L_INF)
         return parameter_error(error, error_size, "optimality_norm must be L2 or L_INF", params->optimality_norm);
-    if (params->termination_evaluation_frequency < 3)
-    {
-        return parameter_error(error, error_size, "termination_evaluation_frequency must be >= 3",
-                           params->termination_evaluation_frequency);
-    }
     if (!(params->reflection_coefficient > 0.0 &&
           params->reflection_coefficient <= 1.0))
     {
         return parameter_error(error, error_size, "reflection_coefficient must be in (0, 1]",
                            params->reflection_coefficient);
+    }
+    if (params->termination_evaluation_frequency < 3)
+    {
+        return parameter_error(error, error_size, "termination_evaluation_frequency must be >= 3",
+                           params->termination_evaluation_frequency);
     }
     if (params->scaling_params.geometric_mean_iterations < 0)
     {
@@ -75,13 +75,13 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
     }
     if (params->power_iter_params.max_iter < 1)
     {
-        return parameter_error(error, error_size, "singular_value_max_iter must be >= 1",
+        return parameter_error(error, error_size, "sv_max_iter must be >= 1",
                            params->power_iter_params.max_iter);
     }
     if (!(params->power_iter_params.tol > 0.0 &&
           isfinite(params->power_iter_params.tol)))
     {
-        return parameter_error(error, error_size, "singular_value_tol must be finite and > 0",
+        return parameter_error(error, error_size, "sv_tol must be finite and > 0",
                            params->power_iter_params.tol);
     }
     if (!(params->step_size_params.step_size_factor > 0.0 &&
@@ -121,62 +121,16 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
         return parameter_error(error, error_size, "cone_newton_tol must be finite and > 0",
                            params->cone_params.tol);
     }
-    if (params->active_set_params.window_iterations < 1)
-    {
-        return parameter_error(error, error_size, "active_set window_iterations must be >= 1",
-                           params->active_set_params.window_iterations);
-    }
-    if (!(params->active_set_params.relative_tol >= 0.0 &&
-          isfinite(params->active_set_params.relative_tol)))
-    {
-        return parameter_error(error, error_size, "active_set relative_tol must be finite and >= 0",
-                           params->active_set_params.relative_tol);
-    }
-    if (!(params->active_set_params.safety_factor > 0.0 &&
-          params->active_set_params.safety_factor < 1.0))
-    {
-        return parameter_error(error, error_size, "active_set safety_factor must be in (0, 1)",
-                           params->active_set_params.safety_factor);
-    }
-    if (!(params->active_set_params.min_raise_ratio >= 1.0 &&
-          isfinite(params->active_set_params.min_raise_ratio)))
-    {
-        return parameter_error(error, error_size, "active_set min_raise_ratio must be finite and >= 1",
-                           params->active_set_params.min_raise_ratio);
-    }
-    if (!(params->active_set_params.reestimate_change_ratio >= 0.0 &&
-          isfinite(params->active_set_params.reestimate_change_ratio)))
-    {
-        return parameter_error(error, error_size, "active_set reestimate_change_ratio must be finite and >= 0",
-                           params->active_set_params.reestimate_change_ratio);
-    }
-    if (!(params->active_set_params.divergence_ceiling_ratio > 0.0 &&
-          params->active_set_params.divergence_ceiling_ratio <= 1.0))
-    {
-        return parameter_error(error, error_size, "active_set divergence_ceiling_ratio must be in (0, 1]",
-                           params->active_set_params.divergence_ceiling_ratio);
-    }
-    if (!(params->active_set_params.divergence_margin >= 0.0 &&
-          isfinite(params->active_set_params.divergence_margin)))
-    {
-        return parameter_error(error, error_size, "active_set divergence_margin must be finite and >= 0",
-                           params->active_set_params.divergence_margin);
-    }
-    if (params->active_set_params.max_reverts < 0)
-    {
-        return parameter_error(error, error_size, "active_set max_reverts must be >= 0",
-                           params->active_set_params.max_reverts);
-    }
     if (!(params->termination_criteria.eps_optimal_relative > 0.0 &&
           isfinite(params->termination_criteria.eps_optimal_relative)))
     {
-        return parameter_error(error, error_size, "eps_opt must be finite and > 0",
+        return parameter_error(error, error_size, "eps_optimal_relative must be finite and > 0",
                            params->termination_criteria.eps_optimal_relative);
     }
     if (!(params->termination_criteria.eps_feasible_relative > 0.0 &&
           isfinite(params->termination_criteria.eps_feasible_relative)))
     {
-        return parameter_error(error, error_size, "eps_feas must be finite and > 0",
+        return parameter_error(error, error_size, "eps_feasible_relative must be finite and > 0",
                            params->termination_criteria.eps_feasible_relative);
     }
     if (!(params->termination_criteria.eps_farkas_homogeneous > 0.0 &&
@@ -193,12 +147,12 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
     }
     if (!(params->termination_criteria.time_sec_limit > 0.0))
     {
-        return parameter_error(error, error_size, "time_limit must be > 0",
+        return parameter_error(error, error_size, "time_sec_limit must be > 0",
                            params->termination_criteria.time_sec_limit);
     }
     if (params->termination_criteria.iteration_limit < 1)
     {
-        return parameter_error(error, error_size, "iter_limit must be >= 1",
+        return parameter_error(error, error_size, "iteration_limit must be >= 1",
                            params->termination_criteria.iteration_limit);
     }
     if (!(params->restart_params.artificial_restart_threshold > 0.0 &&
@@ -212,8 +166,54 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
               params->restart_params.necessary_reduction_for_restart &&
           params->restart_params.necessary_reduction_for_restart < 1.0))
     {
-        return parameter_error(error, error_size, "restart reductions must satisfy 0 < sufficient <= necessary < 1",
+        return parameter_error(error, error_size, "restart reductions must satisfy 0 < sufficient_reduction_for_restart <= necessary_reduction_for_restart < 1",
                            params->restart_params.sufficient_reduction_for_restart);
+    }
+    if (params->active_set_params.window_iterations < 1)
+    {
+        return parameter_error(error, error_size, "asb_window_iter must be >= 1",
+                           params->active_set_params.window_iterations);
+    }
+    if (!(params->active_set_params.relative_tol >= 0.0 &&
+          isfinite(params->active_set_params.relative_tol)))
+    {
+        return parameter_error(error, error_size, "asb_relative_tol must be finite and >= 0",
+                           params->active_set_params.relative_tol);
+    }
+    if (!(params->active_set_params.safety_factor > 0.0 &&
+          params->active_set_params.safety_factor < 1.0))
+    {
+        return parameter_error(error, error_size, "asb_safety_factor must be in (0, 1)",
+                           params->active_set_params.safety_factor);
+    }
+    if (!(params->active_set_params.min_raise_ratio >= 1.0 &&
+          isfinite(params->active_set_params.min_raise_ratio)))
+    {
+        return parameter_error(error, error_size, "asb_min_raise_ratio must be finite and >= 1",
+                           params->active_set_params.min_raise_ratio);
+    }
+    if (!(params->active_set_params.reestimate_change_ratio >= 0.0 &&
+          isfinite(params->active_set_params.reestimate_change_ratio)))
+    {
+        return parameter_error(error, error_size, "asb_reestimate_change_ratio must be finite and >= 0",
+                           params->active_set_params.reestimate_change_ratio);
+    }
+    if (!(params->active_set_params.divergence_ceiling_ratio > 0.0 &&
+          params->active_set_params.divergence_ceiling_ratio <= 1.0))
+    {
+        return parameter_error(error, error_size, "asb_divergence_ceiling_ratio must be in (0, 1]",
+                           params->active_set_params.divergence_ceiling_ratio);
+    }
+    if (!(params->active_set_params.divergence_margin >= 0.0 &&
+          isfinite(params->active_set_params.divergence_margin)))
+    {
+        return parameter_error(error, error_size, "asb_divergence_margin must be finite and >= 0",
+                           params->active_set_params.divergence_margin);
+    }
+    if (params->active_set_params.max_reverts < 0)
+    {
+        return parameter_error(error, error_size, "asb_max_reverts must be >= 0",
+                           params->active_set_params.max_reverts);
     }
     return 0;
 }

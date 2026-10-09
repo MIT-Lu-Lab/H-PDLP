@@ -22,24 +22,26 @@ limitations under the License.
 #include <math.h>
 #include <stdio.h>
 
+#define SETTING_LABEL_WIDTH 32
+
 #define PRINT_DIFF_INT(name, current, default_val) \
     do { \
         if ((current) != (default_val)) { \
-            printf("  %-18s : %d\n", name, current); \
+            printf("  %-*s : %d\n", SETTING_LABEL_WIDTH, name, current); \
         } \
     } while(0)
 
 #define PRINT_DIFF_DBL(name, current, default_val) \
     do { \
         if ((current) != (default_val)) { \
-            printf("  %-18s : %.1e\n", name, (double)(current)); \
+            printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, name, (double)(current)); \
         } \
     } while(0)
 
 #define PRINT_DIFF_BOOL(name, current, default_val) \
     do { \
         if ((current) != (default_val)) { \
-            printf("  %-18s : %s\n", name, (current) ? "on" : "off"); \
+            printf("  %-*s : %s\n", SETTING_LABEL_WIDTH, name, (current) ? "on" : "off"); \
         } \
     } while (0)
 
@@ -99,92 +101,119 @@ void print_initial_info(
         problem->constraint_matrix_num_nonzeros);
 
     printf("Settings:\n");
-    printf("  iter_limit         : %d\n",
-           params->termination_criteria.iteration_limit);
-    printf("  time_limit         : %.2f sec\n",
-           params->termination_criteria.time_sec_limit);
-    printf("  eps_opt            : %.1e\n",
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_optimal_relative",
            params->termination_criteria.eps_optimal_relative);
-    printf("  eps_feas           : %.1e\n",
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_feasible_relative",
            params->termination_criteria.eps_feasible_relative);
-    printf("  eps_farkas_homog   : %.1e\n",
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_homogeneous",
            params->termination_criteria.eps_farkas_homogeneous);
-    printf("  eps_farkas_displ   : %.1e\n",
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_displacement",
            params->termination_criteria.eps_farkas_displacement);
-    printf("  spmv_backend       : %s\n", spmv_backend_name());
-    if (params->optimality_norm != default_params.optimality_norm)
-    {
-        printf("  optimality_norm    : %s\n",
-               params->optimality_norm == NORM_TYPE_L_INF ? "L_inf" : "L2");
-    }
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "time_sec_limit",
+           params->termination_criteria.time_sec_limit);
+    printf("  %-*s : %d\n", SETTING_LABEL_WIDTH, "iteration_limit",
+           params->termination_criteria.iteration_limit);
+    printf("  %-*s : %s\n", SETTING_LABEL_WIDTH, "spmv_backend", spmv_backend_name());
 
-    PRINT_DIFF_INT("geo_mean_iter",
-                   params->scaling_params.geometric_mean_iterations,
-                   default_params.scaling_params.geometric_mean_iterations);
-    PRINT_DIFF_INT("l_inf_ruiz_iter",
-                   params->scaling_params.l_inf_ruiz_iterations,
-                   default_params.scaling_params.l_inf_ruiz_iterations);
-    PRINT_DIFF_DBL("pock_chambolle_alpha",
-                   params->scaling_params.pock_chambolle_alpha,
-                   default_params.scaling_params.pock_chambolle_alpha);
-    PRINT_DIFF_BOOL("has_pock_chambolle_alpha",
-                    params->scaling_params.has_pock_chambolle_alpha,
-                    default_params.scaling_params.has_pock_chambolle_alpha);
-    PRINT_DIFF_BOOL("bound_obj_rescaling",
-                    params->scaling_params.bound_objective_rescaling,
-                    default_params.scaling_params.bound_objective_rescaling);
-    PRINT_DIFF_INT("power_iter_max_iter",
-                   params->power_iter_params.max_iter,
-                   default_params.power_iter_params.max_iter);
-    PRINT_DIFF_DBL("power_iter_tol",
-                   params->power_iter_params.tol,
-                   default_params.power_iter_params.tol);
-    PRINT_DIFF_INT("evaluation_freq",
-                   params->termination_evaluation_frequency,
-                   default_params.termination_evaluation_frequency);
     PRINT_DIFF_BOOL("presolve",
                     params->presolve,
                     default_params.presolve);
+    if (params->optimality_norm != default_params.optimality_norm)
+    {
+        printf("  %-*s : %s\n", SETTING_LABEL_WIDTH, "optimality_norm",
+               params->optimality_norm == NORM_TYPE_L_INF ? "linf" : "l2");
+    }
+    PRINT_DIFF_DBL("reflection_coefficient",
+                   params->reflection_coefficient,
+                   default_params.reflection_coefficient);
+    PRINT_DIFF_INT("termination_evaluation_frequency",
+                   params->termination_evaluation_frequency,
+                   default_params.termination_evaluation_frequency);
+    PRINT_DIFF_INT("geometric_mean_iterations",
+                   params->scaling_params.geometric_mean_iterations,
+                   default_params.scaling_params.geometric_mean_iterations);
+    PRINT_DIFF_INT("l_inf_ruiz_iterations",
+                   params->scaling_params.l_inf_ruiz_iterations,
+                   default_params.scaling_params.l_inf_ruiz_iterations);
+    PRINT_DIFF_BOOL("has_pock_chambolle_alpha",
+                    params->scaling_params.has_pock_chambolle_alpha,
+                    default_params.scaling_params.has_pock_chambolle_alpha);
+    PRINT_DIFF_DBL("pock_chambolle_alpha",
+                   params->scaling_params.pock_chambolle_alpha,
+                   default_params.scaling_params.pock_chambolle_alpha);
+    PRINT_DIFF_BOOL("bound_objective_rescaling",
+                    params->scaling_params.bound_objective_rescaling,
+                    default_params.scaling_params.bound_objective_rescaling);
     PRINT_DIFF_DBL("matrix_zero_tol",
                    params->scaling_params.matrix_zero_tol,
                    default_params.scaling_params.matrix_zero_tol);
     PRINT_DIFF_DBL("infinite_bound",
                    params->scaling_params.infinite_bound,
                    default_params.scaling_params.infinite_bound);
-    PRINT_DIFF_INT("cone_newton_iter",
+    PRINT_DIFF_INT("sv_max_iter",
+                   params->power_iter_params.max_iter,
+                   default_params.power_iter_params.max_iter);
+    PRINT_DIFF_DBL("sv_tol",
+                   params->power_iter_params.tol,
+                   default_params.power_iter_params.tol);
+    PRINT_DIFF_DBL("step_size_factor",
+                   params->step_size_params.step_size_factor,
+                   default_params.step_size_params.step_size_factor);
+    PRINT_DIFF_DBL("k_p",
+                   params->step_size_params.k_p,
+                   default_params.step_size_params.k_p);
+    PRINT_DIFF_DBL("k_i",
+                   params->step_size_params.k_i,
+                   default_params.step_size_params.k_i);
+    PRINT_DIFF_DBL("k_d",
+                   params->step_size_params.k_d,
+                   default_params.step_size_params.k_d);
+    PRINT_DIFF_DBL("i_smooth",
+                   params->step_size_params.i_smooth,
+                   default_params.step_size_params.i_smooth);
+    PRINT_DIFF_BOOL("primal_weight_safeguard",
+                    params->step_size_params.primal_weight_safeguard,
+                    default_params.step_size_params.primal_weight_safeguard);
+    PRINT_DIFF_INT("cone_newton_max_iter",
                    params->cone_params.max_iter,
                    default_params.cone_params.max_iter);
     PRINT_DIFF_DBL("cone_newton_tol",
                    params->cone_params.tol,
                    default_params.cone_params.tol);
-    PRINT_DIFF_BOOL("primal_weight_safeguard",
-                    params->step_size_params.primal_weight_safeguard,
-                    default_params.step_size_params.primal_weight_safeguard);
-    PRINT_DIFF_BOOL("active_set_step_size_boost",
+    PRINT_DIFF_DBL("artificial_restart_threshold",
+                   params->restart_params.artificial_restart_threshold,
+                   default_params.restart_params.artificial_restart_threshold);
+    PRINT_DIFF_DBL("sufficient_reduction_for_restart",
+                   params->restart_params.sufficient_reduction_for_restart,
+                   default_params.restart_params.sufficient_reduction_for_restart);
+    PRINT_DIFF_DBL("necessary_reduction_for_restart",
+                   params->restart_params.necessary_reduction_for_restart,
+                   default_params.restart_params.necessary_reduction_for_restart);
+    PRINT_DIFF_BOOL("active_set_boost",
                     params->active_set_params.step_size_boost,
                     default_params.active_set_params.step_size_boost);
-    PRINT_DIFF_INT("active_set_window_iterations",
+    PRINT_DIFF_INT("asb_window_iter",
                    params->active_set_params.window_iterations,
                    default_params.active_set_params.window_iterations);
-    PRINT_DIFF_DBL("active_set_relative_tol",
+    PRINT_DIFF_DBL("asb_relative_tol",
                    params->active_set_params.relative_tol,
                    default_params.active_set_params.relative_tol);
-    PRINT_DIFF_DBL("active_set_safety_factor",
+    PRINT_DIFF_DBL("asb_safety_factor",
                    params->active_set_params.safety_factor,
                    default_params.active_set_params.safety_factor);
-    PRINT_DIFF_DBL("active_set_min_raise_ratio",
+    PRINT_DIFF_DBL("asb_min_raise_ratio",
                    params->active_set_params.min_raise_ratio,
                    default_params.active_set_params.min_raise_ratio);
-    PRINT_DIFF_DBL("active_set_reestimate_change_ratio",
+    PRINT_DIFF_DBL("asb_reestimate_change_ratio",
                    params->active_set_params.reestimate_change_ratio,
                    default_params.active_set_params.reestimate_change_ratio);
-    PRINT_DIFF_DBL("active_set_divergence_ceiling_ratio",
+    PRINT_DIFF_DBL("asb_divergence_ceiling_ratio",
                    params->active_set_params.divergence_ceiling_ratio,
                    default_params.active_set_params.divergence_ceiling_ratio);
-    PRINT_DIFF_DBL("active_set_divergence_margin",
+    PRINT_DIFF_DBL("asb_divergence_margin",
                    params->active_set_params.divergence_margin,
                    default_params.active_set_params.divergence_margin);
-    PRINT_DIFF_INT("active_set_max_reverts",
+    PRINT_DIFF_INT("asb_max_reverts",
                    params->active_set_params.max_reverts,
                    default_params.active_set_params.max_reverts);
 }
