@@ -405,7 +405,7 @@ class Model:
             if n_l != m:
                 raise ValueError(
                     f"setConstraintMatrix: constraint_lower_bound length {n_l} != rows {m}. "
-                    f"Call setConstraintLowerBound(...) to update it."
+                    f"Set the constraint bounds to None first, then set A, then set the new bounds."
                 )
         u = self._constr_ub
         if u is not None:
@@ -413,7 +413,7 @@ class Model:
             if n_u != m:
                 raise ValueError(
                     f"setConstraintMatrix: constraint_upper_bound length {n_u} != rows {m}. "
-                    f"Call setConstraintUpperBound(...) to update it."
+                    f"Set the constraint bounds to None first, then set A, then set the new bounds."
                 )
         # commit
         self._A = _readonly_matrix(A)

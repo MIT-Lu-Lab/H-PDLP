@@ -149,6 +149,11 @@ def test_matrix_row_change_conflicts_with_bounds(model):
     model.constr_lb = None
     with pytest.raises(ValueError):
         model.A = two_row
+    model.constr_ub = None
+    model.A = two_row
+    model.constr_lb = [0.0, 0.0]
+    model.constr_ub = [1.0, 1.0]
+    assert model.num_constrs == 2
 
 
 def test_init_requires_2d_matrix():
