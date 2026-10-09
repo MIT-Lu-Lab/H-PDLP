@@ -73,13 +73,12 @@ __device__ __forceinline__ double solve_scale_newton(
     newton_terms_t *newton_partials,
     EvaluateTerms evaluate_terms,
     UpdateScale update_scale);
-__device__ __forceinline__ newton_terms_t make_empty_newton_terms();
 template <bool COOPERATIVE>
 __device__ __forceinline__ newton_terms_t reduce_newton_terms(
     const newton_terms_t &thread_terms,
     newton_terms_t *newton_partials,
     int iter);
-__device__ inline void warp_reduce_newton_terms(newton_terms_t &terms);
+__device__ __forceinline__ void warp_reduce_newton_terms(newton_terms_t &terms);
 __device__ __forceinline__ newton_terms_t evaluate_dual_box_cone_newton_terms(
     double unprojected,
     double lb,
@@ -431,7 +430,7 @@ __device__ __forceinline__ double solve_scale_newton(
 
     for (int iter = 0; iter < newton_max_iter; ++iter)
     {
-        newton_terms_t thread_terms = make_empty_newton_terms();
+        newton_terms_t thread_terms = {0.0, 0.0};
         for (int i = blockIdx.x * blockDim.x + threadIdx.x;
              i < num_elements;
              i += gridDim.x * blockDim.x)
@@ -460,11 +459,6 @@ __device__ __forceinline__ double solve_scale_newton(
     return scale;
 }
 
-__device__ __forceinline__ newton_terms_t make_empty_newton_terms()
-{
-    return newton_terms_t{0.0, 0.0};
-}
-
 template <bool COOPERATIVE>
 __device__ __forceinline__ newton_terms_t reduce_newton_terms(
     const newton_terms_t &thread_terms,
@@ -489,7 +483,7 @@ __device__ __forceinline__ newton_terms_t reduce_newton_terms(
 
         cg::this_grid().sync();
 
-        newton_terms_t total = make_empty_newton_terms();
+        newton_terms_t total = {0.0, 0.0};
         if (threadIdx.x < warpSize)
         {
             for (int bk = threadIdx.x; bk < num_blocks; bk += warpSize)
@@ -502,7 +496,7 @@ __device__ __forceinline__ newton_terms_t reduce_newton_terms(
     }
 }
 
-__device__ inline void warp_reduce_newton_terms(newton_terms_t &terms)
+__device__ __forceinline__ void warp_reduce_newton_terms(newton_terms_t &terms)
 {
     for (int offset = warpSize / 2; offset > 0; offset >>= 1)
     {

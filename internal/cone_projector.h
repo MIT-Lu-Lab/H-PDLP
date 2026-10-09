@@ -30,7 +30,7 @@ typedef struct {
     double function_value;
 } newton_terms_t;
 
-enum BoxConeScaleSlot {
+enum {
     BOX_CONE_SCALE_LATEST   = 0,
     BOX_CONE_SCALE_PREVIOUS = 1,
     BOX_CONE_SCALE_OLDEST   = 2,

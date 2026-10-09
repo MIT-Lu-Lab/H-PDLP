@@ -25,7 +25,7 @@ static bool apply_primal_weight_safeguard(pid_state_t *pid,
                                           double relative_dual_residual);
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
-                             const step_size_parameters_t *params,
+                             const step_size_parameters_t *step_size_params,
                              double primal_dist,
                              double dual_dist,
                              bool clamp_step);
@@ -47,7 +47,7 @@ static void reset_pid_errors(pid_state_t *pid)
 
 void apply_restart_pid(pid_state_t *pid,
                        double *primal_weight,
-                       const step_size_parameters_t *params,
+                       const step_size_parameters_t *step_size_params,
                        double primal_dist,
                        double dual_dist,
                        double relative_objective_gap,
@@ -62,7 +62,7 @@ void apply_restart_pid(pid_state_t *pid,
         return;
     }
 
-    if (params->primal_weight_safeguard &&
+    if (step_size_params->primal_weight_safeguard &&
         apply_primal_weight_safeguard(pid, primal_weight, relative_objective_gap,
                                       relative_primal_residual, relative_dual_residual))
         return;
@@ -75,10 +75,10 @@ void apply_restart_pid(pid_state_t *pid,
 
     double primal_error = fmax(relative_primal_residual, relative_objective_gap);
     double dual_error = fmax(relative_dual_residual, relative_objective_gap);
-    double infeas_ratio = primal_error / dual_error;
-    bool ratio_ok = infeas_ratio > 1e-7 && infeas_ratio < 1e7;
+    double error_ratio = primal_error / dual_error;
+    bool ratio_ok = error_ratio > 1e-7 && error_ratio < 1e7;
 
-    apply_pid_update(pid, primal_weight, params, primal_dist, dual_dist,
+    apply_pid_update(pid, primal_weight, step_size_params, primal_dist, dual_dist,
                      !(dist_ok && ratio_ok));
 }
 
@@ -121,7 +121,7 @@ static bool apply_primal_weight_safeguard(pid_state_t *pid,
 
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
-                             const step_size_parameters_t *params,
+                             const step_size_parameters_t *step_size_params,
                              double primal_dist,
                              double dual_dist,
                              bool clamp_step)
@@ -130,11 +130,11 @@ static void apply_pid_update(pid_state_t *pid,
     if (!isfinite(error))
         return;
 
-    pid->error_sum = params->i_smooth * pid->error_sum + error;
+    pid->error_sum = step_size_params->i_smooth * pid->error_sum + error;
     double delta_error = pid->has_last_error ? error - pid->last_error : 0.0;
-    double step = params->k_p * error +
-                  params->k_i * pid->error_sum +
-                  params->k_d * delta_error;
+    double step = step_size_params->k_p * error +
+                  step_size_params->k_i * pid->error_sum +
+                  step_size_params->k_d * delta_error;
     if (clamp_step && step * error > 0.0)
     {
         const double max_log_step = log(10.0);

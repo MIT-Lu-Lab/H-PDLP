@@ -89,7 +89,7 @@ typedef struct {
     double last_trial_fixed_point_error;
 } solver_control_t;
 
-enum HsdScalarSlot {
+enum {
     HSD_PRIMAL_SCALE_INITIAL      = 0,
     HSD_PRIMAL_SCALE_CURRENT      = 1,
     HSD_PRIMAL_SCALE_PDHG         = 2,
@@ -99,8 +99,8 @@ enum HsdScalarSlot {
     HSD_DUAL_SCALE_PDHG           = 6,
     HSD_DUAL_SCALE_REFLECTED      = 7,
     HSD_PRIMAL_CONE_SCALE_HISTORY = 8,
-    HSD_DUAL_CONE_SCALE_HISTORY   = 11,
-    HSD_SCALARS_COUNT             = 14,
+    HSD_DUAL_CONE_SCALE_HISTORY   = HSD_PRIMAL_CONE_SCALE_HISTORY + BOX_CONE_SCALE_COUNT,
+    HSD_SCALARS_COUNT             = HSD_DUAL_CONE_SCALE_HISTORY + BOX_CONE_SCALE_COUNT,
 };
 
 typedef struct {

@@ -66,7 +66,7 @@ extern "C"
         const pdhg_parameters_t *params);
 
     void check_termination_criteria(
-        pdhg_solver_state_t *solver_state,
+        pdhg_solver_state_t *state,
         const termination_criteria_t *criteria);
 
 #ifdef __cplusplus

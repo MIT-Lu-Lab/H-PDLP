@@ -436,44 +436,44 @@ static void compute_ray_infeasibility_norms(pdhg_solver_state_t *state)
 }
 
 void check_termination_criteria(
-    pdhg_solver_state_t *solver_state,
+    pdhg_solver_state_t *state,
     const termination_criteria_t *criteria)
 {
-    solver_state->control.cumulative_time_sec = (double)(clock() - solver_state->control.start_time) / CLOCKS_PER_SEC;
+    state->control.cumulative_time_sec = (double)(clock() - state->control.start_time) / CLOCKS_PER_SEC;
 
-    if (!isfinite(solver_state->metrics_h->primal_solution_norm) ||
-        !isfinite(solver_state->metrics_h->dual_solution_norm) ||
-        !isfinite(solver_state->metrics_h->pdhg_primal_scale))
+    if (!isfinite(state->metrics_h->primal_solution_norm) ||
+        !isfinite(state->metrics_h->dual_solution_norm) ||
+        !isfinite(state->metrics_h->pdhg_primal_scale))
     {
-        solver_state->control.termination_reason = TERMINATION_REASON_NUMERICAL_FAILURE;
+        state->control.termination_reason = TERMINATION_REASON_NUMERICAL_FAILURE;
         return;
     }
 
-    double ratio = solver_state->metrics_h->normalized_homogeneous_ratio;
-    double normalized_primal_scale = solver_state->metrics_h->pdhg_primal_scale
-                                   / fmax(solver_state->metrics_h->primal_solution_norm,
-                                          solver_state->metrics_h->dual_solution_norm);
+    double ratio = state->metrics_h->normalized_homogeneous_ratio;
+    double normalized_primal_scale = state->metrics_h->pdhg_primal_scale
+                                   / fmax(state->metrics_h->primal_solution_norm,
+                                          state->metrics_h->dual_solution_norm);
     if (ratio < 0.5)
     {
-        if (certify_optimality(solver_state, criteria))
+        if (certify_optimality(state, criteria))
         {
             return;
         }
     }
     if (ratio > 0.9 || normalized_primal_scale < 1e-10)
     {
-        if (certify_infeasibility(solver_state,
-                                  solver_state->metrics_h->primal_infeasibility_homogeneous_margin,
-                                  solver_state->metrics_h->primal_infeasibility_homogeneous_residual,
+        if (certify_infeasibility(state,
+                                  state->metrics_h->primal_infeasibility_homogeneous_margin,
+                                  state->metrics_h->primal_infeasibility_homogeneous_residual,
                                   criteria->eps_farkas_homogeneous,
                                   TERMINATION_REASON_PRIMAL_INFEASIBLE,
                                   true))
         {
             return;
         }
-        if (certify_infeasibility(solver_state,
-                                  solver_state->metrics_h->dual_infeasibility_homogeneous_margin,
-                                  solver_state->metrics_h->dual_infeasibility_homogeneous_residual,
+        if (certify_infeasibility(state,
+                                  state->metrics_h->dual_infeasibility_homogeneous_margin,
+                                  state->metrics_h->dual_infeasibility_homogeneous_residual,
                                   criteria->eps_farkas_homogeneous,
                                   TERMINATION_REASON_DUAL_INFEASIBLE,
                                   true))
@@ -482,18 +482,18 @@ void check_termination_criteria(
         }
     }
 
-    if (certify_infeasibility(solver_state,
-                              solver_state->metrics_h->primal_infeasibility_displacement_margin,
-                              solver_state->metrics_h->primal_infeasibility_displacement_residual,
+    if (certify_infeasibility(state,
+                              state->metrics_h->primal_infeasibility_displacement_margin,
+                              state->metrics_h->primal_infeasibility_displacement_residual,
                               criteria->eps_farkas_displacement,
                               TERMINATION_REASON_PRIMAL_INFEASIBLE,
                               false))
     {
         return;
     }
-    if (certify_infeasibility(solver_state,
-                              solver_state->metrics_h->dual_infeasibility_displacement_margin,
-                              solver_state->metrics_h->dual_infeasibility_displacement_residual,
+    if (certify_infeasibility(state,
+                              state->metrics_h->dual_infeasibility_displacement_margin,
+                              state->metrics_h->dual_infeasibility_displacement_residual,
                               criteria->eps_farkas_displacement,
                               TERMINATION_REASON_DUAL_INFEASIBLE,
                               false))
@@ -501,14 +501,14 @@ void check_termination_criteria(
         return;
     }
 
-    if (solver_state->control.total_count >= criteria->iteration_limit)
+    if (state->control.total_count >= criteria->iteration_limit)
     {
-        solver_state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
+        state->control.termination_reason = TERMINATION_REASON_ITERATION_LIMIT;
         return;
     }
-    if (solver_state->control.cumulative_time_sec >= criteria->time_sec_limit)
+    if (state->control.cumulative_time_sec >= criteria->time_sec_limit)
     {
-        solver_state->control.termination_reason = TERMINATION_REASON_TIME_LIMIT;
+        state->control.termination_reason = TERMINATION_REASON_TIME_LIMIT;
         return;
     }
 }

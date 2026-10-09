@@ -46,7 +46,7 @@ static void upload_problem_data(
     const lp_problem_t *working_problem);
 static void allocate_solver_work_vectors(pdhg_solver_state_t *state);
 static void allocate_host_staging_buffers(pdhg_solver_state_t *state);
-static void initialize_homogeneous_scalars(pdhg_solver_state_t *state);
+static void initialize_host_scale_metrics(pdhg_solver_state_t *state);
 static void allocate_device_scalars(pdhg_solver_state_t *state);
 static void initialize_newton_structure(
     pdhg_solver_state_t *state,
@@ -140,7 +140,7 @@ void initialize_solver_state(
     upload_problem_data(state, working_problem);
     allocate_solver_work_vectors(state);
     allocate_host_staging_buffers(state);
-    initialize_homogeneous_scalars(state);
+    initialize_host_scale_metrics(state);
     initialize_active_set(state, params);
     allocate_device_scalars(state);
     initialize_newton_structure(state, working_problem);
@@ -309,7 +309,7 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
         cudaHostAllocMapped));
 }
 
-static void initialize_homogeneous_scalars(pdhg_solver_state_t *state)
+static void initialize_host_scale_metrics(pdhg_solver_state_t *state)
 {
     state->metrics_h->current_primal_scale = 1.0;
     state->metrics_h->pdhg_primal_scale = 1.0;
@@ -344,7 +344,12 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->control.step_size_primal_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_dual_d, sizeof(double));
     allocate_zeroed_device_buffer((void **)&state->control.step_size_homogeneous_d, sizeof(double));
+}
 
+static void initialize_newton_structure(
+    pdhg_solver_state_t *state,
+    const lp_problem_t *working_problem)
+{
     state->primal_box_cone_state.scale_history_d = state->hsd_scalars_d + HSD_PRIMAL_CONE_SCALE_HISTORY;
     state->primal_box_cone_state.lower_bound_d   = state->variable_lower_bound_d;
     state->primal_box_cone_state.upper_bound_d   = state->variable_upper_bound_d;
@@ -354,12 +359,7 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->dual_box_cone_state.lower_bound_d   = state->constraint_lower_bound_d;
     state->dual_box_cone_state.upper_bound_d   = state->constraint_upper_bound_d;
     state->dual_box_cone_state.num_elements    = state->num_constraints;
-}
 
-static void initialize_newton_structure(
-    pdhg_solver_state_t *state,
-    const lp_problem_t *working_problem)
-{
     state->dual_box_cone_state.newton_terms_are_zero = true;
     for (int i = 0; i < state->num_constraints; ++i)
     {

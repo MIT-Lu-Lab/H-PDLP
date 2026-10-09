@@ -71,7 +71,6 @@ void allocate_cub_reduce_workspace(pdhg_solver_state_t *state)
     size_t sum_bytes = 0;
     size_t max_bytes = 0;
     size_t abs_max_bytes = 0;
-    // Match the execution wrappers' iterator types to reuse CUB instantiations.
     const double *null_input = NULL;
     double *null_output = NULL;
     auto absolute_values =

@@ -135,7 +135,7 @@ static void perform_active_set_boost_revert(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 static bool should_do_adaptive_restart(
-    pdhg_solver_state_t *state,
+    const pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 static void perform_restart(
     pdhg_solver_state_t *state,
@@ -288,7 +288,9 @@ static void run_optimization(
             break;
         }
 
-        if (should_do_adaptive_restart(state, params))
+        const bool do_restart = should_do_adaptive_restart(state, params);
+        state->control.last_trial_fixed_point_error = *state->control.fixed_point_error_mp;
+        if (do_restart)
         {
             perform_restart(state, params);
             restarted = true;
@@ -719,7 +721,7 @@ static void perform_active_set_boost_revert(
 }
 
 static bool should_do_adaptive_restart(
-    pdhg_solver_state_t *state,
+    const pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
     const restart_parameters_t *restart_params = &params->restart_params;
@@ -757,7 +759,6 @@ static bool should_do_adaptive_restart(
             do_restart = true;
         }
     }
-    state->control.last_trial_fixed_point_error = fixed_point_error;
     return do_restart;
 }
 

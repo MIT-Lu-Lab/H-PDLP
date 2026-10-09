@@ -39,7 +39,7 @@ void initialize_pid_state(pid_state_t *pid);
 
 void apply_restart_pid(pid_state_t *pid,
                        double *primal_weight,
-                       const step_size_parameters_t *params,
+                       const step_size_parameters_t *step_size_params,
                        double primal_dist,
                        double dual_dist,
                        double relative_objective_gap,

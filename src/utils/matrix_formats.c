@@ -45,7 +45,7 @@ static void sort_unsorted_rows(int m, const int *row_ptr, int *col_ind,
                                double *vals);
 static int compare_row_entries(const void *lhs, const void *rhs);
 static matrix_format_status_t validate_csr_structure(
-    int m, int n, int nnz, const int *row_ptr, const int *col_ind);
+    int m, int n, int nnz_in, const int *row_ptr, const int *col_ind);
 
 const char *matrix_format_status_message(matrix_format_status_t status)
 {

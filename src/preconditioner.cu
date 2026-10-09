@@ -65,7 +65,7 @@ __global__ void compute_csr_row_powsum_kernel(
     int n_rows,
     double degree,
     double *__restrict__ row_powsum_values);
-__device__ __forceinline__ double pow_fast(
+__device__ __forceinline__ double compute_fast_pow(
     double v,
     double p);
 __global__ void compute_bound_objective_scales_kernel(
@@ -76,7 +76,7 @@ __global__ void compute_bound_objective_scales_kernel(
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
-    int n_vars);
+    int n);
 __global__ void compute_bound_contribution_kernel(
     double *__restrict__ contrib,
     const double *__restrict__ cons_lb,
@@ -686,12 +686,12 @@ __global__ void compute_csr_row_powsum_kernel(
         double v = fabs(matrix_vals[k]);
         if (!isfinite(v))
             v = 0.0;
-        acc += pow_fast(v, degree);
+        acc += compute_fast_pow(v, degree);
     }
     row_powsum_values[i] = acc;
 }
 
-__device__ __forceinline__ double pow_fast(
+__device__ __forceinline__ double compute_fast_pow(
     double v,
     double p)
 {
@@ -717,9 +717,9 @@ __global__ void compute_bound_objective_scales_kernel(
 __global__ void clamp_sqrt_and_accum_kernel(
     double *__restrict__ scaling_factors,
     double *__restrict__ cumulative_rescaling,
-    int n_vars)
+    int n)
 {
-    for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n_vars; t += blockDim.x * gridDim.x)
+    for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < n; t += blockDim.x * gridDim.x)
     {
         double v = scaling_factors[t];
         double s = (v < SCALING_EPSILON) ? 1.0 : sqrt(v);
@@ -778,7 +778,7 @@ __global__ void scale_objective_kernel(
     double *__restrict__ init_primal_sol,
     const double *__restrict__ cons_scale_d,
     const double *__restrict__ obj_scale_d,
-                                       int n_vars)
+    int n_vars)
 {
     int j = blockIdx.x * blockDim.x + threadIdx.x;
     if (j >= n_vars)
