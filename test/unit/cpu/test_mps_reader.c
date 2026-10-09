@@ -283,6 +283,108 @@ static int check_mps_ranges(void)
     return failures != 0;
 }
 
+static lp_problem_t *read_fixture(const char *text)
+{
+    const char *path = "test_mps_fixture.mps";
+    FILE *f = fopen(path, "w");
+    if (!f)
+    {
+        check("fixture file opened", 0);
+        return NULL;
+    }
+    fputs(text, f);
+    fclose(f);
+    lp_problem_t *p = read_mps_file(path);
+    remove(path);
+    return p;
+}
+
+static const char *RANGES_FIRST_MPS =
+    "NAME T\nROWS\n N COST\n G GROW\n L LROW\n E EP\n E EN\n"
+    "COLUMNS\n X COST 1 GROW 1\n X LROW 1 EP 1\n X EN 1\n"
+    "RANGES\n RNG GROW -2 LROW -2\n RNG EP 2 EN -2\n"
+    "RHS\n RHS GROW 3 LROW 3\n RHS EP 3 EN 3\nENDATA\n";
+
+static int check_mps_range_values(void)
+{
+    lp_problem_t *p = read_fixture(RANGES_FIRST_MPS);
+    check("RANGES before RHS accepted", p != NULL);
+    if (p)
+    {
+        const double *l = p->constraint_lower_bound;
+        const double *u = p->constraint_upper_bound;
+        check("G row range is [rhs, rhs + |R|]", l[0] == 3.0 && u[0] == 5.0);
+        check("L row range is [rhs - |R|, rhs]", l[1] == 1.0 && u[1] == 3.0);
+        check("E row positive range is [rhs, rhs + R]", l[2] == 3.0 && u[2] == 5.0);
+        check("E row negative range is [rhs + R, rhs]", l[3] == 1.0 && u[3] == 3.0);
+        lp_problem_free(p);
+    }
+    return failures != 0;
+}
+
+static int check_mps_rejections(void)
+{
+    check_mps("malformed number rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST abc R 1\nENDATA\n", 0);
+    check_mps("COLUMNS line with a missing value rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1\n X R 1.0 COST\nENDATA\n", 0);
+    check_mps("hex number rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 0x1D R 1\nENDATA\n", 0);
+    check_mps("over-long number rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST "
+        "1.000000000000000000000000000000000000000000000000000000000000000000 R 1\n"
+        "ENDATA\n", 0);
+    check_mps("data outside any section rejected",
+        "this is not an MPS file\n", 0);
+    check_mps("lowercase section names rejected",
+        "NAME T\nrows\n N COST\n L R\ncolumns\n X COST 1 R 1\nENDATA\n", 0);
+    check_mps("missing COLUMNS section rejected",
+        "NAME T\nROWS\n N COST\n L R\nENDATA\n", 0);
+    check_mps("duplicate constraint row rejected",
+        "NAME T\nROWS\n N COST\n L R\n G R\nCOLUMNS\n X COST 1 R 1\nENDATA\n", 0);
+    check_mps("row declared as N and L rejected",
+        "NAME T\nROWS\n N COST\n L COST\nCOLUMNS\n X COST 1\nENDATA\n", 0);
+    check_mps("ROWS after column data rejected",
+        "NAME T\nROWS\n N COST\nCOLUMNS\n X COST 1\nROWS\n L R\nENDATA\n", 0);
+    check_mps("one-field ROWS line rejected",
+        "NAME T\nROWS\n N COST\n L\nCOLUMNS\n X COST 1\nENDATA\n", 0);
+    check_mps("one-field RHS line rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\nRHS\n R\nENDATA\n", 0);
+    check_mps("UP bound without a value rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\nBOUNDS\n UP BND X\nENDATA\n", 0);
+    check_mps("OBJNAME without a row name rejected",
+        "NAME T\nOBJNAME\n", 0);
+    return failures != 0;
+}
+
+static int check_mps_bound_forms(void)
+{
+    lp_problem_t *p = read_fixture(
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\n Z\nENDATA\n");
+    check("empty column fixture parses", p != NULL);
+    if (p)
+    {
+        check("one-field COLUMNS line declares an empty column",
+              p->num_variables == 2 && p->constraint_matrix_num_nonzeros == 1);
+        lp_problem_free(p);
+    }
+
+    p = read_fixture(
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\n Y COST 1 R 1\n"
+        "BOUNDS\n UP B X -5\n UP B X 3\n BV Y 1\nENDATA\n");
+    check("bound forms fixture parses", p != NULL);
+    if (p)
+    {
+        check("nameless BV with a value creates no extra column", p->num_variables == 2);
+        check("a later non-negative UP restores the default lower bound",
+              p->variable_lower_bound[0] == 0.0 && p->variable_upper_bound[0] == 3.0);
+        check("nameless BV with a value binds the named column",
+              p->variable_lower_bound[1] == 0.0 && p->variable_upper_bound[1] == 1.0);
+        lp_problem_free(p);
+    }
+    return failures != 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -290,5 +392,8 @@ int main(void)
     failed |= check_mps_numbers();
     failed |= check_mps_objective_selection();
     failed |= check_mps_ranges();
+    failed |= check_mps_range_values();
+    failed |= check_mps_rejections();
+    failed |= check_mps_bound_forms();
     return failed || failures != 0;
 }
