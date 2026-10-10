@@ -54,7 +54,7 @@ static double measure_initial_norm(const double *values, const pdhg_parameters_t
     return norm;
 }
 
-static int check_constraint_norm_estimate(void)
+static void check_constraint_norm_estimate(void)
 {
     const double values[] = {3.0, 4.0};
     const double zero_values[] = {0.0, 0.0};
@@ -77,16 +77,12 @@ static int check_constraint_norm_estimate(void)
     const double degenerate = measure_initial_norm(zero_values, &params);
     printf("degenerate %.17g\n", degenerate);
     check("stored zeros leave the norm at zero", degenerate == 0.0);
-
-    printf("test_initial_constraint_norm: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_constraint_norm_estimate();
-    return failed || failures != 0;
+    check_constraint_norm_estimate();
+    return failures != 0;
 }

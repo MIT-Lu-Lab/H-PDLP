@@ -17,7 +17,7 @@ __global__ void compute_fixed_point_error_kernel(
     const double *, const double *, const double *, const double *,
     double, double, double);
 
-static int check_fixed_point_error(void)
+static void check_fixed_point_error(void)
 {
     const double inputs[][3] = {
         {1.0, 2.0, 0.0},
@@ -30,7 +30,6 @@ static int check_fixed_point_error(void)
     CUDA_CHECK(cudaMallocManaged(&reductions, sizeof(*reductions)));
     double *values;
     CUDA_CHECK(cudaMallocManaged(&values, 5 * sizeof(double)));
-    int failures = 0;
     for (int i = 0; i < 4; ++i)
     {
         for (int j = 0; j < 5; ++j)
@@ -51,11 +50,9 @@ static int check_fixed_point_error(void)
     }
     CUDA_CHECK(cudaFree(values));
     CUDA_CHECK(cudaFree(reductions));
-    printf("test_fixed_point_error: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
-static int check_solution_norms(void)
+static void check_solution_norms(void)
 {
     const double objective[] = {0.0, 0.0};
     const double lower[] = {-INFINITY, -INFINITY};
@@ -73,7 +70,9 @@ static int check_solution_norms(void)
     matrix.data.csr.vals = values;
     lp_problem_t *problem = create_lp_problem(
         objective, &matrix, lower, upper, lower, upper, &constant);
-    if (!problem) return 1;
+    check("solution norm fixture builds", problem != NULL);
+    if (!problem)
+        return;
 
     pdhg_parameters_t params;
     set_default_parameters(&params);
@@ -104,7 +103,6 @@ static int check_solution_norms(void)
     const double primal[][2] = {{3.0, -4.0}, {0.0, 0.0}};
     const double dual[][2] = {{5.0, -12.0}, {0.0, 0.0}};
     const norm_type_t norms[] = {NORM_TYPE_L_INF, NORM_TYPE_L2};
-    int failures = 0;
     for (norm_type_t norm : norms)
     {
         params.optimality_norm = norm;
@@ -129,7 +127,6 @@ static int check_solution_norms(void)
     }
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
-    return failures != 0;
 }
 
 static void check_termination(double scale, int iteration_limit, int certificate,
@@ -158,7 +155,7 @@ static void check_termination(double scale, int iteration_limit, int certificate
     }
 }
 
-static int check_scale_termination(void)
+static void check_scale_termination(void)
 {
     check_termination(-1, 0, 0, TERMINATION_REASON_UNSPECIFIED);
     check_termination(0, 0, 0, TERMINATION_REASON_UNSPECIFIED);
@@ -170,16 +167,14 @@ static int check_scale_termination(void)
     check_termination(INFINITY, 0, 0, TERMINATION_REASON_NUMERICAL_FAILURE);
     check_termination(0, 1, 0, TERMINATION_REASON_ITERATION_LIMIT);
     check_termination(0, 0, 1, TERMINATION_REASON_DUAL_INFEASIBLE);
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_fixed_point_error();
-    failed |= check_solution_norms();
-    failed |= check_scale_termination();
-    return failed || failures != 0;
+    check_fixed_point_error();
+    check_solution_norms();
+    check_scale_termination();
+    return failures != 0;
 }

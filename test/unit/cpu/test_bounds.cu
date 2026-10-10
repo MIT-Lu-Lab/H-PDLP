@@ -3,7 +3,7 @@
 #include "utils.h"
 #include <math.h>
 
-static int check_bound_cleaning(void)
+static void check_bound_cleaning(void)
 {
     pdhg_parameters_t params;
     set_default_parameters(&params);
@@ -60,13 +60,10 @@ static int check_bound_cleaning(void)
     compute_lp_problem_norms(&problem, NORM_TYPE_L_INF, infinite_bound, &objective_norm, &bound_norm);
     CHECK(fabs(objective_norm - 4.0) < 1e-12);
     CHECK(fabs(bound_norm - 6.0) < 1e-12);
-
-    return 0;
 }
 
 int main(void)
 {
-    int failed = 0;
-    failed |= check_bound_cleaning();
-    return failed || failures != 0;
+    check_bound_cleaning();
+    return failures != 0;
 }

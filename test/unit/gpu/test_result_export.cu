@@ -224,7 +224,7 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
 
 
 
-static int check_result_export(void)
+static void check_result_export(void)
 {
     check_bound_candidates(NORM_TYPE_L_INF);
     check_bound_candidates(NORM_TYPE_L2);
@@ -369,7 +369,6 @@ static int check_result_export(void)
     CUDA_CHECK(cudaFree(state.constraint_reduction_entries_d));
     CUDA_CHECK(cudaFree(state.termination_reductions_d));
     CUDA_CHECK(cudaStreamDestroy(state.stream_A));
-    return failures != 0;
 }
 
 static void check_close(const char *label, double actual, double expected)
@@ -461,21 +460,19 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
 
 
 
-static int check_multiplier_export(void)
+static void check_multiplier_export(void)
 {
     for (bool scaled : {false, true})
         for (norm_type_t norm : {NORM_TYPE_L2, NORM_TYPE_L_INF})
             for (double tau : {0.25, 1.0, 2.0})
                 check_projection_multipliers(scaled, norm, tau);
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_result_export();
-    failed |= check_multiplier_export();
-    return failed || failures != 0;
+    check_result_export();
+    check_multiplier_export();
+    return failures != 0;
 }

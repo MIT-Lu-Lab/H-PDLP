@@ -16,7 +16,7 @@ static void restart(pid_state_t *pid, double *weight, bool guard,
                       gap, primal, dual, 1.0, ratio);
 }
 
-static int check_pid_control(void)
+static void check_pid_control(void)
 {
     pid_state_t pid;
     double weight;
@@ -96,12 +96,9 @@ static int check_pid_control(void)
     weight = 9.0;
     restart(&pid, &weight, false, 1e-3, 1e-6, 1e-6, 0.0);
     check("disabled guard does not roll back", weight != 4.0);
-
-    printf("test_pid_controller: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
-static int check_boost_revert_policy(void)
+static void check_boost_revert_policy(void)
 {
     pdhg_parameters_t params;
     set_default_parameters(&params);
@@ -168,15 +165,11 @@ static int check_boost_revert_policy(void)
     fixed_point_error = 1.0;
     check("a numerical failure reverts a boosted epoch",
           should_revert_active_set_boost(&state, &params));
-
-    printf("test_active_set_residuals: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
 int main(void)
 {
-    int failed = 0;
-    failed |= check_pid_control();
-    failed |= check_boost_revert_policy();
-    return failed || failures != 0;
+    check_pid_control();
+    check_boost_revert_policy();
+    return failures != 0;
 }

@@ -4,10 +4,9 @@
 #include <math.h>
 #include <stdio.h>
 
-static int check_empty_solve(const matrix_desc_t *matrix)
+static void check_empty_solve(const matrix_desc_t *matrix)
 {
     const double offsets[] = {0.0, -3.5, 4.5};
-    int failures = 0;
     for (int i = 0; i < 3; ++i)
     {
         lp_problem_t *problem = create_lp_problem(
@@ -15,7 +14,8 @@ static int check_empty_solve(const matrix_desc_t *matrix)
         if (!problem)
         {
             fprintf(stderr, "empty problem creation failed\n");
-            return 1;
+            ++failures;
+            return;
         }
         for (int maximize = 0; maximize < 2; ++maximize)
         {
@@ -53,13 +53,13 @@ static int check_empty_solve(const matrix_desc_t *matrix)
         }
         lp_problem_free(problem);
     }
-    return failures;
 }
-static int check_empty_problem(void)
+
+static void check_empty_problem(void)
 {
     matrix_desc_t matrix = {0};
     matrix.fmt = matrix_dense;
-    return check_empty_solve(&matrix) != 0;
+    check_empty_solve(&matrix);
 }
 
 static void solve_and_check(const char *label, int num_constraints, norm_type_t norm)
@@ -104,6 +104,7 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
     {
         printf("  FAIL: %s produced no solution\n", label);
         ++failures;
+        hpdlp_result_free(result);
         lp_problem_free(problem);
         return;
     }
@@ -119,13 +120,11 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
     lp_problem_free(problem);
 }
 
-static int check_zero_constraint_norm(void)
+static void check_zero_constraint_norm(void)
 {
     solve_and_check("no constraints, L2", 0, NORM_TYPE_L2);
     solve_and_check("no constraints, Linf", 0, NORM_TYPE_L_INF);
     solve_and_check("one all-zero constraint", 1, NORM_TYPE_L_INF);
-    printf("%s (%d failure(s))\n", failures ? "FAILED" : "ALL PASS", failures);
-    return failures != 0;
 }
 
 static void check_signs(const char *label, bool presolve)
@@ -165,10 +164,12 @@ static void check_signs(const char *label, bool presolve)
     params.presolve = presolve;
 
     hpdlp_result_t *result = solve_lp_problem(problem, &params);
-    if (result == NULL || result->reduced_cost == NULL)
+    if (result == NULL || result->primal_solution == NULL ||
+        result->dual_solution == NULL || result->reduced_cost == NULL)
     {
-        printf("  FAIL: %s produced no reduced cost\n", label);
+        printf("  FAIL: %s produced no solution\n", label);
         ++failures;
+        hpdlp_result_free(result);
         lp_problem_free(problem);
         return;
     }
@@ -201,21 +202,18 @@ static void check_signs(const char *label, bool presolve)
     lp_problem_free(problem);
 }
 
-static int check_reduced_cost_signs(void)
+static void check_reduced_cost_signs(void)
 {
     check_signs("presolve on", true);
     check_signs("presolve off", false);
-    printf("%s (%d failure(s))\n", failures ? "FAILED" : "ALL PASS", failures);
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_empty_problem();
-    failed |= check_zero_constraint_norm();
-    failed |= check_reduced_cost_signs();
-    return failed || failures != 0;
+    check_empty_problem();
+    check_zero_constraint_norm();
+    check_reduced_cost_signs();
+    return failures != 0;
 }

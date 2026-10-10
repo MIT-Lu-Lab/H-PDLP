@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int check_canonical_csr(void)
+static void check_canonical_csr(void)
 {
     const int pointers[] = {0, 4, 4, 7};
     const int indices[] = {2, 0, 2, 0, 1, 1, 0};
@@ -20,27 +20,23 @@ static int check_canonical_csr(void)
     matrix.data.csr.col_ind = indices;
     matrix.data.csr.vals = values;
     lp_problem_t *problem = create_lp_problem(NULL, &matrix, NULL, NULL, NULL, NULL, NULL);
-    int failed = !problem;
-    if (problem)
-    {
-        failed = problem->constraint_matrix_num_nonzeros != 4 ||
-            memcmp(problem->constraint_matrix_row_pointers, expected_pointers, sizeof(expected_pointers)) ||
-            memcmp(problem->constraint_matrix_col_indices, expected_indices, sizeof(expected_indices)) ||
-            memcmp(problem->constraint_matrix_values, expected_values, sizeof(expected_values));
-        lp_problem_free(problem);
-    }
+    check("CSR canonicalization",
+          problem && problem->constraint_matrix_num_nonzeros == 4 &&
+              !memcmp(problem->constraint_matrix_row_pointers, expected_pointers, sizeof(expected_pointers)) &&
+              !memcmp(problem->constraint_matrix_col_indices, expected_indices, sizeof(expected_indices)) &&
+              !memcmp(problem->constraint_matrix_values, expected_values, sizeof(expected_values)));
+    lp_problem_free(problem);
     const int original_pointers[] = {0, 4, 4, 7};
     const int original_indices[] = {2, 0, 2, 0, 1, 1, 0};
     const double original_values[] = {3, 2, -3, 1, 4, -1, 0};
-    failed |= memcmp(pointers, original_pointers, sizeof(pointers)) != 0 ||
-        memcmp(indices, original_indices, sizeof(indices)) != 0 ||
-        memcmp(values, original_values, sizeof(values)) != 0;
-    if (failed) fprintf(stderr, "CSR canonicalization or input ownership failed\n");
-    return failed;
+    check("CSR input is left untouched",
+          !memcmp(pointers, original_pointers, sizeof(pointers)) &&
+              !memcmp(indices, original_indices, sizeof(indices)) &&
+              !memcmp(values, original_values, sizeof(values)));
 }
 
-static int check_creation(matrix_format_t format, double first, double second,
-                          int duplicate, int accepted)
+static void check_creation(matrix_format_t format, double first, double second,
+                           int duplicate, int accepted)
 {
     double values[] = {first, second};
     int pointers[] = {0, 2, 2};
@@ -79,18 +75,19 @@ static int check_creation(matrix_format_t format, double first, double second,
 
     lp_problem_t *problem = create_lp_problem(
         NULL, &matrix, NULL, NULL, NULL, NULL, NULL);
-    int failed = (problem != NULL) != accepted;
-    if (failed)
+    if ((problem != NULL) != accepted)
+    {
         fprintf(stderr, "format=%d values=(%g, %g) duplicate=%d: expected %s\n",
                 format, first, second, duplicate,
                 accepted ? "a problem" : "NULL");
+        ++failures;
+    }
     lp_problem_free(problem);
-    return failed;
 }
 
-static int check_coefficients(void)
+static void check_coefficients(void)
 {
-    int failures = check_canonical_csr();
+    check_canonical_csr();
     const matrix_format_t formats[] = {
         matrix_dense, matrix_csr, matrix_csc, matrix_coo};
     const double invalid[] = {NAN, INFINITY, -INFINITY};
@@ -98,21 +95,20 @@ static int check_coefficients(void)
     {
         for (int j = 0; j < 3; ++j)
         {
-            failures += check_creation(formats[i], invalid[j], 1.0, 0, 0);
-            failures += check_creation(formats[i], 1.0, invalid[j], 0, 0);
+            check_creation(formats[i], invalid[j], 1.0, 0, 0);
+            check_creation(formats[i], 1.0, invalid[j], 0, 0);
         }
-        failures += check_creation(formats[i], 0.0, 0.0, 0, 1);
-        failures += check_creation(formats[i], -2.0, 1e-12, 0, 1);
+        check_creation(formats[i], 0.0, 0.0, 0, 1);
+        check_creation(formats[i], -2.0, 1e-12, 0, 1);
         if (formats[i] != matrix_dense)
         {
-            failures += check_creation(formats[i], INFINITY, -INFINITY, 1, 0);
-            failures += check_creation(formats[i], 2.0, -2.0, 1, 1);
+            check_creation(formats[i], INFINITY, -INFINITY, 1, 0);
+            check_creation(formats[i], 2.0, -2.0, 1, 1);
         }
     }
-    return failures ? 1 : 0;
 }
 
-static int check_dimensions(matrix_format_t format, int m, int n, int accepted)
+static void check_dimensions(matrix_format_t format, int m, int n, int accepted)
 {
     int pointers[] = {0, 0, 0};
     double values[] = {0.0, 0.0, 0.0, 0.0};
@@ -137,25 +133,25 @@ static int check_dimensions(matrix_format_t format, int m, int n, int accepted)
 
     lp_problem_t *problem = create_lp_problem(
         NULL, &matrix, NULL, NULL, NULL, NULL, NULL);
-    int failed = (problem != NULL) != accepted;
-    if (failed)
+    if ((problem != NULL) != accepted)
+    {
         fprintf(stderr, "format=%d m=%d n=%d: expected %s\n",
                 format, m, n, accepted ? "a problem" : "NULL");
+        ++failures;
+    }
     lp_problem_free(problem);
-    return failed;
 }
 
-static int check_model_dimensions(void)
+static void check_model_dimensions(void)
 {
     const matrix_format_t formats[] = {
         matrix_dense, matrix_csr, matrix_csc, matrix_coo};
-    int failures = 0;
     for (int i = 0; i < 4; ++i)
     {
-        failures += check_dimensions(formats[i], 0, 0, 1);
-        failures += check_dimensions(formats[i], 0, 2, 1);
-        failures += check_dimensions(formats[i], 2, 0, 1);
-        failures += check_dimensions(formats[i], 2, 2, 1);
+        check_dimensions(formats[i], 0, 0, 1);
+        check_dimensions(formats[i], 0, 2, 1);
+        check_dimensions(formats[i], 2, 0, 1);
+        check_dimensions(formats[i], 2, 2, 1);
     }
     lp_problem_t *problem = create_lp_problem(
         NULL, NULL, NULL, NULL, NULL, NULL, NULL);
@@ -165,10 +161,9 @@ static int check_model_dimensions(void)
         ++failures;
     }
     lp_problem_free(problem);
-    return failures ? 1 : 0;
 }
 
-static int check_invalid_csr_structure(void)
+static void check_invalid_csr_structure(void)
 {
     const double value = 1;
     int pointers[] = {0, 1, 1}, column = 0;
@@ -196,14 +191,12 @@ static int check_invalid_csr_structure(void)
         CHECK(problem == NULL);
         lp_problem_free(problem);
     }
-    return failures != 0;
 }
 
 int main(void)
 {
-    int failed = 0;
-    failed |= check_coefficients();
-    failed |= check_model_dimensions();
-    failed |= check_invalid_csr_structure();
-    return failed || failures != 0;
+    check_coefficients();
+    check_model_dimensions();
+    check_invalid_csr_structure();
+    return failures != 0;
 }

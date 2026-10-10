@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 
-static int check_active_set_parameters(void)
+static void check_active_set_parameters(void)
 {
     pdhg_parameters_t params;
     set_default_parameters(&params);
@@ -20,24 +20,19 @@ static int check_active_set_parameters(void)
           params.active_set_params.divergence_ceiling_ratio == 0.7);
     check("divergence_margin defaults to 0.05", params.active_set_params.divergence_margin == 0.05);
     check("max_reverts defaults to 2", params.active_set_params.max_reverts == 2);
-    printf("test_active_set_params: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
-static int expect_rejected(lp_problem_t *problem, pdhg_parameters_t *params,
-                           const char *field)
+static void expect_rejected(lp_problem_t *problem, pdhg_parameters_t *params,
+                            const char *field)
 {
     hpdlp_result_t *result = solve_lp_problem(problem, params);
     if (result)
     {
         fprintf(stderr, "invalid %s accepted (presolve=%d)\n", field, params->presolve);
+        ++failures;
         hpdlp_result_free(result);
-        return 1;
     }
-    return 0;
 }
-
-
 
 #define REJECT(field, value) \
     do \
@@ -46,10 +41,10 @@ static int expect_rejected(lp_problem_t *problem, pdhg_parameters_t *params,
         params.verbose = false; \
         params.presolve = presolve; \
         params.field = (value); \
-        failures += expect_rejected(problem, &params, #field); \
+        expect_rejected(problem, &params, #field); \
     } while (0)
 
-static int check_parameter_validation(void)
+static void check_parameter_validation(void)
 {
     const double one = 1.0;
     const double zero = 0.0;
@@ -60,10 +55,10 @@ static int check_parameter_validation(void)
     matrix.data.dense.A = &one;
     lp_problem_t *problem = create_lp_problem(
         &one, &matrix, &one, &one, &zero, &one, NULL);
+    check("validation fixture builds", problem != NULL);
     if (!problem)
-        return 1;
+        return;
 
-    int failures = 0;
     pdhg_parameters_t params;
     for (int presolve = 0; presolve < 2; ++presolve)
     {
@@ -104,18 +99,16 @@ static int check_parameter_validation(void)
     set_default_parameters(&params);
     params.verbose = false;
     char error[256];
-    failures += hpdlp_validate_parameters(&params, error, sizeof(error)) != 0;
+    check("default parameters validate",
+          hpdlp_validate_parameters(&params, error, sizeof(error)) == 0);
     lp_problem_free(problem);
-    printf("test_invalid_parameters: %d failure(s)\n", failures);
-    return failures ? 1 : 0;
 }
 
 #undef REJECT
 
 int main(void)
 {
-    int failed = 0;
-    failed |= check_active_set_parameters();
-    failed |= check_parameter_validation();
-    return failed || failures != 0;
+    check_active_set_parameters();
+    check_parameter_validation();
+    return failures != 0;
 }

@@ -88,7 +88,7 @@ static lp_problem_t *read_fixture(const char *text)
     return p;
 }
 
-static int check_mps_bounds(void)
+static void check_mps_bounds(void)
 {
     lp_problem_t *prob = read_fixture(INT_DEFAULT_MPS);
     check("integer fixture parses", prob != NULL);
@@ -123,6 +123,7 @@ static int check_mps_bounds(void)
 
     prob = read_fixture(QUADOBJ_MPS);
     check("QUADOBJ is rejected", prob == NULL);
+    lp_problem_free(prob);
 
     prob = read_fixture(SOS_MPS);
     check("SOS fixture parses", prob != NULL);
@@ -133,9 +134,6 @@ static int check_mps_bounds(void)
                   prob->variable_lower_bound[1] == 0.0 && isinf(prob->variable_upper_bound[1]));
         lp_problem_free(prob);
     }
-
-    printf("%s (%d failure(s))\n", failures ? "FAILED" : "ALL PASS", failures);
-    return failures != 0;
 }
 
 static const char *FINITE_MPS =
@@ -186,7 +184,7 @@ static const char *OVERFLOW_BOUND_MPS =
     " UP BND       X1           1e400\n"
     "ENDATA\n";
 
-static int check_mps_numbers(void)
+static void check_mps_numbers(void)
 {
     lp_problem_t *prob = read_fixture(FINITE_MPS);
     check("finite fixture parses", prob != NULL);
@@ -211,9 +209,6 @@ static int check_mps_numbers(void)
     check("overflowing literal in BOUNDS is rejected", prob == NULL);
     if (prob != NULL)
         lp_problem_free(prob);
-
-    printf("%s (%d failure(s))\n", failures ? "FAILED" : "ALL PASS", failures);
-    return failures != 0;
 }
 
 static void check_objective(const char *selector, int after_rows,
@@ -238,7 +233,7 @@ static void check_objective(const char *selector, int after_rows,
     }
 }
 
-static int check_mps_objective_selection(void)
+static void check_mps_objective_selection(void)
 {
     check_objective("", 0, 1, -5, 1);
     check_objective("OBJNAME\n SECOND\n", 0, -2, -7, 1);
@@ -246,7 +241,6 @@ static int check_mps_objective_selection(void)
     check_objective("OBJNAME\n SECOND\n", 1, -2, -7, 1);
     check_objective("OBJNAME\n MISSING\n", 0, 0, 0, 0);
     check_objective("OBJNAME\n LIMIT\n", 0, 0, 0, 0);
-    return failures != 0;
 }
 
 static void check_mps(const char *name, const char *text, int accepted)
@@ -255,7 +249,7 @@ static void check_mps(const char *name, const char *text, int accepted)
     check(name, (p != NULL) == accepted);
     lp_problem_free(p);
 }
-static int check_mps_ranges(void)
+static void check_mps_ranges(void)
 {
     check_mps("finite ranges accepted for all row types",
         "NAME T\nROWS\n N COST\n G GROW\n L LROW\n E EP\n E EN\n"
@@ -268,7 +262,6 @@ static int check_mps_ranges(void)
         "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\nRHS\n RHS R 1\nBOUNDS\n LO B X 0\n UP B X -5\nENDATA\n", 0);
     check_mps("free variable and finite D exponent accepted",
         "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1D0 R 1\nRHS\n RHS R 1\nBOUNDS\n FR B X\nENDATA\n", 1);
-    return failures != 0;
 }
 
 static const char *RANGES_FIRST_MPS =
@@ -277,7 +270,7 @@ static const char *RANGES_FIRST_MPS =
     "RANGES\n RNG GROW -2 LROW -2\n RNG EP 2 EN -2\n"
     "RHS\n RHS GROW 3 LROW 3\n RHS EP 3 EN 3\nENDATA\n";
 
-static int check_mps_range_values(void)
+static void check_mps_range_values(void)
 {
     lp_problem_t *p = read_fixture(RANGES_FIRST_MPS);
     check("RANGES before RHS accepted", p != NULL);
@@ -291,10 +284,9 @@ static int check_mps_range_values(void)
         check("E row negative range is [rhs + R, rhs]", l[3] == 1.0 && u[3] == 3.0);
         lp_problem_free(p);
     }
-    return failures != 0;
 }
 
-static int check_mps_rejections(void)
+static void check_mps_rejections(void)
 {
     check_mps("malformed number rejected",
         "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST abc R 1\nENDATA\n", 0);
@@ -326,10 +318,9 @@ static int check_mps_rejections(void)
         "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\nBOUNDS\n UP BND X\nENDATA\n", 0);
     check_mps("OBJNAME without a row name rejected",
         "NAME T\nOBJNAME\n", 0);
-    return failures != 0;
 }
 
-static int check_mps_bound_forms(void)
+static void check_mps_bound_forms(void)
 {
     lp_problem_t *p = read_fixture(
         "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\n Z\nENDATA\n");
@@ -354,18 +345,16 @@ static int check_mps_bound_forms(void)
               p->variable_lower_bound[1] == 0.0 && p->variable_upper_bound[1] == 1.0);
         lp_problem_free(p);
     }
-    return failures != 0;
 }
 
 int main(void)
 {
-    int failed = 0;
-    failed |= check_mps_bounds();
-    failed |= check_mps_numbers();
-    failed |= check_mps_objective_selection();
-    failed |= check_mps_ranges();
-    failed |= check_mps_range_values();
-    failed |= check_mps_rejections();
-    failed |= check_mps_bound_forms();
-    return failed || failures != 0;
+    check_mps_bounds();
+    check_mps_numbers();
+    check_mps_objective_selection();
+    check_mps_ranges();
+    check_mps_range_values();
+    check_mps_rejections();
+    check_mps_bound_forms();
+    return failures != 0;
 }

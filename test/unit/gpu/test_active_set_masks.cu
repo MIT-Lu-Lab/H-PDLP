@@ -356,7 +356,7 @@ static void check_zero_primal_scale(struct mask_buffers *b)
               (int)b->free_variable_mask[j] == ZERO_SCALE_COLUMNS[j].retained);
 }
 
-static int check_active_set_masks(void)
+static void check_active_set_masks(void)
 {
     struct mask_buffers b;
     allocate_buffers(&b);
@@ -368,15 +368,12 @@ static int check_active_set_masks(void)
     check_zero_primal_scale(&b);
 
     release_buffers(&b);
-    printf("test_active_set_masks: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_active_set_masks();
-    return failed || failures != 0;
+    check_active_set_masks();
+    return failures != 0;
 }

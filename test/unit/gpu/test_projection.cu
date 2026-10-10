@@ -323,12 +323,10 @@ static void check_projection_path(int num_variables, bool expect_cooperative)
     lp_problem_free(problem);
 }
 
-static int check_projection_observation(void)
+static void check_projection_observation(void)
 {
     check_projection_path(1, false);
     check_projection_path(4 * THREADS_PER_BLOCK + 1, true);
-    printf("test_primal_projection_observation: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
 static void check_projection(int num_blocks, int max_iter, double current_scale,
@@ -386,7 +384,7 @@ static void check_projection(int num_blocks, int max_iter, double current_scale,
     CUDA_CHECK(cudaFree(vectors));
 }
 
-static int check_homogeneous_scale(void)
+static void check_homogeneous_scale(void)
 {
     for (int blocks = 1; blocks <= 2; ++blocks)
     {
@@ -396,15 +394,13 @@ static int check_homogeneous_scale(void)
         check_projection(blocks, 100, 1, -3, 0);
         check_projection(blocks, 100, 1, 1, 2);
     }
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_projection_observation();
-    failed |= check_homogeneous_scale();
-    return failed || failures != 0;
+    check_projection_observation();
+    check_homogeneous_scale();
+    return failures != 0;
 }

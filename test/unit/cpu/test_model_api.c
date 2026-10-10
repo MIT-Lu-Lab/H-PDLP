@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int check_public_defaults(void)
+static void check_public_defaults(void)
 {
     pdhg_parameters_t params;
     set_default_parameters(&params);
@@ -14,7 +14,6 @@ static int check_public_defaults(void)
     CHECK(params.termination_evaluation_frequency > 0);
     CHECK(params.termination_criteria.iteration_limit > 0);
     CHECK(params.termination_criteria.time_sec_limit > 0.0);
-    return 0;
 }
 
 static void check_api_numbers(void)
@@ -51,14 +50,6 @@ static void check_api_numbers(void)
     }
 }
 
-
-
-static int check_model_numbers(void)
-{
-    check_api_numbers();
-    return failures != 0;
-}
-
 static lp_problem_t *make_problem(void)
 {
     static const double a = 1.0;
@@ -73,15 +64,12 @@ static lp_problem_t *make_problem(void)
     return create_lp_problem(&c, &matrix, &bound, &bound, NULL, NULL, NULL);
 }
 
-static int check_start_values(void)
+static void check_start_values(void)
 {
     lp_problem_t *prob = make_problem();
     check("fixture builds", prob != NULL);
     if (prob == NULL)
-    {
-        printf("FAILED (%d failure(s))\n", failures + 1);
-        return 1;
-    }
+        return;
 
     const double good_primal[] = {0.5};
     const double good_dual[] = {0.25};
@@ -111,11 +99,9 @@ static int check_start_values(void)
     check("NULL problem is rejected", !set_start_values(NULL, good_primal, good_dual));
 
     lp_problem_free(prob);
-    printf("%s (%d failure(s))\n", failures ? "FAILED" : "ALL PASS", failures);
-    return failures != 0;
 }
 
-static int check_start_aliasing(void)
+static void check_start_aliasing(void)
 {
     const double matrix_values[] = {1, 0, 0, 1};
     const double x[] = {2, 3}, y[] = {4, 5};
@@ -124,8 +110,9 @@ static int check_start_aliasing(void)
     matrix.fmt = matrix_dense;
     matrix.data.dense.A = matrix_values;
     lp_problem_t *p = create_lp_problem(NULL, &matrix, NULL, NULL, NULL, NULL, NULL);
-    if (!p) return 1;
-    int failures = 0;
+    check("aliasing fixture builds", p != NULL);
+    if (!p)
+        return;
 
     set_start_values(p, x, y);
     set_start_values(p, p->primal_start, p->dual_start);
@@ -147,20 +134,18 @@ static int check_start_aliasing(void)
 
     set_start_values(p, x, y);
     set_start_values(p, p->dual_start, NULL);
-    if (p->primal_start[0] != 4 || p->primal_start[1] != 5 || p->dual_start != NULL)
-        ++failures;
+    check("dual start passed as the primal start with no dual start",
+          p->primal_start[0] == 4 && p->primal_start[1] == 5 && p->dual_start == NULL);
     set_start_values(p, NULL, NULL);
-    if (p->primal_start || p->dual_start) ++failures;
+    check("NULL clears both aliased vectors", !p->primal_start && !p->dual_start);
     lp_problem_free(p);
-    return failures != 0;
 }
 
 int main(void)
 {
-    int failed = 0;
-    failed |= check_public_defaults();
-    failed |= check_model_numbers();
-    failed |= check_start_values();
-    failed |= check_start_aliasing();
-    return failed || failures != 0;
+    check_public_defaults();
+    check_api_numbers();
+    check_start_values();
+    check_start_aliasing();
+    return failures != 0;
 }

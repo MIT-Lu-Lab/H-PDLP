@@ -114,6 +114,7 @@ static int solve_and_check(const char *label, const pdhg_parameters_t *params)
     {
         printf("  FAIL: %s produced no solution\n", label);
         ++failures;
+        hpdlp_result_free(result);
         lp_problem_free(problem);
         return 0;
     }
@@ -546,7 +547,7 @@ static void check_active_set_revert_state(void)
     lp_problem_free(problem);
 }
 
-static int check_active_set_boost(void)
+static void check_active_set_boost(void)
 {
     pdhg_parameters_t params;
 
@@ -572,16 +573,12 @@ static int check_active_set_boost(void)
     check_estimator_retry_policy(true);
     check_estimator_retry_policy(false);
     check_active_set_revert_state();
-
-    printf("test_active_set_boost: %d failure(s)\n", failures);
-    return failures != 0;
 }
 
 int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    int failed = 0;
-    failed |= check_active_set_boost();
-    return failed || failures != 0;
+    check_active_set_boost();
+    return failures != 0;
 }
