@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# ROOT CMakeLists.txt for H-PDLP (Unified Build System)
+# ROOT CMakeLists.txt for H-PDLP
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.24)
 
@@ -15,33 +15,30 @@ project(hpdlp VERSION 0.0.1 LANGUAGES C CXX CUDA)
 
 add_compile_definitions(HPDLP_VERSION="${PROJECT_VERSION}")
 
-# C/C++ standards
+# Language standards
 set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-# Set default build type to Release if not specified (Optimized builds)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+# Set default build type to Release if not specified
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release"
                                                      "MinSizeRel" "RelWithDebInfo")
 endif()
 
-# Global Compile flags (corresponding to CFLAGS/NVCCFLAGS)
+# Global compile flags
 add_compile_definitions(CUSPARSE_ENABLE_EXPERIMENTAL_API)
 add_compile_options(-Wall -Wextra)
-if(NOT WIN32)
-  add_compile_options(-fPIC)
-endif()
 
 # Windows compatibility
 if(WIN32)
-  add_definitions(-Dstrtok_r=strtok_s)
+  add_compile_definitions(strtok_r=strtok_s)
 endif()
-
-# CUDA standards and RDC (Relocatable Device Code)
-set(CMAKE_CUDA_STANDARD 17)
-set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
 # -----------------------------------------------------------------------------
 # CONTROL OPTIONS
@@ -51,8 +48,6 @@ include(CMakeDependentOption)
 option(HPDLP_BUILD_STATIC_LIB "Build the H-PDLP static library" ON)
 option(HPDLP_BUILD_SHARED_LIB "Build the H-PDLP shared library" ON)
 
-# format: cmake_dependent_option(OPTION "docstring" DEFAULT_VALUE
-# "DEPENDENCY_VARIABLE" FORCE_OFF_VALUE)
 cmake_dependent_option(HPDLP_BUILD_PYTHON "Build the H-PDLP Python bindings" OFF
                        "HPDLP_BUILD_STATIC_LIB" OFF)
 
@@ -65,7 +60,7 @@ cmake_dependent_option(HPDLP_BUILD_TESTS "Build the H-PDLP test suite" OFF
 # -----------------------------------------------------------------------------
 # FIND DEPENDENCIES
 # -----------------------------------------------------------------------------
-# Core dependencies (required for Julia/Yggdrasil and Python)
+# Core dependencies
 find_package(CUDAToolkit REQUIRED)
 
 include(FetchContent)
@@ -84,7 +79,7 @@ else()
     GIT_TAG v1.3)
   FetchContent_MakeAvailable(zlib)
 
-  # 3. Create alias ZLIB::ZLIB to match your CORE_LINK_LIBS usage
+  # 3. Create alias ZLIB::ZLIB for CORE_LINK_LIBS
   if(NOT TARGET ZLIB::ZLIB)
     if(TARGET zlibstatic)
       # Prefer zlibstatic to ensure static linking (avoids DLL issues on Windows)
@@ -124,7 +119,6 @@ set(CORE_SOURCES
     src/hpdlp.c
     src/parameters.c
     src/presolver.c
-    src/utils/matrix_formats.c
     src/cone_projector.cu
     src/preconditioner.cu
     src/result.cu
@@ -138,6 +132,7 @@ set(CORE_SOURCES
     src/utils/cuda_utils.cu
     src/utils/display.c
     src/utils/error_handling.c
+    src/utils/matrix_formats.c
     src/utils/mps_parser.c
     src/utils/utils.c)
 
@@ -203,8 +198,7 @@ endif()
 if(HPDLP_BUILD_CLI)
   add_executable(hpdlp_cli src/cli.c)
 
-  target_include_directories(hpdlp_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-                                                 ${CMAKE_CURRENT_SOURCE_DIR}/internal)
+  target_include_directories(hpdlp_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal)
 
   # Link CLI to the static core library
   target_link_libraries(hpdlp_cli PRIVATE hpdlp_core)

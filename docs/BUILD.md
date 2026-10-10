@@ -2,7 +2,7 @@
 
 See [Installation](../README.md#installation) for requirements and the default build commands.
 
-The default GPU architecture selection is `all-major`; override it with `-DCMAKE_CUDA_ARCHITECTURES=...` if needed. The SpMV backend is selected automatically at compile time: `cusparseSpMVOp` for cuSPARSE ≥ 12.8.1 with experimental APIs enabled (the default build), and `cusparseSpMV` otherwise.
+The default GPU architecture selection is `all-major`; override it with `-DCMAKE_CUDA_ARCHITECTURES=...` if needed. The SpMV backend is selected automatically at compile time: `cusparseSpMVOp` for cuSPARSE ≥ 12.8.1 (the build always enables cuSPARSE experimental APIs), and `cusparseSpMV` otherwise.
 
 Optional CMake flags (for example, `-DHPDLP_BUILD_TESTS=ON`):
 

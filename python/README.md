@@ -44,7 +44,7 @@ if model.Status == PDLP.OPTIMAL:
     print(model.ObjVal, model.X, model.Pi, model.RC)  # objective ≈ 3, X ≈ [1, 2]
 ```
 
-The model represents `min c.T @ x + c0`, with `l <= A @ x <= u` and `lb <= x <= ub`. Set `model.ModelSense = PDLP.MAXIMIZE` to maximize. Omitted variable bounds are **-infinity and +infinity**, respectively; specify `variable_lower_bound=0 * np.ones(n)` for nonnegative variables. Constraint bounds may also be `None` for the corresponding infinite bound.
+The model represents `min c.T @ x + c0`, with `l <= A @ x <= u` and `lb <= x <= ub`. Set `model.ModelSense = PDLP.MAXIMIZE` to maximize. Omitted variable bounds are **-infinity and +infinity**, respectively; specify `variable_lower_bound=np.zeros(n)` for nonnegative variables. Constraint bounds may also be `None` for the corresponding infinite bound.
 
 `A` accepts a two-dimensional NumPy array or SciPy sparse matrix/array. The high-level model normalizes sparse inputs to CSR. The compiled `hpdlp._core.solve_once` entry point also accepts CSC and COO directly. Values use float64; sparse indices must fit in int32. Model inputs are copied and exposed as read-only arrays.
 
@@ -73,14 +73,14 @@ Common parameter aliases:
 
 | Alias | Canonical key |
 | --- | --- |
-| `TimeLimit` | `time_sec_limit` |
-| `IterationLimit` | `iteration_limit` |
-| `OutputFlag`, `LogToConsole` | `verbose` |
 | `Presolve` | `presolve` |
-| `OptimalityTol` | `eps_optimal_relative` |
-| `FeasibilityTol` | `eps_feasible_relative` |
+| `OutputFlag`, `LogToConsole` | `verbose` |
 | `OptimalityNorm` | `optimality_norm` (`l2` or `linf`) |
 | `TermCheckFreq` | `termination_evaluation_frequency` |
+| `OptimalityTol` | `eps_optimal_relative` |
+| `FeasibilityTol` | `eps_feasible_relative` |
+| `TimeLimit` | `time_sec_limit` |
+| `IterationLimit` | `iteration_limit` |
 | `ActiveSetBoost` | `active_set_boost` |
 
 H-PDLP-specific controls:
@@ -88,14 +88,14 @@ H-PDLP-specific controls:
 | Alias | Canonical key |
 | --- | --- |
 | `Diagnose` | `diagnose` |
-| `FarkasHomogeneousTol` | `eps_farkas_homogeneous` |
-| `FarkasDisplacementTol` | `eps_farkas_displacement` |
-| `ConeNewtonMaxIter` | `cone_newton_max_iter` |
-| `ConeNewtonTol` | `cone_newton_tol` |
 | `StepSizeFactor` | `step_size_factor` |
 | `RestartKp` | `k_p` |
 | `Ki`, `Kd`, `ISmooth` | `k_i`, `k_d`, `i_smooth` |
 | `PrimalWeightSafeguard` | `primal_weight_safeguard` |
+| `ConeNewtonMaxIter` | `cone_newton_max_iter` |
+| `ConeNewtonTol` | `cone_newton_tol` |
+| `FarkasHomogeneousTol` | `eps_farkas_homogeneous` |
+| `FarkasDisplacementTol` | `eps_farkas_displacement` |
 | `ASBRelativeTol` | `asb_relative_tol` |
 
 `TimeLimit` is the iteration CPU-time limit in seconds, measured by C `clock()`. It excludes presolve, initialization, and Python conversion and is checked at termination evaluations. It is not a wall-clock limit.
@@ -130,7 +130,7 @@ Presolve can identify infeasibility without returning a certificate. A missing v
 
 H-PDLP additionally exposes `FarkasMargin`, `FarkasResidual`, `HomogeneousScale`, `RestartCount`, `PresolveTime`, `PresolveStatus`, `ASBRaiseCount`, `ASBRevertCount`, `ASBPowerIterations`, and `FinalStepSizePrimal`, `FinalStepSizeDual`, `FinalStepSizeHomogeneous`. The Farkas statistics are the backend's certificate diagnostics. See [C API certificate semantics](https://github.com/MIT-Lu-Lab/H-PDLP/blob/main/docs/C_API.md#results-and-termination-status).
 
-The binding releases the Python GIL during native solves and serializes native solves within the process because the solver uses CUDA global graph capture. It raises Python exceptions for invalid inputs and unavailable CUDA devices. Fatal allocation or CUDA failures deeper in the C solver still use the existing process-exit error paths.
+The binding releases the Python GIL during native solves and serializes native solves within the process because the solver uses CUDA global graph capture. It raises Python exceptions for invalid inputs and unavailable CUDA devices. Allocation and CUDA failures inside the C solver are reported as `RuntimeError` with the native error message.
 
 ## Tests
 

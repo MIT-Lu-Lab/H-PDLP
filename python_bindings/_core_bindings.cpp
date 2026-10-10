@@ -41,7 +41,7 @@ struct MatrixKeepalive
     // keep every owner to prolong lifetime
     std::vector<py::object> owners;
     // temporary storage for index downcast
-    std::vector<int32_t> tmp_rowptr, tmp_colind;
+    std::vector<int32_t> tmp_indptr, tmp_indices;
     std::vector<int32_t> tmp_row, tmp_col;
 };
 
@@ -181,7 +181,7 @@ static void expect_len(py::object obj, py::ssize_t expected, const char *name)
 }
 
 // same as expect_len, but None is allowed
-static void ensure_len_or_null(py::object obj, const char *name, int expected)
+static void expect_len_or_none(py::object obj, py::ssize_t expected, const char *name)
 {
     if (!obj || obj.is_none())
     {
@@ -201,12 +201,12 @@ static const char *status_to_str(termination_reason_t r)
             return "PRIMAL_INFEASIBLE";
         case TERMINATION_REASON_DUAL_INFEASIBLE:
             return "DUAL_INFEASIBLE";
-        case TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED:
-            return "INFEASIBLE_OR_UNBOUNDED";
         case TERMINATION_REASON_TIME_LIMIT:
             return "TIME_LIMIT";
         case TERMINATION_REASON_ITERATION_LIMIT:
             return "ITERATION_LIMIT";
+        case TERMINATION_REASON_INFEASIBLE_OR_UNBOUNDED:
+            return "INFEASIBLE_OR_UNBOUNDED";
         case TERMINATION_REASON_NUMERICAL_FAILURE:
             return "NUMERICAL_FAILURE";
         case TERMINATION_REASON_UNSPECIFIED:
@@ -239,6 +239,16 @@ static int status_to_code(termination_reason_t r)
         default:
             return -1;
     }
+}
+
+// copy a native buffer into a new numpy array
+template <typename T>
+static py::array_t<T> copy_to_array(const T *src, int len)
+{
+    py::array_t<T> out(len);
+    if (src && len > 0)
+        std::memcpy(out.mutable_data(), src, sizeof(T) * static_cast<size_t>(len));
+    return out;
 }
 
 static void validate_result_dimensions(const hpdlp_result_t *res, int expected_n, int expected_m)
@@ -563,8 +573,8 @@ static PyMatrixView get_matrix_from_python(py::object A)
         // check index array lengths before dereferencing
         expect_len(rp, static_cast<py::ssize_t>(desc.m) + 1, "csr.indptr");
         expect_len(ci, static_cast<py::ssize_t>(desc.data.csr.nnz), "csr.indices");
-        desc.data.csr.row_ptr = get_index_ptr_i32(rp, "csr.indptr", out.keep, out.keep.tmp_rowptr);
-        desc.data.csr.col_ind = get_index_ptr_i32(ci, "csr.indices", out.keep, out.keep.tmp_colind);
+        desc.data.csr.row_ptr = get_index_ptr_i32(rp, "csr.indptr", out.keep, out.keep.tmp_indptr);
+        desc.data.csr.col_ind = get_index_ptr_i32(ci, "csr.indices", out.keep, out.keep.tmp_indices);
         desc.data.csr.vals = static_cast<const double *>(v64.request().ptr);
         // validate structure (protects the public solve_once entry)
         validate_compressed(desc.data.csr.row_ptr, desc.data.csr.col_ind, desc.m, desc.n, desc.data.csr.nnz, "csr");
@@ -586,8 +596,8 @@ static PyMatrixView get_matrix_from_python(py::object A)
         // check index array lengths before dereferencing
         expect_len(cp, static_cast<py::ssize_t>(desc.n) + 1, "csc.indptr");
         expect_len(ri, static_cast<py::ssize_t>(desc.data.csc.nnz), "csc.indices");
-        desc.data.csc.col_ptr = get_index_ptr_i32(cp, "csc.indptr", out.keep, out.keep.tmp_rowptr);
-        desc.data.csc.row_ind = get_index_ptr_i32(ri, "csc.indices", out.keep, out.keep.tmp_colind);
+        desc.data.csc.col_ptr = get_index_ptr_i32(cp, "csc.indptr", out.keep, out.keep.tmp_indptr);
+        desc.data.csc.row_ind = get_index_ptr_i32(ri, "csc.indices", out.keep, out.keep.tmp_indices);
         desc.data.csc.vals = static_cast<const double *>(v64.request().ptr);
         // validate structure (major=n, minor=m for CSC)
         validate_compressed(desc.data.csc.col_ptr, desc.data.csc.row_ind, desc.n, desc.m, desc.data.csc.nnz, "csc");
@@ -641,11 +651,11 @@ static py::dict solve_once(py::object A,
     const int m = view.desc.m;
     const int n = view.desc.n;
     // get vector pointers
-    ensure_len_or_null(objective_vector, "objective_vector", n);
-    ensure_len_or_null(variable_lower_bound, "variable_lower_bound", n);
-    ensure_len_or_null(variable_upper_bound, "variable_upper_bound", n);
-    ensure_len_or_null(constraint_lower_bound, "constraint_lower_bound", m);
-    ensure_len_or_null(constraint_upper_bound, "constraint_upper_bound", m);
+    expect_len_or_none(objective_vector, n, "objective_vector");
+    expect_len_or_none(variable_lower_bound, n, "variable_lower_bound");
+    expect_len_or_none(variable_upper_bound, n, "variable_upper_bound");
+    expect_len_or_none(constraint_lower_bound, m, "constraint_lower_bound");
+    expect_len_or_none(constraint_upper_bound, m, "constraint_upper_bound");
     const double *c_ptr = get_arr_ptr_f64_or_null(objective_vector, "objective_vector", view.keep);
     const double *lb_ptr = get_arr_ptr_f64_or_null(variable_lower_bound, "variable_lower_bound", view.keep);
     const double *ub_ptr = get_arr_ptr_f64_or_null(variable_upper_bound, "variable_upper_bound", view.keep);
@@ -690,20 +700,15 @@ static py::dict solve_once(py::object A,
 
     set_objective_sense(prob, sense);
 
-    // set warm start values if provided
-    if ((primal_start && !primal_start.is_none()) || (dual_start && !dual_start.is_none()))
-    {
-        // validate dimensions and get pointers
-        ensure_len_or_null(primal_start, "primal_start", n);
-        ensure_len_or_null(dual_start, "dual_start", m);
-        const double *primal_ptr = get_arr_ptr_f64_or_null(primal_start, "primal_start", view.keep);
-        const double *dual_ptr = get_arr_ptr_f64_or_null(dual_start, "dual_start", view.keep);
-        validate_finite_array(primal_ptr, n, "primal_start");
-        validate_finite_array(dual_ptr, m, "dual_start");
-
-        if (!set_start_values(prob, primal_ptr, dual_ptr))
-            throw std::invalid_argument("Invalid warm start values.");
-    }
+    // set warm start values (None leaves a vector unset)
+    expect_len_or_none(primal_start, n, "primal_start");
+    expect_len_or_none(dual_start, m, "dual_start");
+    const double *primal_ptr = get_arr_ptr_f64_or_null(primal_start, "primal_start", view.keep);
+    const double *dual_ptr = get_arr_ptr_f64_or_null(dual_start, "dual_start", view.keep);
+    validate_finite_array(primal_ptr, n, "primal_start");
+    validate_finite_array(dual_ptr, m, "dual_start");
+    if (!set_start_values(prob, primal_ptr, dual_ptr))
+        throw std::invalid_argument("Invalid warm start values.");
 
     // parse PDHG params
     pdhg_parameters_t local_params;
@@ -733,8 +738,6 @@ static py::dict solve_once(py::object A,
 
     // parse result
     validate_result_dimensions(res, n, m);
-    const int n_out = res->num_variables;
-    const int m_out = res->num_constraints;
     // Missing vectors are expected for infeasibility/presolve/numerical failure.
     const bool candidate = res->termination_reason == TERMINATION_REASON_OPTIMAL ||
                            res->termination_reason == TERMINATION_REASON_TIME_LIMIT ||
@@ -743,15 +746,12 @@ static py::dict solve_once(py::object A,
     {
         if (!src && !(candidate && len == 0))
             return py::none();
-        py::array_t<double> out(len);
-        if (len > 0)
-            std::memcpy(out.mutable_data(), src, sizeof(double) * static_cast<size_t>(len));
-        return out;
+        return copy_to_array(src, len);
     };
     py::dict info;
-    info["X"] = copy_vector(res->primal_solution, n_out);
-    info["Pi"] = copy_vector(res->dual_solution, m_out);
-    info["RC"] = copy_vector(res->reduced_cost, n_out);
+    info["X"] = copy_vector(res->primal_solution, n);
+    info["Pi"] = copy_vector(res->dual_solution, m);
+    info["RC"] = copy_vector(res->reduced_cost, n);
     // objectives and gaps
     info["PrimalObj"] = res->primal_objective_value;
     info["DualObj"] = res->dual_objective_value;
@@ -803,38 +803,19 @@ static py::dict read_mps_py(const std::string &filename)
     const int m = prob->num_constraints;
     const int nnz = prob->constraint_matrix_num_nonzeros;
 
-    auto copy_f64 = [](const double *src, int len)
-    {
-        py::array_t<double> out({len});
-        if (src && len > 0)
-        {
-            std::memcpy(out.request().ptr, src, sizeof(double) * static_cast<size_t>(len));
-        }
-        return out;
-    };
-    auto copy_i32 = [](const int *src, int len)
-    {
-        py::array_t<int32_t> out({len});
-        if (src && len > 0)
-        {
-            std::memcpy(out.request().ptr, src, sizeof(int32_t) * static_cast<size_t>(len));
-        }
-        return out;
-    };
-
     py::dict d;
     d["num_variables"] = n;
     d["num_constraints"] = m;
-    d["objective_vector"] = copy_f64(prob->objective_vector, n);
+    d["objective_vector"] = copy_to_array(prob->objective_vector, n);
     d["objective_constant"] = prob->objective_constant;
     d["maximize"] = (prob->objective_sense == OBJECTIVE_SENSE_MAXIMIZE);
-    d["row_ptr"] = copy_i32(prob->constraint_matrix_row_pointers, m + 1);
-    d["col_ind"] = copy_i32(prob->constraint_matrix_col_indices, nnz);
-    d["values"] = copy_f64(prob->constraint_matrix_values, nnz);
-    d["constraint_lower_bound"] = copy_f64(prob->constraint_lower_bound, m);
-    d["constraint_upper_bound"] = copy_f64(prob->constraint_upper_bound, m);
-    d["variable_lower_bound"] = copy_f64(prob->variable_lower_bound, n);
-    d["variable_upper_bound"] = copy_f64(prob->variable_upper_bound, n);
+    d["row_ptr"] = copy_to_array(prob->constraint_matrix_row_pointers, m + 1);
+    d["col_ind"] = copy_to_array(prob->constraint_matrix_col_indices, nnz);
+    d["values"] = copy_to_array(prob->constraint_matrix_values, nnz);
+    d["constraint_lower_bound"] = copy_to_array(prob->constraint_lower_bound, m);
+    d["constraint_upper_bound"] = copy_to_array(prob->constraint_upper_bound, m);
+    d["variable_lower_bound"] = copy_to_array(prob->variable_lower_bound, n);
+    d["variable_upper_bound"] = copy_to_array(prob->variable_upper_bound, n);
 
     return d;
 }

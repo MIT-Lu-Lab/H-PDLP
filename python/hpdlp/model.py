@@ -267,28 +267,12 @@ class Model:
         # always start from backend defaults PDLP params
         self._default_params: dict[str, Any] = dict(get_default_params())
         self._params: dict[str, Any] = dict(self._default_params)
-        # canonical set of backend parameter keys, used to reject typos in setParam
-        self._valid_param_keys = frozenset(self._params)
         self.Params = _ParamsView(self)
         # initialize warm start values
         self._primal_start: Optional[np.ndarray] = None # warm start primal solution
         self._dual_start: Optional[np.ndarray] = None # warm start dual solution
-        self._info: dict[str, Any] = {}
         # initialize solution attributes before the setters below
-        self._x: Optional[np.ndarray] = None # primal solution
-        self._y: Optional[np.ndarray] = None # dual solution
-        self._rc: Optional[np.ndarray] = None # reduced costs
-        self._objval: Optional[float] = None # objective value
-        self._dualobj: Optional[float] = None # dual objective value
-        self._gap: Optional[float] = None # primal-dual gap
-        self._rel_gap: Optional[float] = None # relative gap
-        self._status_name: Optional[str] = None # solution status name (str)
-        self._status_code: Optional[int] = None # solution status code (int)
-        self._iter: Optional[int] = None # number of iterations
-        self._runtime: Optional[float] = None # runtime
-        self._rescale_time: Optional[float] = None # rescale time
-        self._rel_p_res: Optional[float] = None # relative primal residual
-        self._rel_d_res: Optional[float] = None # relative dual residual
+        self._clear_solution_cache()
         # set coefficients and bounds
         self.setObjectiveVector(objective_vector)
         self.setObjectiveConstant(objective_constant)
@@ -316,7 +300,7 @@ class Model:
     def setObjectiveConstant(self, c0: float) -> None:
         """
         Overwrite objective constant term.
-        Minimal check: convert to float.
+        The value must be finite.
         """
         c0 = float(c0)
         if not np.isfinite(c0):
@@ -505,8 +489,8 @@ class Model:
         # map alias to backend key
         key = PDLP._PARAM_ALIAS.get(name, name)
         # reject unknown names
-        if key not in self._valid_param_keys:
-            valid = sorted(PDLP._PARAM_ALIAS.keys()) + sorted(self._valid_param_keys)
+        if key not in self._default_params:
+            valid = sorted(PDLP._PARAM_ALIAS.keys()) + sorted(self._default_params)
             raise KeyError(f"Unknown parameter '{name}'. Valid names: {valid}")
         return key
 
@@ -558,12 +542,7 @@ class Model:
         """
         Set the value of a solver parameter by name.
         """
-        # resolve name, convert the type, validate the resulting parameter set, then store
-        key = self._resolve_param_key(name)
-        candidate = dict(self._params)
-        candidate[key] = self._convert_param_value(key, value)
-        validate_params(candidate)
-        self._params = candidate
+        self.setParams(**{name: value})
 
     def getParam(self, name: str) -> Any:
         """

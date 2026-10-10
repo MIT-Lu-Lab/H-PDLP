@@ -14,26 +14,26 @@
 
 """H-PDLP: Python bindings for the GPU-accelerated first-order LP solver."""
 
-import os
-import platform
+import os as _os
+import platform as _platform
 
 # Windows only: register CUDA bin for dependent DLL loading.
-if platform.system() == "Windows":  # pragma: no cover
-    cuda_path = os.environ.get("CUDA_PATH")
-    if cuda_path:
-        bin_path = os.path.join(cuda_path, "bin")
-        if os.path.isdir(bin_path):
-            _cuda_dll_directory = os.add_dll_directory(bin_path)
+if _platform.system() == "Windows":  # pragma: no cover
+    _cuda_path = _os.environ.get("CUDA_PATH")
+    if _cuda_path:
+        _bin_path = _os.path.join(_cuda_path, "bin")
+        if _os.path.isdir(_bin_path):
+            _cuda_dll_directory = _os.add_dll_directory(_bin_path)
 
 from .model import Model, read
 from . import PDLP
 
 # versioning
-from importlib.metadata import version, PackageNotFoundError
-# get version from package metadata (toml file)
+from importlib.metadata import version as _version, PackageNotFoundError as _PackageNotFoundError
+# get version from the installed package metadata (set by CMake project())
 try:
-    __version__ = version("hpdlp")
-except PackageNotFoundError:  # pragma: no cover
+    __version__ = _version("hpdlp")
+except _PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0"
 
 __all__ = ["Model", "PDLP", "read", "__version__"]

@@ -31,57 +31,54 @@ UNSPECIFIED             = -1
 
 # parameter name alias
 _PARAM_ALIAS = {
-    # limits / logging
-    "TimeLimit": "time_sec_limit",
-    "IterationLimit": "iteration_limit",
+    # general
+    "Presolve": "presolve",
     "OutputFlag": "verbose",
     "LogToConsole": "verbose",
-    # termination evaluation cadence
+    "Diagnose": "diagnose",
+    "OptimalityNorm": "optimality_norm",
+    "ReflectionCoeff": "reflection_coefficient",
     "TermCheckFreq": "termination_evaluation_frequency",
-    # tolerances
-    "OptimalityTol": "eps_optimal_relative",
-    "FeasibilityTol": "eps_feasible_relative",
-    # scaling / step size
+    # scaling
     "GeoMeanIters": "geometric_mean_iterations",
     "RuizIters": "l_inf_ruiz_iterations",
     "UsePCAlpha": "has_pock_chambolle_alpha",
     "PCAlpha": "pock_chambolle_alpha",
     "BoundObjRescaling": "bound_objective_rescaling",
-    # restarts
-    "RestartArtificialThresh": "artificial_restart_threshold",
-    "RestartSufficientReduction": "sufficient_reduction_for_restart",
-    "RestartNecessaryReduction": "necessary_reduction_for_restart",
-    "RestartKp": "k_p",
-    # reflection
-    "ReflectionCoeff": "reflection_coefficient",
-    # termination criteria
-    "OptimalityNorm": "optimality_norm",
+    "MatrixZeroTol": "matrix_zero_tol",
+    "InfiniteBound": "infinite_bound",
     # singular value estimation (power method)
     "SVMaxIter": "sv_max_iter",
     "SVTol": "sv_tol",
-    # presolve
-    "Presolve": "presolve",
-    "MatrixZeroTol": "matrix_zero_tol",
-    "InfiniteBound": "infinite_bound",
-    # active-set step boost
-    "ActiveSetBoost": "active_set_boost",
-    "ASBWindowIter": "asb_window_iter",
-    "ASBSafetyFactor": "asb_safety_factor",
-    "ASBMaxReverts": "asb_max_reverts",
-    "ASBMinRaiseRatio": "asb_min_raise_ratio",
-    "ASBReestimateChangeRatio": "asb_reestimate_change_ratio",
-    "ASBDivergenceCeilingRatio": "asb_divergence_ceiling_ratio",
-    "ASBDivergenceMargin": "asb_divergence_margin",
-    # H-PDLP-specific controls
-    "Diagnose": "diagnose",
-    "FarkasHomogeneousTol": "eps_farkas_homogeneous",
-    "FarkasDisplacementTol": "eps_farkas_displacement",
-    "ConeNewtonMaxIter": "cone_newton_max_iter",
-    "ConeNewtonTol": "cone_newton_tol",
+    # step size and primal weight
     "StepSizeFactor": "step_size_factor",
+    "RestartKp": "k_p",
     "Ki": "k_i",
     "Kd": "k_d",
     "ISmooth": "i_smooth",
     "PrimalWeightSafeguard": "primal_weight_safeguard",
+    # cone projection
+    "ConeNewtonMaxIter": "cone_newton_max_iter",
+    "ConeNewtonTol": "cone_newton_tol",
+    # termination criteria
+    "OptimalityTol": "eps_optimal_relative",
+    "FeasibilityTol": "eps_feasible_relative",
+    "FarkasHomogeneousTol": "eps_farkas_homogeneous",
+    "FarkasDisplacementTol": "eps_farkas_displacement",
+    "TimeLimit": "time_sec_limit",
+    "IterationLimit": "iteration_limit",
+    # restarts
+    "RestartArtificialThresh": "artificial_restart_threshold",
+    "RestartSufficientReduction": "sufficient_reduction_for_restart",
+    "RestartNecessaryReduction": "necessary_reduction_for_restart",
+    # active-set step boost
+    "ActiveSetBoost": "active_set_boost",
+    "ASBWindowIter": "asb_window_iter",
     "ASBRelativeTol": "asb_relative_tol",
+    "ASBSafetyFactor": "asb_safety_factor",
+    "ASBMinRaiseRatio": "asb_min_raise_ratio",
+    "ASBReestimateChangeRatio": "asb_reestimate_change_ratio",
+    "ASBDivergenceCeilingRatio": "asb_divergence_ceiling_ratio",
+    "ASBDivergenceMargin": "asb_divergence_margin",
+    "ASBMaxReverts": "asb_max_reverts",
 }

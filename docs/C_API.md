@@ -76,7 +76,7 @@ The reported objective should be approximately `1`, with `x` approximately `1` a
 - **Bounds:** A `NULL` lower-bound array means negative infinity; a `NULL` upper-bound array means positive infinity. In particular, omitting variable bounds leaves variables free. Include `<math.h>` and use `-INFINITY` or `INFINITY` for individual unbounded entries.
 - **Objective:** Problems minimize by default. Call `set_objective_sense(prob, OBJECTIVE_SENSE_MAXIMIZE)` for maximization. The last argument to `create_lp_problem` is a pointer to the objective constant, or `NULL` for zero.
 - **Parameters:** Call `set_default_parameters` before changing individual fields. The CLI option `--eps_opt` corresponds to `params.termination_criteria.eps_optimal_relative`; `--eps_feas` corresponds to `eps_feasible_relative`.
-- **Parameter validation:** `hpdlp_validate_parameters(&params, error, sizeof(error))` returns `0` on success and `-1` for invalid parameters, without GPU work. `error` is an optional character buffer for the diagnostic. The solver and Python interface use the same validation rules.
+- **Parameter validation:** `hpdlp_validate_parameters(&params, error, sizeof(error))` returns `0` on success and `-1` for invalid parameters, without GPU work. `error` is an optional character buffer for the diagnostic. The solver and Python interface use the same validation rules; Python additionally requires finite numeric values.
 - **Warm starts:** Call `set_start_values(prob, primal, dual)` with vectors in original problem coordinates, check its Boolean return value, and set `params.presolve = false` before solving.
 - **Ownership:** Release the result with `hpdlp_result_free` and the problem with `lp_problem_free`.
 
