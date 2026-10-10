@@ -149,58 +149,35 @@ static int solve_and_check(const char *label, const pdhg_parameters_t *params)
     return raise_count;
 }
 
-static void check_active_set_resources(bool step_size_boost)
+static void check_active_set_resources(bool step_size_boost, int max_reverts)
 {
     pdhg_parameters_t params;
     set_test_parameters(&params, step_size_boost);
+    params.active_set_params.max_reverts = max_reverts;
     lp_problem_t *problem = create_hadamard_problem();
     pdhg_solver_state_t *state = create_solver_state(problem, &params);
     active_set_state_t *active_set = &state->active_set;
+    const bool enabled = step_size_boost && max_reverts > 0;
 
     check("active-set constraint observations follow enablement",
-          (active_set->constraint_dual_projection_input_d != NULL) == step_size_boost);
+          (active_set->constraint_dual_projection_input_d != NULL) == enabled);
     check("primal projection multipliers are available without the boost",
           state->primal_pdhg_projection_multiplier_d != NULL);
     check("active-set variable history follows enablement",
-          (active_set->variable_last_free_iter_d != NULL) == step_size_boost);
+          (active_set->variable_last_free_iter_d != NULL) == enabled);
     check("active-set constraint history follows enablement",
-          (active_set->constraint_last_binding_iter_d != NULL) == step_size_boost);
+          (active_set->constraint_last_binding_iter_d != NULL) == enabled);
     check("active-set variable mask follows enablement",
-          (active_set->free_variable_mask_d != NULL) == step_size_boost);
+          (active_set->free_variable_mask_d != NULL) == enabled);
     check("active-set constraint mask follows enablement",
-          (active_set->binding_constraint_mask_d != NULL) == step_size_boost);
+          (active_set->binding_constraint_mask_d != NULL) == enabled);
     check("active-set mask change counts follow enablement",
-          (active_set->mask_changes_d != NULL) == step_size_boost);
+          (active_set->mask_changes_d != NULL) == enabled);
     check("active-set raise-point anchor follows enablement",
-              (active_set->anchor.primal_solution_d != NULL) == step_size_boost &&
-              (active_set->anchor.dual_solution_d != NULL) == step_size_boost &&
-              (active_set->anchor.hsd_scalars_d != NULL) == step_size_boost &&
-              (active_set->anchor.primal_projection_multiplier_d != NULL) == step_size_boost);
-
-    pdhg_solver_state_free(state);
-    lp_problem_free(problem);
-}
-
-static void check_zero_revert_budget_disables_resources(void)
-{
-    pdhg_parameters_t params;
-    set_test_parameters(&params, true);
-    params.active_set_params.max_reverts = 0;
-    lp_problem_t *problem = create_hadamard_problem();
-    pdhg_solver_state_t *state = create_solver_state(problem, &params);
-    active_set_state_t *active_set = &state->active_set;
-
-    check("a zero revert budget allocates no active-set buffers",
-          active_set->constraint_dual_projection_input_d == NULL &&
-              active_set->variable_last_free_iter_d == NULL &&
-              active_set->constraint_last_binding_iter_d == NULL &&
-              active_set->free_variable_mask_d == NULL &&
-              active_set->binding_constraint_mask_d == NULL &&
-              active_set->mask_changes_d == NULL &&
-              active_set->anchor.primal_solution_d == NULL &&
-              active_set->anchor.dual_solution_d == NULL &&
-              active_set->anchor.hsd_scalars_d == NULL &&
-              active_set->anchor.primal_projection_multiplier_d == NULL);
+          (active_set->anchor.primal_solution_d != NULL) == enabled &&
+              (active_set->anchor.dual_solution_d != NULL) == enabled &&
+              (active_set->anchor.hsd_scalars_d != NULL) == enabled &&
+              (active_set->anchor.primal_projection_multiplier_d != NULL) == enabled);
 
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
@@ -298,32 +275,14 @@ static void check_empty_mask_skips_estimation(bool empty_variables)
     lp_problem_free(problem);
 }
 
-static lp_problem_t *create_diagonal_problem(void)
-{
-    const double objective[] = {1.0, 1.0};
-    const int row_ptr[] = {0, 1, 2};
-    const int col_ind[] = {0, 1};
-    const double values[] = {1.0, 2.0};
-    const double lower[] = {0.0, 0.0};
-    const double upper[] = {1.0, 1.0};
-    const double constant = 0.0;
-    matrix_desc_t matrix = {0};
-    matrix.m = matrix.n = 2;
-    matrix.fmt = matrix_csr;
-    matrix.data.csr.nnz = 2;
-    matrix.data.csr.row_ptr = row_ptr;
-    matrix.data.csr.col_ind = col_ind;
-    matrix.data.csr.vals = values;
-    return create_lp_problem(
-        objective, &matrix, lower, upper, lower, upper, &constant);
-}
+static const double DIAGONAL_VALUES[] = {1.0, 2.0};
 
 static void check_estimator_retry_policy(bool degenerate)
 {
     pdhg_parameters_t params;
     set_test_parameters(&params, true);
     disable_rescaling(&params);
-    lp_problem_t *problem = create_diagonal_problem();
+    lp_problem_t *problem = create_diagonal_problem(DIAGONAL_VALUES);
     pdhg_solver_state_t *state = create_solver_state(problem, &params);
     active_set_state_t *active_set = &state->active_set;
     state->control.step_size_base = 0.01;
@@ -378,7 +337,7 @@ static void check_revert_budget(bool is_exhausted)
     pdhg_parameters_t params;
     set_test_parameters(&params, true);
     disable_rescaling(&params);
-    lp_problem_t *problem = create_diagonal_problem();
+    lp_problem_t *problem = create_diagonal_problem(DIAGONAL_VALUES);
     pdhg_solver_state_t *state = create_solver_state(problem, &params);
     active_set_state_t *active_set = &state->active_set;
     state->control.step_size_base = 0.01;
@@ -591,9 +550,9 @@ int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
-    check_active_set_resources(false);
-    check_active_set_resources(true);
-    check_zero_revert_budget_disables_resources();
+    check_active_set_resources(false, 2);
+    check_active_set_resources(true, 2);
+    check_active_set_resources(true, 0);
     check_estimator_owns_work_vectors();
     check_empty_mask_skips_estimation(true);
     check_empty_mask_skips_estimation(false);

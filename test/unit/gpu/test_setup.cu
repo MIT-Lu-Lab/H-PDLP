@@ -6,24 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static lp_problem_t *create_problem(const double *values)
-{
-    const double objective[] = {1.0, 1.0};
-    const int row_ptr[] = {0, 1, 2};
-    const int col_ind[] = {0, 1};
-    const double lower[] = {0.0, 0.0};
-    const double upper[] = {1.0, 1.0};
-    const double constant = 0.0;
-    matrix_desc_t matrix = {};
-    matrix.m = matrix.n = 2;
-    matrix.fmt = matrix_csr;
-    matrix.data.csr.nnz = 2;
-    matrix.data.csr.row_ptr = row_ptr;
-    matrix.data.csr.col_ind = col_ind;
-    matrix.data.csr.vals = values;
-    return create_lp_problem(objective, &matrix, lower, upper, lower, upper, &constant);
-}
-
 static void set_test_parameters(pdhg_parameters_t *params)
 {
     set_default_parameters(params);
@@ -35,7 +17,7 @@ static void set_test_parameters(pdhg_parameters_t *params)
 
 static double measure_initial_norm(const double *values, const pdhg_parameters_t *params)
 {
-    lp_problem_t *problem = create_problem(values);
+    lp_problem_t *problem = create_diagonal_problem(values);
     if (problem == NULL)
     {
         fprintf(stderr, "FAIL: could not build the problem\n");
