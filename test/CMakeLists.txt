@@ -16,6 +16,7 @@ endfunction()
 
 hpdlp_add_test(test_model_api unit/cpu/test_model_api.c "cpu")
 hpdlp_add_test(test_matrix_formats unit/cpu/test_matrix_formats.c "cpu")
+hpdlp_add_test(test_matrix_filter unit/cpu/test_matrix_filter.c "cpu")
 hpdlp_add_test(test_mps_reader unit/cpu/test_mps_reader.c "cpu")
 hpdlp_add_test(test_parameters unit/cpu/test_parameters.c "cpu")
 hpdlp_add_test(test_controller unit/cpu/test_controller.c "cpu")

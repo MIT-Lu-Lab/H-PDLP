@@ -55,6 +55,8 @@ def test_dual_infeasible_result(presolve):
     ("TimeLimit", 1e-12, PDLP.TIME_LIMIT),
 ])
 def test_stopping_limits_return_candidates(model, parameter, value, status):
+    unreachable = np.nextafter(0.0, 1.0)
+    model.setParams(OptimalityTol=unreachable, FeasibilityTol=unreachable)
     model.setParam(parameter, value)
     model.optimize()
     assert model.Status == status
