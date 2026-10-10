@@ -1089,11 +1089,11 @@ static lp_problem_t *build_lp_problem(MpsParserState *state)
     desc.data.coo.col_ind = state->coo_matrix.col_indices;
     desc.data.coo.vals = state->coo_matrix.values;
 
-    matrix_format_status_t status = coo_to_csr(&desc,
-                                               &prob->constraint_matrix_row_pointers,
-                                               &prob->constraint_matrix_col_indices,
-                                               &prob->constraint_matrix_values,
-                                               &prob->constraint_matrix_num_nonzeros);
+    matrix_format_status_t status = matrix_desc_to_csr(&desc,
+                                                       &prob->constraint_matrix_row_pointers,
+                                                       &prob->constraint_matrix_col_indices,
+                                                       &prob->constraint_matrix_values,
+                                                       &prob->constraint_matrix_num_nonzeros);
     if (status != MATRIX_FORMAT_OK)
     {
         report_error("failed to convert matrix to CSR format: %s",

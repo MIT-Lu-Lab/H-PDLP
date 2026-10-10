@@ -113,8 +113,7 @@ static void compute_step_sizes(
     double *step_size_primal,
     double *step_size_dual,
     double *step_size_homogeneous);
-static void sync_inner_count_to_gpu(pdhg_solver_state_t *state);
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state);
+static void sync_control_to_gpu(pdhg_solver_state_t *state);
 static void run_hsd_iteration_step(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params,
@@ -331,8 +330,7 @@ static void solve_with_pdhg(
     while (state->control.termination_reason == TERMINATION_REASON_UNSPECIFIED &&
            state->control.total_count < params->termination_criteria.iteration_limit)
     {
-        sync_inner_count_to_gpu(state);
-        sync_step_sizes_to_gpu(state);
+        sync_control_to_gpu(state);
 
         run_hsd_iteration_step(state, params, 1, true);
 
@@ -350,7 +348,7 @@ static void solve_with_pdhg(
             CUDA_CHECK(cudaStreamBeginCapture(state->stream_A,
                                               cudaStreamCaptureModeGlobal));
 
-            for (int i = 2; i <= params->termination_evaluation_frequency - 1; i++)
+            for (int i = 2; i < params->termination_evaluation_frequency; i++)
             {
                 run_hsd_iteration_step(state, params, i, false);
             }
@@ -482,17 +480,13 @@ static void compute_step_sizes(
     *step_size_homogeneous = 0.99 * step_size_params->step_size_factor / *step_size_dual;
 }
 
-static void sync_inner_count_to_gpu(pdhg_solver_state_t *state)
+static void sync_control_to_gpu(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaMemcpyAsync(state->control.inner_count_d,
                                &state->control.inner_count,
                                sizeof(int),
                                cudaMemcpyHostToDevice,
                                state->stream_A));
-}
-
-static void sync_step_sizes_to_gpu(pdhg_solver_state_t *state)
-{
     CUDA_CHECK(cudaMemcpyAsync(state->control.step_size_primal_d,
                                &state->control.step_size_primal,
                                sizeof(double),
@@ -526,9 +520,6 @@ static void update_hsd_dual_block(
     const int k_offset,
     bool is_major)
 {
-    const cone_parameters_t *cone_params = &params->cone_params;
-    const double reflection_coefficient = params->reflection_coefficient;
-
     execute_spmv(
         state->sparse_handle_A,
         state->spmv_primal_current_solution,
@@ -536,7 +527,7 @@ static void update_hsd_dual_block(
         &state->constraint_matrix_spmv_plan);
 
     update_dual_box_cone_projection(
-        cone_params,
+        &params->cone_params,
         &state->dual_box_cone_state,
         state->dual_current_solution_d,
         state->dual_reflected_solution_d,
@@ -548,7 +539,7 @@ static void update_hsd_dual_block(
         state->hsd_primal_current_scale_d,
         state->control.inner_count_d,
         k_offset,
-        reflection_coefficient,
+        params->reflection_coefficient,
         state->hsd_dual_initial_scale_d,
         state->hsd_dual_current_scale_d,
         state->hsd_dual_pdhg_scale_d,
@@ -565,9 +556,6 @@ static void update_hsd_primal_block(
     const int k_offset,
     bool is_major)
 {
-    const cone_parameters_t *cone_params = &params->cone_params;
-    const double reflection_coefficient = params->reflection_coefficient;
-
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 
     execute_spmv(
@@ -580,7 +568,7 @@ static void update_hsd_primal_block(
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
 
     update_primal_box_cone_resolvent(
-        cone_params,
+        &params->cone_params,
         &state->primal_box_cone_state,
         state->primal_current_solution_d,
         state->primal_reflected_solution_d,
@@ -594,7 +582,7 @@ static void update_hsd_primal_block(
         state->hsd_dual_reflected_scale_d,
         state->control.inner_count_d,
         k_offset,
-        reflection_coefficient,
+        params->reflection_coefficient,
         state->hsd_primal_initial_scale_d,
         state->hsd_primal_current_scale_d,
         state->hsd_primal_pdhg_scale_d,

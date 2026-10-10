@@ -40,8 +40,6 @@ static bool save_solver_summary(const hpdlp_result_t *result, const char *output
                                 const char *instance_name);
 static FILE *open_output_file(const char *output_dir, const char *instance_name,
                               const char *suffix);
-static char *get_output_path(const char *output_dir, const char *instance_name,
-                             const char *suffix);
 static bool save_solution(const double *data, int size, const char *output_dir,
                           const char *instance_name, const char *suffix);
 
@@ -180,19 +178,16 @@ int main(int argc, char *argv[])
                 return 1;
             break;
         case 1020:
-        {
-            const char *norm_str = optarg;
-            if (strcmp(norm_str, "l2") == 0)
+            if (strcmp(optarg, "l2") == 0)
                 params.optimality_norm = NORM_TYPE_L2;
-            else if (strcmp(norm_str, "linf") == 0)
+            else if (strcmp(optarg, "linf") == 0)
                 params.optimality_norm = NORM_TYPE_L_INF;
             else
             {
                 fprintf(stderr, "ERROR: '--opt_norm' must be 'l2' or 'linf'\n");
                 return 1;
             }
-        }
-        break;
+            break;
         case '?':
             return 1;
         }
@@ -411,7 +406,10 @@ static bool save_solver_summary(const hpdlp_result_t *result, const char *output
 static FILE *open_output_file(const char *output_dir, const char *instance_name,
                               const char *suffix)
 {
-    char *file_path = get_output_path(output_dir, instance_name, suffix);
+    size_t path_len =
+        strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
+    char *file_path = (char *)safe_malloc(path_len);
+    snprintf(file_path, path_len, "%s/%s%s", output_dir, instance_name, suffix);
 
     FILE *outfile = fopen(file_path, "w");
     if (outfile == NULL)
@@ -420,16 +418,6 @@ static FILE *open_output_file(const char *output_dir, const char *instance_name,
 
     free(file_path);
     return outfile;
-}
-
-static char *get_output_path(const char *output_dir, const char *instance_name,
-                             const char *suffix)
-{
-    size_t path_len =
-        strlen(output_dir) + strlen(instance_name) + strlen(suffix) + 2;
-    char *full_path = safe_malloc(path_len * sizeof(char));
-    snprintf(full_path, path_len, "%s/%s%s", output_dir, instance_name, suffix);
-    return full_path;
 }
 
 static bool save_solution(const double *data, int size, const char *output_dir,

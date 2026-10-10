@@ -35,7 +35,6 @@ static void fill_or_copy(
     double fill_val);
 static bool validate_start_vector(const double *values, int n,
                                   const char *vector_type);
-static void copy_start_vector(double **dst, const double *src, int n);
 
 lp_problem_t *create_lp_problem(
     const double *objective_c,
@@ -118,13 +117,6 @@ static void fill_or_copy(
         memcpy(*dst, src, bytes);
         return;
     }
-
-    if (fill_val == 0.0)
-    {
-        memset(*dst, 0, bytes);
-        return;
-    }
-
     for (int i = 0; i < n; ++i)
         (*dst)[i] = fill_val;
 }
@@ -161,13 +153,9 @@ bool set_start_values(
     double *new_primal_start = NULL;
     double *new_dual_start = NULL;
     if (primal)
-    {
-        copy_start_vector(&new_primal_start, primal, n);
-    }
+        fill_or_copy(&new_primal_start, n, primal, 0.0);
     if (dual)
-    {
-        copy_start_vector(&new_dual_start, dual, m);
-    }
+        fill_or_copy(&new_dual_start, m, dual, 0.0);
     leave_error_scope();
 
     free(prob->primal_start);
@@ -192,13 +180,6 @@ static bool validate_start_vector(const double *values, int n,
         }
     }
     return true;
-}
-
-static void copy_start_vector(double **dst, const double *src, int n)
-{
-    size_t bytes = (size_t)n * sizeof(double);
-    *dst = (double *)safe_malloc(bytes);
-    memcpy(*dst, src, bytes);
 }
 
 hpdlp_result_t *solve_lp_problem(

@@ -150,8 +150,8 @@ matrix_format_status_t dense_to_csr(const matrix_desc_t *desc, int **row_ptr, in
     }
 
     *row_ptr = (int *)safe_malloc((size_t)(m + 1) * sizeof(int));
-    *col_ind = (int *)safe_malloc((size_t)((nnz > 0) ? nnz : 1) * sizeof(int));
-    *vals = (double *)safe_malloc((size_t)((nnz > 0) ? nnz : 1) * sizeof(double));
+    *col_ind = (int *)safe_malloc((size_t)nnz * sizeof(int));
+    *vals = (double *)safe_malloc((size_t)nnz * sizeof(double));
 
     int nnz_filled = 0;
     for (int i = 0; i < m; ++i)
@@ -220,9 +220,8 @@ matrix_format_status_t csc_to_csr(const matrix_desc_t *desc, int **row_ptr, int 
     for (int i = 0; i < m; ++i)
         raw_row_ptr[i + 1] += raw_row_ptr[i];
 
-    const size_t alloc_nnz = (nnz_in > 0) ? (size_t)nnz_in : 1;
-    int *raw_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    double *raw_vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
+    int *raw_col_ind = (int *)safe_malloc((size_t)nnz_in * sizeof(int));
+    double *raw_vals = (double *)safe_malloc((size_t)nnz_in * sizeof(double));
 
     int *next = (int *)safe_malloc((size_t)m * sizeof(int));
     for (int i = 0; i < m; ++i)
@@ -275,9 +274,8 @@ static void canonicalize_sorted_rows_csr(int m,
     for (int i = 0; i < m; ++i)
         (*row_ptr)[i + 1] += (*row_ptr)[i];
 
-    const size_t alloc_nnz = (canonical_nnz > 0) ? (size_t)canonical_nnz : 1;
-    *col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    *vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
+    *col_ind = (int *)safe_malloc((size_t)canonical_nnz * sizeof(int));
+    *vals = (double *)safe_malloc((size_t)canonical_nnz * sizeof(double));
 
     int out = 0;
     for (int i = 0; i < m; ++i)
@@ -520,13 +518,10 @@ void transpose_csr_and_build_map(
     const int *row_ptr = problem->constraint_matrix_row_pointers;
     const int *col_ind = problem->constraint_matrix_col_indices;
     const double *val = problem->constraint_matrix_values;
-    const size_t alloc_nnz = nnz > 0 ? (size_t)nnz : 1;
-    const size_t alloc_cols = num_cols > 0 ? (size_t)num_cols : 1;
-
     *transpose_row_ptr = (int *)safe_calloc((size_t)(num_cols + 1), sizeof(int));
-    *transpose_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    *transpose_val = (double *)safe_malloc(alloc_nnz * sizeof(double));
-    *transpose_map = (int *)safe_malloc(alloc_nnz * sizeof(int));
+    *transpose_col_ind = (int *)safe_malloc((size_t)nnz * sizeof(int));
+    *transpose_val = (double *)safe_malloc((size_t)nnz * sizeof(double));
+    *transpose_map = (int *)safe_malloc((size_t)nnz * sizeof(int));
 
     for (int k = 0; k < nnz; ++k)
         (*transpose_row_ptr)[col_ind[k] + 1]++;
@@ -534,7 +529,7 @@ void transpose_csr_and_build_map(
     for (int j = 0; j < num_cols; ++j)
         (*transpose_row_ptr)[j + 1] += (*transpose_row_ptr)[j];
 
-    int *next = (int *)safe_malloc(alloc_cols * sizeof(int));
+    int *next = (int *)safe_malloc((size_t)num_cols * sizeof(int));
     if (num_cols > 0)
         memcpy(next, *transpose_row_ptr, (size_t)num_cols * sizeof(int));
 

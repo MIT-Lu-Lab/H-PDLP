@@ -25,7 +25,7 @@ limitations under the License.
 
 static bool validate_bounds(const double *lower, const double *upper,
                             int n, const char *bound_type);
-static bool entry_is_near_zero(double value, double matrix_zero_tol);
+static bool is_near_zero_entry(double value, double matrix_zero_tol);
 static bool is_infinite_lower_bound(double bound, double infinite_bound);
 static bool is_infinite_upper_bound(double bound, double infinite_bound);
 
@@ -147,7 +147,7 @@ void filter_constraint_matrix_entries(
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
             const double abs_value = fabs(vals[k]);
-            if (!entry_is_near_zero(vals[k], params->scaling_params.matrix_zero_tol))
+            if (!is_near_zero_entry(vals[k], params->scaling_params.matrix_zero_tol))
                 ++filtered_nnz;
             if (abs_value >= MATRIX_LARGE_VALUE)
             {
@@ -172,10 +172,9 @@ void filter_constraint_matrix_entries(
     if (filtered_nnz == nnz)
         return;
 
-    const size_t alloc_nnz = (filtered_nnz > 0) ? (size_t)filtered_nnz : 1;
     int *new_row_ptr = (int *)safe_malloc((size_t)(num_rows + 1) * sizeof(int));
-    int *new_col_ind = (int *)safe_malloc(alloc_nnz * sizeof(int));
-    double *new_vals = (double *)safe_malloc(alloc_nnz * sizeof(double));
+    int *new_col_ind = (int *)safe_malloc((size_t)filtered_nnz * sizeof(int));
+    double *new_vals = (double *)safe_malloc((size_t)filtered_nnz * sizeof(double));
     *owned_row_pointers = new_row_ptr;
     *owned_col_indices = new_col_ind;
     *owned_values = new_vals;
@@ -186,7 +185,7 @@ void filter_constraint_matrix_entries(
     {
         for (int k = row_ptr[i]; k < row_ptr[i + 1]; ++k)
         {
-            if (entry_is_near_zero(vals[k], params->scaling_params.matrix_zero_tol))
+            if (is_near_zero_entry(vals[k], params->scaling_params.matrix_zero_tol))
                 continue;
             new_col_ind[pos] = col_ind[k];
             new_vals[pos] = vals[k];
@@ -204,7 +203,7 @@ void filter_constraint_matrix_entries(
     }
 }
 
-static bool entry_is_near_zero(double value, double matrix_zero_tol)
+static bool is_near_zero_entry(double value, double matrix_zero_tol)
 {
     return fabs(value) <= matrix_zero_tol;
 }

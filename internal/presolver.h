@@ -34,24 +34,25 @@ extern "C"
         char presolve_status;
     } hpdlp_presolve_info_t;
 
-    hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose);
-
-    hpdlp_result_t *create_result_from_presolve(const hpdlp_presolve_info_t *info, const lp_problem_t *working_problem);
     const char *get_presolve_status_str(int status);
+
+    hpdlp_presolve_info_t *pslp_presolve(const lp_problem_t *working_problem, bool verbose);
 
     void copy_presolve_stats(const hpdlp_presolve_info_t *info,
                              hpdlp_result_t *result);
 
+    hpdlp_result_t *create_result_from_presolve(const hpdlp_presolve_info_t *info, const lp_problem_t *working_problem);
+
     void pslp_postsolve(const hpdlp_presolve_info_t *info,
-                        hpdlp_result_t *reduced_result,
+                        hpdlp_result_t *result,
                         const lp_problem_t *working_problem);
 
     void pslp_postsolve_primal_infeasibility_ray(const hpdlp_presolve_info_t *info,
-                                                 hpdlp_result_t *reduced_result,
+                                                 hpdlp_result_t *result,
                                                  const lp_problem_t *working_problem);
 
     void pslp_postsolve_dual_infeasibility_ray(const hpdlp_presolve_info_t *info,
-                                               hpdlp_result_t *reduced_result,
+                                               hpdlp_result_t *result,
                                                const lp_problem_t *working_problem);
 
     void hpdlp_presolve_info_free(hpdlp_presolve_info_t *info);

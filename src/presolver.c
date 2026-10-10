@@ -179,18 +179,23 @@ hpdlp_result_t *create_result_from_presolve(const hpdlp_presolve_info_t *info, c
         result->dual_objective_value = -INFINITY;
         result->objective_gap = INFINITY;
         result->relative_objective_gap = INFINITY;
-        return result;
     }
-    else if (info->presolver->reduced_prob->n == 0)
+    else
     {
         result->termination_reason = TERMINATION_REASON_OPTIMAL;
         result->primal_solution = (double *)safe_calloc(info->presolver->reduced_prob->n, sizeof(double));
         result->dual_solution = (double *)safe_calloc(info->presolver->reduced_prob->m, sizeof(double));
         result->reduced_cost = (double *)safe_calloc(info->presolver->reduced_prob->n, sizeof(double));
         pslp_postsolve(info, result, working_problem);
-        return result;
+        double obj = 0.0;
+        for (int i = 0; i < working_problem->num_variables; i++)
+        {
+            obj += working_problem->objective_vector[i] * result->primal_solution[i];
+        }
+        obj += working_problem->objective_constant;
+        result->primal_objective_value = obj;
+        result->dual_objective_value = obj;
     }
-    result->termination_reason = TERMINATION_REASON_UNSPECIFIED;
     return result;
 }
 
@@ -222,18 +227,6 @@ void pslp_postsolve(const hpdlp_presolve_info_t *info,
         if (!isfinite(working_problem->variable_upper_bound[j]))
             result->reduced_cost[j] = fmax(result->reduced_cost[j], 0.0);
     }
-    if (info->presolver->reduced_prob->n == 0)
-    {
-        double obj = 0.0;
-        for (int i = 0; i < working_problem->num_variables; i++)
-        {
-            obj += working_problem->objective_vector[i] * result->primal_solution[i];
-        }
-        obj += working_problem->objective_constant;
-        result->primal_objective_value = obj;
-        result->dual_objective_value = obj;
-    }
-    return;
 }
 
 void pslp_postsolve_primal_infeasibility_ray(const hpdlp_presolve_info_t *info,

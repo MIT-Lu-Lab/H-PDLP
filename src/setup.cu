@@ -208,12 +208,9 @@ static void upload_problem_data(
                                 transpose_val_h,
                                 (size_t)nnz * sizeof(double));
 
-    state->constraint_matrix_t->row_ind = NULL;
-
     allocate_and_copy_to_device((void **)&state->constraint_matrix->transpose_map,
                                 transpose_map_h,
                                 (size_t)nnz * sizeof(int));
-    state->constraint_matrix_t->transpose_map = NULL;
 
     free(transpose_row_ptr_h);
     free(transpose_col_ind_h);
@@ -393,7 +390,6 @@ static void initialize_newton_workspace(
     if (n <= COOP_NEWTON_THRESHOLD)
     {
         newton_state->num_blocks_newton = 1;
-        newton_state->newton_partials_d = NULL;
         return;
     }
 
