@@ -301,7 +301,7 @@ static void check_empty_mask_skips_estimation(bool empty_variables)
     lp_problem_free(problem);
 }
 
-static void check_estimator_retry_policy(bool degenerate)
+static lp_problem_t *create_diagonal_problem(void)
 {
     const double objective[] = {1.0, 1.0};
     const int row_ptr[] = {0, 1, 2};
@@ -317,11 +317,16 @@ static void check_estimator_retry_policy(bool degenerate)
     matrix.data.csr.row_ptr = row_ptr;
     matrix.data.csr.col_ind = col_ind;
     matrix.data.csr.vals = values;
+    return create_lp_problem(
+        objective, &matrix, lower, upper, lower, upper, &constant);
+}
+
+static void check_estimator_retry_policy(bool degenerate)
+{
     pdhg_parameters_t params;
     set_test_parameters(&params, true);
     disable_rescaling(&params);
-    lp_problem_t *problem = create_lp_problem(
-        objective, &matrix, lower, upper, lower, upper, &constant);
+    lp_problem_t *problem = create_diagonal_problem();
     pdhg_solver_state_t *state = create_solver_state(problem, &params);
     active_set_state_t *active_set = &state->active_set;
     state->control.step_size_base = 0.01;
@@ -367,6 +372,38 @@ static void check_estimator_retry_policy(bool degenerate)
         check("the new nonzero operator can raise the step",
               state->control.step_size > 0.01);
     }
+    pdhg_solver_state_free(state);
+    lp_problem_free(problem);
+}
+
+static void check_revert_budget(bool is_exhausted)
+{
+    pdhg_parameters_t params;
+    set_test_parameters(&params, true);
+    disable_rescaling(&params);
+    lp_problem_t *problem = create_diagonal_problem();
+    pdhg_solver_state_t *state = create_solver_state(problem, &params);
+    active_set_state_t *active_set = &state->active_set;
+    state->control.step_size_base = 0.01;
+    state->control.step_size = 0.01;
+    active_set->revert_count =
+        params.active_set_params.max_reverts - (is_exhausted ? 0 : 1);
+    active_set->mask_changes_since_estimate = 2;
+
+    try_raise_active_set_step_size(state, &params);
+    if (is_exhausted)
+    {
+        check("an exhausted revert budget allows no raise",
+              state->control.step_size == 0.01 && active_set->raise_count == 0);
+        check("an exhausted revert budget skips norm estimation",
+              active_set->power_iteration_count == 0);
+    }
+    else
+    {
+        check("a remaining revert slot still allows a raise",
+              state->control.step_size > 0.01 && active_set->raise_count == 1);
+    }
+
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
 }
@@ -557,6 +594,8 @@ static void check_active_set_boost(void)
     check_empty_mask_skips_estimation(false);
     check_estimator_retry_policy(true);
     check_estimator_retry_policy(false);
+    check_revert_budget(false);
+    check_revert_budget(true);
     check_active_set_revert_state();
 }
 
