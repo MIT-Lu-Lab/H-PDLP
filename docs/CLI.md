@@ -25,37 +25,24 @@ Use `./build/hpdlp --help` to list the available options.
 
 ## Solver Options
 
-**Termination**
-
-| Option | Type | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `--time_limit` | `double` | Iteration CPU-time limit in seconds. | `3600.0` |
-| `--iter_limit` | `int` | Iteration limit. | `2147483647` |
-| `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
-| `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
-| `--eps_farkas_homogeneous` | `double` | Residual-to-margin tolerance for homogeneous infeasibility certificates. | `1e-9` |
-| `--eps_farkas_displacement` | `double` | Residual-to-margin tolerance for displacement infeasibility certificates. | `1e-10` |
-| `--eval_freq` | `int` | Termination-check frequency (iterations), at least 3. | `200` |
-| `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf`. | `l2` |
-
-`--time_limit` uses iteration CPU time measured by C `clock()`. It excludes presolve and initialization and is checked at termination evaluations. It is not a wall-clock limit.
-
 **General**
 
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
 | `-h`, `--help` | `flag` | Display the help message. | N/A |
+| `--no_presolve` | `flag` | Disable presolve (PSLP). | `false` |
 | `-v`, `--verbose` | `flag` | Enable verbose logging. | `true` |
 | `-q`, `--quiet` | `flag` | Disable verbose logging. | `false` |
 | `-d`, `--diagnose` | `flag` | Add HSD scale, step-size, primal-weight and block-norm columns to the iteration log. | `false` |
+| `--opt_norm` | `string` | Norm for optimality criteria: `l2` or `linf`. | `l2` |
+| `--eval_freq` | `int` | Termination-check frequency (iterations), at least 3. | `200` |
 
-**Preprocessing / Scaling**
+**Scaling**
 
 By default, PSLP presolve is followed by geometric-mean scaling (12 iterations), L-infinity Ruiz scaling (10 iterations), Pock-Chambolle scaling, and bound/objective rescaling. Geometric-mean scaling has no CLI flag; use `scaling_params.geometric_mean_iterations` in the C API to change it.
 
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
-| `--no_presolve` | `flag` | Disable presolve (PSLP). | `false` |
 | `--l_inf_ruiz_iter` | `int` | Iterations for L-∞ Ruiz rescaling. | `10` |
 | `--no_pock_chambolle` | `flag` | Disable Pock-Chambolle rescaling. | `false` |
 | `--pock_chambolle_alpha` | `double` | Pock-Chambolle α. | `1.0` |
@@ -65,13 +52,31 @@ By default, PSLP presolve is followed by geometric-mean scaling (12 iterations),
 
 | Option | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
+| `--sv_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
+| `--sv_tol` | `double` | Power-iteration tolerance. | `1e-4` |
 | `--step_size_factor` | `double` | Step-size scaling factor in (0, 1). | `0.998` |
-| `--no_active_set_step_size_boost` | `flag` | Disable active-set step-size boosting. | `false` |
 | `--no_primal_weight_safeguard` | `flag` | Disable primal-weight safeguarding. | `false` |
-| `--singular_value_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
-| `--singular_value_tol` | `double` | Power-iteration tolerance. | `1e-4` |
 | `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `100` |
 | `--cone_newton_tol` | `double` | Newton tolerance for cone projection. | `1e-6` |
+
+**Termination**
+
+| Option | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
+| `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
+| `--eps_farkas_homogeneous` | `double` | Residual-to-margin tolerance for homogeneous infeasibility certificates. | `1e-9` |
+| `--eps_farkas_displacement` | `double` | Residual-to-margin tolerance for displacement infeasibility certificates. | `1e-10` |
+| `--time_limit` | `double` | Iteration CPU-time limit in seconds. | `3600.0` |
+| `--iter_limit` | `int` | Iteration limit. | `2147483647` |
+
+`--time_limit` uses iteration CPU time measured by C `clock()`. It excludes presolve and initialization and is checked at termination evaluations. It is not a wall-clock limit.
+
+**Active-set step boost**
+
+| Option | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--no_active_set_boost` | `flag` | Disable active-set step-size boosting. | `false` |
 
 ## Output Files
 

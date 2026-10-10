@@ -51,28 +51,28 @@ int main(int argc, char *argv[])
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
         {"no_presolve", no_argument, 0, 1001},
-        {"l_inf_ruiz_iter", required_argument, 0, 1002},
-        {"no_pock_chambolle", no_argument, 0, 1003},
-        {"pock_chambolle_alpha", required_argument, 0, 1004},
-        {"no_bound_obj_rescaling", no_argument, 0, 1005},
-        {"step_size_factor", required_argument, 0, 1006},
-        {"no_active_set_step_size_boost", no_argument, 0, 1007},
-        {"no_primal_weight_safeguard", no_argument, 0, 1008},
-        {"singular_value_max_iter", required_argument, 0, 1009},
-        {"singular_value_tol", required_argument, 0, 1010},
-        {"cone_newton_max_iter", required_argument, 0, 1011},
-        {"cone_newton_tol", required_argument, 0, 1012},
-        {"time_limit", required_argument, 0, 1013},
-        {"iter_limit", required_argument, 0, 1014},
-        {"eps_opt", required_argument, 0, 1015},
-        {"eps_feas", required_argument, 0, 1016},
-        {"eps_farkas_homogeneous", required_argument, 0, 1017},
-        {"eps_farkas_displacement", required_argument, 0, 1018},
-        {"eval_freq", required_argument, 0, 1019},
-        {"opt_norm", required_argument, 0, 1020},
         {"verbose", no_argument, 0, 'v'},
         {"quiet", no_argument, 0, 'q'},
         {"diagnose", no_argument, 0, 'd'},
+        {"opt_norm", required_argument, 0, 1002},
+        {"eval_freq", required_argument, 0, 1003},
+        {"l_inf_ruiz_iter", required_argument, 0, 1004},
+        {"no_pock_chambolle", no_argument, 0, 1005},
+        {"pock_chambolle_alpha", required_argument, 0, 1006},
+        {"no_bound_obj_rescaling", no_argument, 0, 1007},
+        {"sv_max_iter", required_argument, 0, 1008},
+        {"sv_tol", required_argument, 0, 1009},
+        {"step_size_factor", required_argument, 0, 1010},
+        {"no_primal_weight_safeguard", no_argument, 0, 1011},
+        {"cone_newton_max_iter", required_argument, 0, 1012},
+        {"cone_newton_tol", required_argument, 0, 1013},
+        {"eps_opt", required_argument, 0, 1014},
+        {"eps_feas", required_argument, 0, 1015},
+        {"eps_farkas_homogeneous", required_argument, 0, 1016},
+        {"eps_farkas_displacement", required_argument, 0, 1017},
+        {"time_limit", required_argument, 0, 1018},
+        {"iter_limit", required_argument, 0, 1019},
+        {"no_active_set_boost", no_argument, 0, 1020},
         {0, 0, 0, 0}};
 
     int opt;
@@ -83,6 +83,9 @@ int main(int argc, char *argv[])
         case 'h':
             print_usage(argv[0]);
             return 0;
+        case 1001:
+            params.presolve = false;
+            break;
         case 'v':
             params.verbose = true;
             break;
@@ -92,92 +95,7 @@ int main(int argc, char *argv[])
         case 'd':
             params.diagnose = true;
             break;
-        case 1001:
-            params.presolve = false;
-            break;
         case 1002:
-            if (!parse_int_arg("--l_inf_ruiz_iter", optarg,
-                               &params.scaling_params.l_inf_ruiz_iterations))
-                return 1;
-            break;
-        case 1003:
-            params.scaling_params.has_pock_chambolle_alpha = false;
-            break;
-        case 1004:
-            if (!parse_double_arg("--pock_chambolle_alpha", optarg,
-                                  &params.scaling_params.pock_chambolle_alpha))
-                return 1;
-            break;
-        case 1005:
-            params.scaling_params.bound_objective_rescaling = false;
-            break;
-        case 1006:
-            if (!parse_double_arg("--step_size_factor", optarg,
-                                  &params.step_size_params.step_size_factor))
-                return 1;
-            break;
-        case 1007:
-            params.active_set_params.step_size_boost = false;
-            break;
-        case 1008:
-            params.step_size_params.primal_weight_safeguard = false;
-            break;
-        case 1009:
-            if (!parse_int_arg("--singular_value_max_iter", optarg,
-                               &params.power_iter_params.max_iter))
-                return 1;
-            break;
-        case 1010:
-            if (!parse_double_arg("--singular_value_tol", optarg,
-                                  &params.power_iter_params.tol))
-                return 1;
-            break;
-        case 1011:
-            if (!parse_int_arg("--cone_newton_max_iter", optarg,
-                               &params.cone_params.max_iter))
-                return 1;
-            break;
-        case 1012:
-            if (!parse_double_arg("--cone_newton_tol", optarg,
-                                  &params.cone_params.tol))
-                return 1;
-            break;
-        case 1013:
-            if (!parse_double_arg("--time_limit", optarg,
-                                  &params.termination_criteria.time_sec_limit))
-                return 1;
-            break;
-        case 1014:
-            if (!parse_int_arg("--iter_limit", optarg,
-                               &params.termination_criteria.iteration_limit))
-                return 1;
-            break;
-        case 1015:
-            if (!parse_double_arg("--eps_opt", optarg,
-                                  &params.termination_criteria.eps_optimal_relative))
-                return 1;
-            break;
-        case 1016:
-            if (!parse_double_arg("--eps_feas", optarg,
-                                  &params.termination_criteria.eps_feasible_relative))
-                return 1;
-            break;
-        case 1017:
-            if (!parse_double_arg("--eps_farkas_homogeneous", optarg,
-                                  &params.termination_criteria.eps_farkas_homogeneous))
-                return 1;
-            break;
-        case 1018:
-            if (!parse_double_arg("--eps_farkas_displacement", optarg,
-                                  &params.termination_criteria.eps_farkas_displacement))
-                return 1;
-            break;
-        case 1019:
-            if (!parse_int_arg("--eval_freq", optarg,
-                               &params.termination_evaluation_frequency))
-                return 1;
-            break;
-        case 1020:
             if (strcmp(optarg, "l2") == 0)
                 params.optimality_norm = NORM_TYPE_L2;
             else if (strcmp(optarg, "linf") == 0)
@@ -187,6 +105,88 @@ int main(int argc, char *argv[])
                 fprintf(stderr, "ERROR: '--opt_norm' must be 'l2' or 'linf'\n");
                 return 1;
             }
+            break;
+        case 1003:
+            if (!parse_int_arg("--eval_freq", optarg,
+                               &params.termination_evaluation_frequency))
+                return 1;
+            break;
+        case 1004:
+            if (!parse_int_arg("--l_inf_ruiz_iter", optarg,
+                               &params.scaling_params.l_inf_ruiz_iterations))
+                return 1;
+            break;
+        case 1005:
+            params.scaling_params.has_pock_chambolle_alpha = false;
+            break;
+        case 1006:
+            if (!parse_double_arg("--pock_chambolle_alpha", optarg,
+                                  &params.scaling_params.pock_chambolle_alpha))
+                return 1;
+            break;
+        case 1007:
+            params.scaling_params.bound_objective_rescaling = false;
+            break;
+        case 1008:
+            if (!parse_int_arg("--sv_max_iter", optarg,
+                               &params.power_iter_params.max_iter))
+                return 1;
+            break;
+        case 1009:
+            if (!parse_double_arg("--sv_tol", optarg,
+                                  &params.power_iter_params.tol))
+                return 1;
+            break;
+        case 1010:
+            if (!parse_double_arg("--step_size_factor", optarg,
+                                  &params.step_size_params.step_size_factor))
+                return 1;
+            break;
+        case 1011:
+            params.step_size_params.primal_weight_safeguard = false;
+            break;
+        case 1012:
+            if (!parse_int_arg("--cone_newton_max_iter", optarg,
+                               &params.cone_params.max_iter))
+                return 1;
+            break;
+        case 1013:
+            if (!parse_double_arg("--cone_newton_tol", optarg,
+                                  &params.cone_params.tol))
+                return 1;
+            break;
+        case 1014:
+            if (!parse_double_arg("--eps_opt", optarg,
+                                  &params.termination_criteria.eps_optimal_relative))
+                return 1;
+            break;
+        case 1015:
+            if (!parse_double_arg("--eps_feas", optarg,
+                                  &params.termination_criteria.eps_feasible_relative))
+                return 1;
+            break;
+        case 1016:
+            if (!parse_double_arg("--eps_farkas_homogeneous", optarg,
+                                  &params.termination_criteria.eps_farkas_homogeneous))
+                return 1;
+            break;
+        case 1017:
+            if (!parse_double_arg("--eps_farkas_displacement", optarg,
+                                  &params.termination_criteria.eps_farkas_displacement))
+                return 1;
+            break;
+        case 1018:
+            if (!parse_double_arg("--time_limit", optarg,
+                                  &params.termination_criteria.time_sec_limit))
+                return 1;
+            break;
+        case 1019:
+            if (!parse_int_arg("--iter_limit", optarg,
+                               &params.termination_criteria.iteration_limit))
+                return 1;
+            break;
+        case 1020:
+            params.active_set_params.step_size_boost = false;
             break;
         case '?':
             return 1;
@@ -259,9 +259,16 @@ static void print_usage(const char *prog_name)
     fprintf(stderr, "  <output_dir>             Directory where output files will be saved.\n\n");
 
     fprintf(stderr, "Options:\n");
+    fprintf(stderr, "\n  General:\n");
     fprintf(stderr, "  -h, --help                            Display this help message.\n");
-    fprintf(stderr, "\n  Preprocessing/scaling:\n");
     fprintf(stderr, "      --no_presolve                     Disable presolve.\n");
+    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: on).\n");
+    fprintf(stderr, "  -q, --quiet                           Disable verbose logging.\n");
+    fprintf(stderr, "  -d, --diagnose                        Add HSD scale, step-size, weight and norm columns.\n");
+    fprintf(stderr, "      --opt_norm <l2|linf>              Norm for optimality criteria (default: l2).\n");
+    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: %d).\n",
+            defaults.termination_evaluation_frequency);
+    fprintf(stderr, "\n  Scaling:\n");
     fprintf(stderr, "      --l_inf_ruiz_iter <int>           Iterations for L-inf Ruiz rescaling (default: %d).\n",
             defaults.scaling_params.l_inf_ruiz_iterations);
     fprintf(stderr, "      --no_pock_chambolle               Disable Pock-Chambolle rescaling.\n");
@@ -269,38 +276,32 @@ static void print_usage(const char *prog_name)
             defaults.scaling_params.pock_chambolle_alpha);
     fprintf(stderr, "      --no_bound_obj_rescaling          Disable bound objective rescaling.\n");
     fprintf(stderr, "\n  Solver algorithm:\n");
-    fprintf(stderr, "      --singular_value_max_iter <int>   Max iterations for singular value estimation (default: %d).\n",
+    fprintf(stderr, "      --sv_max_iter <int>               Max iterations for singular value estimation (default: %d).\n",
             defaults.power_iter_params.max_iter);
-    fprintf(stderr, "      --singular_value_tol <float>      Tolerance for singular value estimation (default: %g).\n",
+    fprintf(stderr, "      --sv_tol <float>                  Tolerance for singular value estimation (default: %g).\n",
             defaults.power_iter_params.tol);
     fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: %g).\n",
             defaults.step_size_params.step_size_factor);
-    fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding (default: enabled).\n");
+    fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding.\n");
     fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: %d).\n",
             defaults.cone_params.max_iter);
     fprintf(stderr, "      --cone_newton_tol <float>         Newton tolerance for cone projection (default: %g).\n",
             defaults.cone_params.tol);
-    fprintf(stderr, "      --no_active_set_step_size_boost   Disable active-set step-size boosting (default: enabled).\n");
     fprintf(stderr, "\n  Termination:\n");
-    fprintf(stderr, "      --opt_norm <norm_type>            Norm for optimality criteria: l2 or linf (default: l2).\n");
-    fprintf(stderr, "      --eval_freq <int>                 Termination evaluation frequency (default: %d).\n",
-            defaults.termination_evaluation_frequency);
-    fprintf(stderr, "      --eps_opt <tolerance>             Relative optimality tolerance (default: %g).\n",
+    fprintf(stderr, "      --eps_opt <float>                 Relative optimality tolerance (default: %g).\n",
             defaults.termination_criteria.eps_optimal_relative);
-    fprintf(stderr, "      --eps_feas <tolerance>            Relative feasibility tolerance (default: %g).\n",
+    fprintf(stderr, "      --eps_feas <float>                Relative feasibility tolerance (default: %g).\n",
             defaults.termination_criteria.eps_feasible_relative);
-    fprintf(stderr, "      --eps_farkas_homogeneous <tol>    Homogeneous-certificate infeasibility ratio (default: %g).\n",
+    fprintf(stderr, "      --eps_farkas_homogeneous <float>  Homogeneous-certificate infeasibility ratio (default: %g).\n",
             defaults.termination_criteria.eps_farkas_homogeneous);
-    fprintf(stderr, "      --eps_farkas_displacement <tol>   Displacement-certificate infeasibility ratio (default: %g).\n",
+    fprintf(stderr, "      --eps_farkas_displacement <float> Displacement-certificate infeasibility ratio (default: %g).\n",
             defaults.termination_criteria.eps_farkas_displacement);
-    fprintf(stderr, "      --time_limit <seconds>            Time limit in seconds (default: %g).\n",
+    fprintf(stderr, "      --time_limit <float>              Time limit in seconds (default: %g).\n",
             defaults.termination_criteria.time_sec_limit);
-    fprintf(stderr, "      --iter_limit <iterations>         Iteration limit (default: %d).\n",
+    fprintf(stderr, "      --iter_limit <int>                Iteration limit (default: %d).\n",
             defaults.termination_criteria.iteration_limit);
-    fprintf(stderr, "\n  Output:\n");
-    fprintf(stderr, "  -v, --verbose                         Enable verbose logging (default: true).\n");
-    fprintf(stderr, "  -q, --quiet                           Disable verbose logging.\n");
-    fprintf(stderr, "  -d, --diagnose                        Add HSD scale, step-size, weight and norm columns.\n");
+    fprintf(stderr, "\n  Active-set step boost:\n");
+    fprintf(stderr, "      --no_active_set_boost             Disable active-set step-size boosting.\n");
 }
 
 static bool parse_int_arg(const char *option_name, const char *value, int *out)
