@@ -19,7 +19,6 @@ limitations under the License.
 #include "cublas_checks.h"
 #include "cuda_utils.h"
 #include "power_iteration.h"
-#include "setup.h"
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <math.h>
@@ -117,6 +116,17 @@ __global__ void fill_vector_kernel(
     double *__restrict__ values,
     int n,
     double value);
+__global__ void compute_objective_norm_entries_kernel(
+    const double *__restrict__ obj_vec,
+    double *__restrict__ entries,
+    int n_vars,
+    bool use_linf);
+__global__ void compute_bound_norm_entries_kernel(
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    double *__restrict__ entries,
+    int n_cons,
+    bool use_linf);
 static void geometric_mean_rescaling(
     pdhg_solver_state_t *state,
     int num_iterations,
@@ -145,6 +155,11 @@ static void pock_chambolle_rescaling(
     double *variable_rescaling);
 static void bound_objective_rescaling(
     pdhg_solver_state_t *state);
+static void compute_lp_problem_norms_device(
+    pdhg_solver_state_t *state,
+    norm_type_t optimality_norm,
+    double *out_objective_norm,
+    double *out_bound_norm);
 
 void rescale_problem(
     const pdhg_parameters_t *params,
@@ -213,8 +228,6 @@ void rescale_problem(
         }
         bound_objective_rescaling(state);
     }
-
-    initialize_spmv_plans(state);
 
     compute_lp_problem_norms_device(state, optimality_norm, &state->rescaled_objective_norm, &state->rescaled_bound_norm);
     if (state->constraint_matrix->num_nonzeros == 0)
@@ -591,6 +604,56 @@ static void bound_objective_rescaling(
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
 }
 
+static void compute_lp_problem_norms_device(
+    pdhg_solver_state_t *state,
+    norm_type_t optimality_norm,
+    double *out_objective_norm,
+    double *out_bound_norm)
+{
+    const bool use_linf = optimality_norm == NORM_TYPE_L_INF;
+
+    double *norm_entries_vars =
+        state->variable_reduction_entries_d;
+    double *norm_entries_cons =
+        state->constraint_reduction_entries_d;
+
+    compute_objective_norm_entries_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        state->objective_vector_d, norm_entries_vars, state->num_variables, use_linf);
+    CUDA_CHECK(cudaGetLastError());
+
+    compute_bound_norm_entries_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        state->constraint_lower_bound_d, state->constraint_upper_bound_d,
+        norm_entries_cons, state->num_constraints, use_linf);
+    CUDA_CHECK(cudaGetLastError());
+
+    if (use_linf)
+    {
+        reduce_device_abs_max(state, norm_entries_vars, state->num_variables,
+                              state->objective_norm_workspace_mp);
+        reduce_device_abs_max(state, norm_entries_cons, state->num_constraints,
+                              state->bound_norm_workspace_mp);
+    }
+    else
+    {
+        reduce_device_sum(state, norm_entries_vars, state->num_variables,
+                          state->objective_norm_workspace_mp);
+        reduce_device_sum(state, norm_entries_cons, state->num_constraints,
+                          state->bound_norm_workspace_mp);
+    }
+
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+
+    if (!use_linf) {
+        *state->objective_norm_workspace_mp =
+            sqrt(*state->objective_norm_workspace_mp);
+        *state->bound_norm_workspace_mp =
+            sqrt(*state->bound_norm_workspace_mp);
+    }
+
+    *out_objective_norm = *state->objective_norm_workspace_mp;
+    *out_bound_norm = *state->bound_norm_workspace_mp;
+}
+
 __global__ void scale_variables_kernel(double *__restrict__ obj_vec,
                                        double *__restrict__ var_lb,
                                        double *__restrict__ var_ub,
@@ -866,4 +929,43 @@ __global__ void fill_vector_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n)
         values[i] = value;
+}
+
+__global__ void compute_objective_norm_entries_kernel(
+    const double *__restrict__ obj_vec,
+    double *__restrict__ entries,
+    int n_vars,
+    bool use_linf)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_vars) return;
+
+    double v = obj_vec[i];
+    entries[i] = use_linf ? fabs(v) : (v * v);
+}
+
+__global__ void compute_bound_norm_entries_kernel(
+    const double *__restrict__ cons_lb,
+    const double *__restrict__ cons_ub,
+    double *__restrict__ entries,
+    int n_cons,
+    bool use_linf)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n_cons) return;
+
+    double Li = cons_lb[i];
+    double Ui = cons_ub[i];
+    double acc = 0.0;
+    if (use_linf)
+    {
+        if (isfinite(Li) && Li != Ui) acc = fmax(acc, fabs(Li));
+        if (isfinite(Ui)) acc = fmax(acc, fabs(Ui));
+    }
+    else
+    {
+        if (isfinite(Li) && Li != Ui) acc += Li * Li;
+        if (isfinite(Ui)) acc += Ui * Ui;
+    }
+    entries[i] = acc;
 }

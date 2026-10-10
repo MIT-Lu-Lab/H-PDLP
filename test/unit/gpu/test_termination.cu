@@ -83,11 +83,11 @@ static void check_solution_norms(void)
 
     const double negative[] = {-3., -2.};
     CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, negative, sizeof(negative), cudaMemcpyHostToDevice));
-    reduce_device_max(state, state->pdhg_primal_solution_d, 2, state->hsd_primal_scale_pdhg_d);
+    reduce_device_abs_max(state, state->pdhg_primal_solution_d, 2, state->hsd_primal_scale_pdhg_d);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     double reduced_value;
     CUDA_CHECK(cudaMemcpy(&reduced_value, state->hsd_primal_scale_pdhg_d, sizeof(double), cudaMemcpyDeviceToHost));
-    check("ordinary maximum preserves negative values", reduced_value == -2.);
+    check("absolute maximum of negative values is their largest magnitude", reduced_value == 3.);
     reduce_device_abs_max(state, state->pdhg_primal_solution_d, 0, state->hsd_primal_scale_pdhg_d);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     CUDA_CHECK(cudaMemcpy(&reduced_value, state->hsd_primal_scale_pdhg_d, sizeof(double), cudaMemcpyDeviceToHost));

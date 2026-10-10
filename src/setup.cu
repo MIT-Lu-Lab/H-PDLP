@@ -22,8 +22,6 @@ limitations under the License.
 #include "cusparse_checks.h"
 #include "curand_checks.h"
 #include "cuda_utils.h"
-#include "hpdlp.h"
-#include "display.h"
 #include "matrix_formats.h"
 #include "preconditioner.h"
 #include "spmv_backend.h"
@@ -69,21 +67,12 @@ static void create_dense_vector_descriptor(
     cusparseDnVecDescr_t *descriptor,
     int length,
     double *values);
+static void initialize_spmv_plans(pdhg_solver_state_t *state);
 static void release_setup_only_resources(pdhg_solver_state_t *state);
 static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
-static void initialize_convergence_tracking(pdhg_solver_state_t *state);
 static void free_sparse_resources(pdhg_solver_state_t *state);
 static void free_solver_device_buffers(pdhg_solver_state_t *state);
 static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix);
-
-bool check_params_validity(const pdhg_parameters_t *params)
-{
-    char error[256];
-    if (hpdlp_validate_parameters(params, error, sizeof(error)) == 0)
-        return true;
-    report_error("%s", error);
-    return false;
-}
 
 void initialize_solver_state(
     pdhg_solver_state_t *state,
@@ -108,8 +97,6 @@ void initialize_solver_state(
     state->constraint_matrix->num_nonzeros = nnz;
 
     state->constraint_matrix_t->num_nonzeros = nnz;
-
-    state->control.termination_reason = TERMINATION_REASON_UNSPECIFIED;
 
     state->num_blocks_primal = (state->num_variables + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
     state->num_blocks_dual = (state->num_constraints + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
@@ -164,12 +151,10 @@ void initialize_solver_state(
         &state->original_bound_norm);
 
     rescale_problem(params, state);
+    initialize_spmv_plans(state);
 
     release_setup_only_resources(state);
     initialize_iterates_from_starts(state);
-    initialize_convergence_tracking(state);
-
-    print_iteration_header(params);
 }
 
 static void upload_problem_data(
@@ -522,6 +507,22 @@ static void create_dense_vector_descriptor(
     CUSPARSE_CHECK(cusparseCreateDnVec(descriptor, length, values, CUDA_R_64F));
 }
 
+static void initialize_spmv_plans(pdhg_solver_state_t *state)
+{
+    create_spmv_plan(
+        state->sparse_handle_A,
+        state->matA,
+        state->spmv_current_primal_solution,
+        state->spmv_primal_product,
+        &state->constraint_matrix_spmv_plan);
+    create_spmv_plan(
+        state->sparse_handle_At,
+        state->matAt,
+        state->spmv_reflected_dual_solution,
+        state->spmv_dual_product,
+        &state->constraint_matrix_transpose_spmv_plan);
+}
+
 static void release_setup_only_resources(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaFreeHost(state->bound_norm_workspace_mp));
@@ -552,28 +553,6 @@ static void initialize_iterates_from_starts(pdhg_solver_state_t *state)
                           state->initial_dual_solution_d,
                           state->con_bytes,
                           cudaMemcpyDeviceToDevice));
-}
-
-static void initialize_convergence_tracking(pdhg_solver_state_t *state)
-{
-    state->control.initial_fixed_point_error = INFINITY;
-    state->control.last_trial_fixed_point_error = INFINITY;
-}
-
-void initialize_spmv_plans(pdhg_solver_state_t *state)
-{
-    create_spmv_plan(
-        state->sparse_handle_A,
-        state->matA,
-        state->spmv_current_primal_solution,
-        state->spmv_primal_product,
-        &state->constraint_matrix_spmv_plan);
-    create_spmv_plan(
-        state->sparse_handle_At,
-        state->matAt,
-        state->spmv_reflected_dual_solution,
-        state->spmv_dual_product,
-        &state->constraint_matrix_transpose_spmv_plan);
 }
 
 void pdhg_solver_state_free(pdhg_solver_state_t *state)

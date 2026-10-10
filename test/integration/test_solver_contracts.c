@@ -90,6 +90,22 @@ static void check_certificates(void)
     lp_problem_free(problem);
 }
 
+static void check_null_arguments(void)
+{
+    const double objective = 1, matrix_value = 1, lower = 1;
+    matrix_desc_t matrix = {0};
+    matrix.m = matrix.n = 1; matrix.fmt = matrix_dense;
+    matrix.data.dense.A = &matrix_value;
+    lp_problem_t *problem = create_lp_problem(&objective, &matrix, &lower, NULL, NULL, NULL, NULL);
+    CHECK(problem != NULL);
+    check("a NULL problem is rejected", solve_lp_problem(NULL, NULL) == NULL);
+    hpdlp_result_t *result = solve_lp_problem(problem, NULL);
+    check("NULL parameters solve with the defaults",
+          result && result->termination_reason == TERMINATION_REASON_OPTIMAL);
+    hpdlp_result_free(result);
+    lp_problem_free(problem);
+}
+
 int main(void)
 {
     const int status = test_gpu_status();
@@ -112,5 +128,6 @@ int main(void)
     check_optimal_model(1, 0, NULL, NULL, &zero, &one, NULL, NULL, 3, 0, 0, 3);
     check_optimal_model(1, 0, NULL, NULL, &zero, &one, NULL, NULL, 3, 0, 2, 3);
     check_certificates();
+    check_null_arguments();
     return failures != 0;
 }

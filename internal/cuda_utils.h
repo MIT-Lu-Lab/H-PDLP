@@ -32,19 +32,7 @@ extern "C"
 
     void allocate_cub_reduce_workspace(pdhg_solver_state_t *state);
 
-    void compute_lp_problem_norms_device(
-        pdhg_solver_state_t *state,
-        norm_type_t optimality_norm,
-        double *out_objective_norm,
-        double *out_bound_norm);
-
     void reduce_device_sum(
-        pdhg_solver_state_t *state,
-        const double *input,
-        int length,
-        double *output);
-
-    void reduce_device_max(
         pdhg_solver_state_t *state,
         const double *input,
         int length,

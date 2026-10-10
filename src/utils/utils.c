@@ -23,6 +23,8 @@ limitations under the License.
 #define MATRIX_LARGE_VALUE 1e15
 #define OBJECTIVE_LARGE_VALUE 1e20
 
+static bool validate_bounds(const double *lower, const double *upper,
+                            int n, const char *bound_type);
 static bool entry_is_near_zero(double value, double matrix_zero_tol);
 static bool is_infinite_lower_bound(double bound, double infinite_bound);
 static bool is_infinite_upper_bound(double bound, double infinite_bound);
@@ -61,6 +63,63 @@ void *safe_realloc(void *ptr, size_t new_size)
     if (!tmp)
         raise_error("host realloc failed");
     return tmp;
+}
+
+bool validate_lp_problem_data(const lp_problem_t *prob)
+{
+    if (!prob || prob->num_variables < 0 || prob->num_constraints < 0 ||
+        prob->constraint_matrix_num_nonzeros < 0 ||
+        (prob->num_variables > 0 &&
+         (!prob->objective_vector || !prob->variable_lower_bound || !prob->variable_upper_bound)) ||
+        (prob->num_constraints > 0 &&
+         (!prob->constraint_lower_bound || !prob->constraint_upper_bound)) ||
+        (prob->constraint_matrix_num_nonzeros > 0 && !prob->constraint_matrix_values))
+    {
+        report_error("invalid model: missing data or invalid dimensions");
+        return false;
+    }
+    if (!isfinite(prob->objective_constant))
+    {
+        report_error("invalid model: objective constant must be finite");
+        return false;
+    }
+    for (int j = 0; j < prob->num_variables; ++j)
+    {
+        if (!isfinite(prob->objective_vector[j]))
+        {
+            report_error("invalid model: objective coefficient at index %d must be finite", j);
+            return false;
+        }
+    }
+    for (int k = 0; k < prob->constraint_matrix_num_nonzeros; ++k)
+    {
+        if (!isfinite(prob->constraint_matrix_values[k]))
+        {
+            report_error("invalid input matrix: coefficients must be finite");
+            return false;
+        }
+    }
+    return validate_bounds(prob->variable_lower_bound, prob->variable_upper_bound,
+                           prob->num_variables, "variable") &&
+           validate_bounds(prob->constraint_lower_bound, prob->constraint_upper_bound,
+                           prob->num_constraints, "constraint");
+}
+
+static bool validate_bounds(const double *lower, const double *upper,
+                            int n, const char *bound_type)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        if (isnan(lower[i]) || isnan(upper[i]) ||
+            lower[i] == INFINITY || upper[i] == -INFINITY ||
+            lower[i] > upper[i])
+        {
+            report_error("invalid %s bounds at index %d: [%g, %g]",
+                         bound_type, i, lower[i], upper[i]);
+            return false;
+        }
+    }
+    return true;
 }
 
 void filter_constraint_matrix_entries(

@@ -93,15 +93,17 @@ __global__ void scale_hsd_scalars_kernel(
     double  inv_scale);
 static void run_optimization(
     solve_resources_t *resources,
-    const pdhg_parameters_t *params,
-    const lp_problem_t *original_problem);
+    const lp_problem_t *original_problem,
+    const pdhg_parameters_t *params);
 static working_problem_t create_working_problem(
     const lp_problem_t *original_problem,
     const pdhg_parameters_t *params);
-static void restore_original_objective_sense(
-    hpdlp_result_t *result,
-    objective_sense_t objective_sense);
-static void initialize_step_size_and_primal_weight(
+static void solve_with_pdhg(
+    solve_resources_t *resources,
+    const lp_problem_t *working_problem,
+    const lp_problem_t *original_problem,
+    const pdhg_parameters_t *params);
+static void initialize_solver_control(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
 static void compute_step_sizes(
@@ -144,6 +146,9 @@ static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
 static double apply_gauge_control(pdhg_solver_state_t *state);
+static void restore_original_objective_sense(
+    hpdlp_result_t *result,
+    objective_sense_t objective_sense);
 static void release_solve_resources(solve_resources_t *resources);
 static void working_problem_free(
     working_problem_t *working);
@@ -159,7 +164,7 @@ hpdlp_result_t *optimize(
     if (setjmp(scope.env) == 0)
     {
         resources = (solve_resources_t *)safe_calloc(1, sizeof(solve_resources_t));
-        run_optimization(resources, params, original_problem);
+        run_optimization(resources, original_problem, params);
         result = resources->result;
         resources->result = NULL;
     }
@@ -171,11 +176,15 @@ hpdlp_result_t *optimize(
 
 static void run_optimization(
     solve_resources_t *resources,
-    const pdhg_parameters_t *params,
-    const lp_problem_t *original_problem)
+    const lp_problem_t *original_problem,
+    const pdhg_parameters_t *params)
 {
-    if (!check_params_validity(params))
+    char error[256];
+    if (hpdlp_validate_parameters(params, error, sizeof(error)) != 0)
+    {
+        report_error("%s", error);
         return;
+    }
 
     resources->working = create_working_problem(original_problem, params);
     lp_problem_t *working_problem = &resources->working.view;
@@ -189,26 +198,119 @@ static void run_optimization(
         result->primal_objective_value = working_problem->objective_constant;
         result->dual_objective_value = working_problem->objective_constant;
         result->homogeneous_scale = 1.0;
-        restore_original_objective_sense(result, original_problem->objective_sense);
-        pdhg_final_log(result, params);
-        return;
     }
-
-    if (params->presolve)
+    else
     {
-        resources->presolve_info = pslp_presolve(working_problem, params->verbose);
-        if (!resources->presolve_info)
-            return;
-        if (resources->presolve_info->problem_solved_during_presolve)
+        if (params->presolve)
         {
-            hpdlp_result_t *result =
+            resources->presolve_info = pslp_presolve(working_problem, params->verbose);
+            if (!resources->presolve_info)
+                return;
+        }
+        if (resources->presolve_info &&
+            resources->presolve_info->problem_solved_during_presolve)
+        {
+            resources->result =
                 create_result_from_presolve(resources->presolve_info, working_problem);
-            resources->result = result;
-            restore_original_objective_sense(result, original_problem->objective_sense);
-            pdhg_final_log(result, params);
-            return;
+        }
+        else
+        {
+            solve_with_pdhg(resources, working_problem, original_problem, params);
         }
     }
+
+    restore_original_objective_sense(resources->result, original_problem->objective_sense);
+    pdhg_final_log(resources->result, params);
+}
+
+static working_problem_t create_working_problem(
+    const lp_problem_t *original_problem,
+    const pdhg_parameters_t *params)
+{
+    working_problem_t working{};
+    working.view = *original_problem;
+    lp_problem_t *working_problem = &working.view;
+
+    if (original_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
+    {
+        int num_variables = original_problem->num_variables;
+        working.owned_objective_vector =
+            (double *)safe_malloc((size_t)num_variables * sizeof(double));
+        for (int j = 0; j < num_variables; ++j)
+        {
+            working.owned_objective_vector[j] = -original_problem->objective_vector[j];
+        }
+        working_problem->objective_vector = working.owned_objective_vector;
+        working_problem->objective_constant = -original_problem->objective_constant;
+        working_problem->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
+
+        if (original_problem->dual_start != NULL)
+        {
+            int num_constraints = original_problem->num_constraints;
+            working.owned_dual_start =
+                (double *)safe_malloc((size_t)num_constraints * sizeof(double));
+            for (int i = 0; i < num_constraints; ++i)
+            {
+                working.owned_dual_start[i] = -original_problem->dual_start[i];
+            }
+            working_problem->dual_start = working.owned_dual_start;
+        }
+    }
+
+    warn_on_large_objective_coefficients(working_problem);
+
+    replace_large_bounds_with_infinity(
+        original_problem->variable_lower_bound,
+        original_problem->variable_upper_bound,
+        &working.owned_variable_lower_bound,
+        &working.owned_variable_upper_bound,
+        original_problem->num_variables,
+        params->scaling_params.infinite_bound);
+    replace_large_bounds_with_infinity(
+        original_problem->constraint_lower_bound,
+        original_problem->constraint_upper_bound,
+        &working.owned_constraint_lower_bound,
+        &working.owned_constraint_upper_bound,
+        original_problem->num_constraints,
+        params->scaling_params.infinite_bound);
+
+    if (working.owned_variable_lower_bound)
+    {
+        working_problem->variable_lower_bound = working.owned_variable_lower_bound;
+        working_problem->variable_upper_bound = working.owned_variable_upper_bound;
+    }
+    if (working.owned_constraint_lower_bound)
+    {
+        working_problem->constraint_lower_bound = working.owned_constraint_lower_bound;
+        working_problem->constraint_upper_bound = working.owned_constraint_upper_bound;
+    }
+
+    filter_constraint_matrix_entries(
+        original_problem,
+        params,
+        &working.owned_constraint_matrix_row_pointers,
+        &working.owned_constraint_matrix_col_indices,
+        &working.owned_constraint_matrix_values);
+    if (working.owned_constraint_matrix_row_pointers)
+    {
+        working_problem->constraint_matrix_row_pointers =
+            working.owned_constraint_matrix_row_pointers;
+        working_problem->constraint_matrix_col_indices =
+            working.owned_constraint_matrix_col_indices;
+        working_problem->constraint_matrix_values =
+            working.owned_constraint_matrix_values;
+        working_problem->constraint_matrix_num_nonzeros =
+            working.owned_constraint_matrix_row_pointers[original_problem->num_constraints];
+    }
+    return working;
+}
+
+static void solve_with_pdhg(
+    solve_resources_t *resources,
+    const lp_problem_t *working_problem,
+    const lp_problem_t *original_problem,
+    const pdhg_parameters_t *params)
+{
     hpdlp_presolve_info_t *presolve_info = resources->presolve_info;
 
     pdhg_solver_state_t *state =
@@ -219,9 +321,10 @@ static void run_optimization(
         presolve_info ? &presolve_info->reduced_problem_view : working_problem,
         original_problem,
         params);
+    print_iteration_header(params);
     display_iteration_stats(state, params, false);
 
-    initialize_step_size_and_primal_weight(state, params);
+    initialize_solver_control(state, params);
 
     state->control.start_time = clock();
     bool restarted = false;
@@ -326,131 +429,16 @@ static void run_optimization(
             pslp_postsolve_dual_infeasibility_ray(presolve_info, result, working_problem);
         }
     }
-
-    restore_original_objective_sense(result, original_problem->objective_sense);
-    pdhg_final_log(result, params);
     CUDA_CHECK(cudaGetLastError());
 }
 
-static working_problem_t create_working_problem(
-    const lp_problem_t *original_problem,
-    const pdhg_parameters_t *params)
-{
-    working_problem_t working{};
-    working.view = *original_problem;
-    lp_problem_t *working_problem = &working.view;
-
-    if (original_problem->objective_sense == OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        int num_variables = original_problem->num_variables;
-        working.owned_objective_vector =
-            (double *)safe_malloc((size_t)num_variables * sizeof(double));
-        for (int j = 0; j < num_variables; ++j)
-        {
-            working.owned_objective_vector[j] = -original_problem->objective_vector[j];
-        }
-        working_problem->objective_vector = working.owned_objective_vector;
-        working_problem->objective_constant = -original_problem->objective_constant;
-        working_problem->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
-
-        if (original_problem->dual_start != NULL)
-        {
-            int num_constraints = original_problem->num_constraints;
-            working.owned_dual_start =
-                (double *)safe_malloc((size_t)num_constraints * sizeof(double));
-            for (int i = 0; i < num_constraints; ++i)
-            {
-                working.owned_dual_start[i] = -original_problem->dual_start[i];
-            }
-            working_problem->dual_start = working.owned_dual_start;
-        }
-    }
-
-    warn_on_large_objective_coefficients(working_problem);
-
-    replace_large_bounds_with_infinity(
-        original_problem->variable_lower_bound,
-        original_problem->variable_upper_bound,
-        &working.owned_variable_lower_bound,
-        &working.owned_variable_upper_bound,
-        original_problem->num_variables,
-        params->scaling_params.infinite_bound);
-    replace_large_bounds_with_infinity(
-        original_problem->constraint_lower_bound,
-        original_problem->constraint_upper_bound,
-        &working.owned_constraint_lower_bound,
-        &working.owned_constraint_upper_bound,
-        original_problem->num_constraints,
-        params->scaling_params.infinite_bound);
-
-    if (working.owned_variable_lower_bound)
-    {
-        working_problem->variable_lower_bound = working.owned_variable_lower_bound;
-        working_problem->variable_upper_bound = working.owned_variable_upper_bound;
-    }
-    if (working.owned_constraint_lower_bound)
-    {
-        working_problem->constraint_lower_bound = working.owned_constraint_lower_bound;
-        working_problem->constraint_upper_bound = working.owned_constraint_upper_bound;
-    }
-
-    filter_constraint_matrix_entries(
-        original_problem,
-        params,
-        &working.owned_constraint_matrix_row_pointers,
-        &working.owned_constraint_matrix_col_indices,
-        &working.owned_constraint_matrix_values);
-    if (working.owned_constraint_matrix_row_pointers)
-    {
-        working_problem->constraint_matrix_row_pointers =
-            working.owned_constraint_matrix_row_pointers;
-        working_problem->constraint_matrix_col_indices =
-            working.owned_constraint_matrix_col_indices;
-        working_problem->constraint_matrix_values =
-            working.owned_constraint_matrix_values;
-        working_problem->constraint_matrix_num_nonzeros =
-            working.owned_constraint_matrix_row_pointers[original_problem->num_constraints];
-    }
-    return working;
-}
-
-static void restore_original_objective_sense(
-    hpdlp_result_t *result,
-    objective_sense_t objective_sense)
-{
-    if (objective_sense != OBJECTIVE_SENSE_MAXIMIZE)
-    {
-        return;
-    }
-
-    result->primal_objective_value = -result->primal_objective_value;
-    result->dual_objective_value = -result->dual_objective_value;
-
-    if (!termination_has_solution(result->termination_reason))
-    {
-        return;
-    }
-
-    if (result->dual_solution != NULL)
-    {
-        for (int i = 0; i < result->num_constraints; ++i)
-        {
-            result->dual_solution[i] = -result->dual_solution[i];
-        }
-    }
-    if (result->reduced_cost != NULL)
-    {
-        for (int j = 0; j < result->num_variables; ++j)
-        {
-            result->reduced_cost[j] = -result->reduced_cost[j];
-        }
-    }
-}
-
-static void initialize_step_size_and_primal_weight(
+static void initialize_solver_control(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
+    state->control.initial_fixed_point_error = INFINITY;
+    state->control.last_trial_fixed_point_error = INFINITY;
+
     double constraint_norm = state->rescaled_constraint_norm;
 
     if (constraint_norm == 0.0)
@@ -939,6 +927,39 @@ static double apply_gauge_control(pdhg_solver_state_t *state)
         state->hsd_dual_scale_pdhg_d,
         inv_scale);
     return inv_scale;
+}
+
+static void restore_original_objective_sense(
+    hpdlp_result_t *result,
+    objective_sense_t objective_sense)
+{
+    if (objective_sense != OBJECTIVE_SENSE_MAXIMIZE)
+    {
+        return;
+    }
+
+    result->primal_objective_value = -result->primal_objective_value;
+    result->dual_objective_value = -result->dual_objective_value;
+
+    if (!termination_has_solution(result->termination_reason))
+    {
+        return;
+    }
+
+    if (result->dual_solution != NULL)
+    {
+        for (int i = 0; i < result->num_constraints; ++i)
+        {
+            result->dual_solution[i] = -result->dual_solution[i];
+        }
+    }
+    if (result->reduced_cost != NULL)
+    {
+        for (int j = 0; j < result->num_variables; ++j)
+        {
+            result->reduced_cost[j] = -result->reduced_cost[j];
+        }
+    }
 }
 
 static void release_solve_resources(solve_resources_t *resources)
