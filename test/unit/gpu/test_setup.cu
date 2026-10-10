@@ -29,10 +29,7 @@ static void set_test_parameters(pdhg_parameters_t *params)
     set_default_parameters(params);
     params->verbose = false;
     params->presolve = false;
-    params->scaling_params.geometric_mean_iterations = 0;
-    params->scaling_params.l_inf_ruiz_iterations = 0;
-    params->scaling_params.has_pock_chambolle_alpha = false;
-    params->scaling_params.bound_objective_rescaling = false;
+    disable_rescaling(params);
     params->power_iter_params.tol = 1e-10;
 }
 
@@ -45,9 +42,7 @@ static double measure_initial_norm(const double *values, const pdhg_parameters_t
         ++failures;
         return NAN;
     }
-    pdhg_solver_state_t *state =
-        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
-    initialize_solver_state(state, problem, problem, params);
+    pdhg_solver_state_t *state = create_solver_state(problem, params);
     const double norm = state->rescaled_constraint_norm;
     pdhg_solver_state_free(state);
     lp_problem_free(problem);

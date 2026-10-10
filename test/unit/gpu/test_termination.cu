@@ -78,13 +78,8 @@ static void check_solution_norms(void)
     set_default_parameters(&params);
     params.verbose = false;
     params.presolve = false;
-    params.scaling_params.geometric_mean_iterations = 0;
-    params.scaling_params.l_inf_ruiz_iterations = 0;
-    params.scaling_params.has_pock_chambolle_alpha = false;
-    params.scaling_params.bound_objective_rescaling = false;
-    pdhg_solver_state_t *state =
-        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
-    initialize_solver_state(state, problem, problem, &params);
+    disable_rescaling(&params);
+    pdhg_solver_state_t *state = create_solver_state(problem, &params);
 
     const double negative[] = {-3., -2.};
     CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, negative, sizeof(negative), cudaMemcpyHostToDevice));

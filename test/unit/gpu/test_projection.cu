@@ -26,16 +26,6 @@ static const double EXPECTED_CLAMPED_MULTIPLIER = 3.0;
 
 
 
-static void check_close(const char *what, double actual, double expected)
-{
-    if (!(fabs(actual - expected) < 1e-10))
-    {
-        printf("  FAIL: %s: expected %.17g, got %.17g\n",
-               what, expected, actual);
-        ++failures;
-    }
-}
-
 static double read_device_double(const double *device_value)
 {
     double value = NAN;
@@ -101,10 +91,7 @@ static void set_test_parameters(pdhg_parameters_t *params)
     set_default_parameters(params);
     params->verbose = false;
     params->presolve = false;
-    params->scaling_params.geometric_mean_iterations = 0;
-    params->scaling_params.l_inf_ruiz_iterations = 0;
-    params->scaling_params.has_pock_chambolle_alpha = false;
-    params->scaling_params.bound_objective_rescaling = false;
+    disable_rescaling(params);
     params->cone_params.tol = 1e-12;
     params->active_set_params.window_iterations = WINDOW_ITERATIONS;
 }
@@ -203,17 +190,17 @@ static void check_major_observation(
 
     check_close("primal scale follows the closed-form resolvent",
                 read_device_double(state->hsd_primal_scale_pdhg_d),
-                EXPECTED_SCALE);
+                EXPECTED_SCALE, 1e-10);
     check_close("primal shadow follows the closed-form resolvent",
                 read_device_double(state->pdhg_primal_solution_d),
-                EXPECTED_SHADOW);
+                EXPECTED_SHADOW, 1e-10);
     check_close("an interior projection records a zero multiplier",
                 read_device_double(state->pdhg_primal_projection_multiplier_d),
-                0.0);
+                0.0, 1e-10);
     if (num_variables > 1)
         check_close("a clamped projection records its bound multiplier",
                     read_device_double(state->pdhg_primal_projection_multiplier_d + 1),
-                    EXPECTED_CLAMPED_MULTIPLIER);
+                    EXPECTED_CLAMPED_MULTIPLIER, 1e-10);
 }
 
 static void check_interior_column_retained(
@@ -224,21 +211,21 @@ static void check_interior_column_retained(
     compute_termination_metrics(state, params);
     check_close("interior projection contributes no bound multiplier",
                 read_device_double(state->pdhg_reduced_cost_d),
-                0.0);
+                0.0, 1e-10);
     check_close("the primary candidate retains the interior stationarity residual",
                 state->metrics_h->absolute_dual_residual,
-                1.0);
+                1.0, 1e-10);
     if (num_variables > 1)
         check_close("termination reconstructs the fixed column reduced cost",
                     read_device_double(state->pdhg_reduced_cost_d + 1),
-                    0.0);
+                    0.0, 1e-10);
     check_close("termination preserves the interior projection multiplier",
                 read_device_double(state->pdhg_primal_projection_multiplier_d),
-                0.0);
+                0.0, 1e-10);
     if (num_variables > 1)
         check_close("termination preserves the clamped projection multiplier",
                     read_device_double(state->pdhg_primal_projection_multiplier_d + 1),
-                    EXPECTED_CLAMPED_MULTIPLIER);
+                    EXPECTED_CLAMPED_MULTIPLIER, 1e-10);
 
     state->control.total_count = EVALUATION_ITERATION;
     update_active_set_masks(state, params);
@@ -305,9 +292,7 @@ static void check_projection_path(int num_variables, bool expect_cooperative)
         return;
     }
 
-    pdhg_solver_state_t *state =
-        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
-    initialize_solver_state(state, problem, problem, &params);
+    pdhg_solver_state_t *state = create_solver_state(problem, &params);
     check(expect_cooperative ? "large fixture uses cooperative projector"
                              : "scalar fixture uses single-block projector",
           expect_cooperative

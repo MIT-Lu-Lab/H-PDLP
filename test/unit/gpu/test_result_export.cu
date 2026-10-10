@@ -37,14 +37,9 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
     params.termination_criteria.eps_optimal_relative = 1e-8;
     if (!scaled)
     {
-        params.scaling_params.geometric_mean_iterations = 0;
-        params.scaling_params.l_inf_ruiz_iterations = 0;
-        params.scaling_params.has_pock_chambolle_alpha = false;
-        params.scaling_params.bound_objective_rescaling = false;
+        disable_rescaling(&params);
     }
-    pdhg_solver_state_t *state =
-        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
-    initialize_solver_state(state, problem, problem, &params);
+    pdhg_solver_state_t *state = create_solver_state(problem, &params);
     double column_scale, row_scale;
     CUDA_CHECK(cudaMemcpy(&column_scale, state->variable_rescaling_d,
                           sizeof(double), cudaMemcpyDeviceToHost));
@@ -104,13 +99,8 @@ static void check_bound_candidates(norm_type_t norm)
     set_default_parameters(&params);
     params.verbose = params.presolve = false;
     params.optimality_norm = norm;
-    params.scaling_params.geometric_mean_iterations = 0;
-    params.scaling_params.l_inf_ruiz_iterations = 0;
-    params.scaling_params.has_pock_chambolle_alpha = false;
-    params.scaling_params.bound_objective_rescaling = false;
-    pdhg_solver_state_t *state =
-        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
-    initialize_solver_state(state, problem, problem, &params);
+    disable_rescaling(&params);
+    pdhg_solver_state_t *state = create_solver_state(problem, &params);
     const double tau = 1;
     CUDA_CHECK(cudaMemcpy(state->hsd_primal_scale_pdhg_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, x, sizeof(x), cudaMemcpyHostToDevice));
@@ -371,15 +361,6 @@ static void check_result_export(void)
     CUDA_CHECK(cudaStreamDestroy(state.stream_A));
 }
 
-static void check_close(const char *label, double actual, double expected)
-{
-    if (!isfinite(actual) || fabs(actual - expected) > 1e-11 * (1.0 + fabs(expected)))
-    {
-        fprintf(stderr, "%s: got %.17g, expected %.17g\n", label, actual, expected);
-        ++failures;
-    }
-}
-
 static void check_projection_multipliers(bool scaled, norm_type_t norm, double tau)
 {
     const double c[] = {3.7e-5, -3.7e-5, -1e-5, -2, -3, 4, 5, -6, -7, 8, 9, -10, 11, -12, -12, 13, 13};
@@ -412,14 +393,9 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
     params.optimality_norm = norm;
     if (!scaled)
     {
-        params.scaling_params.geometric_mean_iterations = 0;
-        params.scaling_params.l_inf_ruiz_iterations = 0;
-        params.scaling_params.has_pock_chambolle_alpha = false;
-        params.scaling_params.bound_objective_rescaling = false;
+        disable_rescaling(&params);
     }
-    pdhg_solver_state_t *state =
-        (pdhg_solver_state_t *)calloc(1, sizeof(pdhg_solver_state_t));
-    initialize_solver_state(state, problem, problem, &params);
+    pdhg_solver_state_t *state = create_solver_state(problem, &params);
     double scales[n], homogeneous_x[n];
     CUDA_CHECK(cudaMemcpy(scales, state->variable_rescaling_d, sizeof(scales), cudaMemcpyDeviceToHost));
     for (int j = 0; j < n; ++j)
@@ -440,19 +416,19 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
     {
         char label[100];
         snprintf(label, sizeof(label), "multiplier %d (scaled=%d norm=%d tau=%g)", j, scaled, norm, tau);
-        check_close(label, result->reduced_cost[j], expected_z[j]);
-        check_close("exported primal", result->primal_solution[j], x[j]);
+        check_close(label, result->reduced_cost[j], expected_z[j], 1e-11);
+        check_close("exported primal", result->primal_solution[j], x[j], 1e-11);
         const double residual = c[j] - expected_z[j];
         expected_norm = norm == NORM_TYPE_L_INF ? fmax(expected_norm, fabs(residual)) : hypot(expected_norm, residual);
         expected_primal += c[j] * x[j];
         if (expected_z[j] > 0) expected_dual += lb[j] * expected_z[j];
         if (expected_z[j] < 0) expected_dual += ub[j] * expected_z[j];
     }
-    check_close("dual residual", result->absolute_dual_residual, expected_norm);
-    check_close("primal objective", result->primal_objective_value, expected_primal);
-    check_close("dual objective", result->dual_objective_value, expected_dual);
+    check_close("dual residual", result->absolute_dual_residual, expected_norm, 1e-11);
+    check_close("primal objective", result->primal_objective_value, expected_primal, 1e-11);
+    check_close("dual objective", result->dual_objective_value, expected_dual, 1e-11);
     check_close("gap", result->relative_objective_gap,
-        fabs(expected_primal - expected_dual) / (1 + fabs(expected_primal) + fabs(expected_dual)));
+        fabs(expected_primal - expected_dual) / (1 + fabs(expected_primal) + fabs(expected_dual)), 1e-11);
     hpdlp_result_free(result);
     pdhg_solver_state_free(state);
     lp_problem_free(problem);
