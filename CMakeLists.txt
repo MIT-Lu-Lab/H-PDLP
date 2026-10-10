@@ -29,7 +29,7 @@ endif()
 
 # Global Compile flags (corresponding to CFLAGS/NVCCFLAGS)
 add_compile_definitions(CUSPARSE_ENABLE_EXPERIMENTAL_API)
-add_compile_options(-O3 -Wall -Wextra -g)
+add_compile_options(-Wall -Wextra)
 if(NOT WIN32)
   add_compile_options(-fPIC)
 endif()
