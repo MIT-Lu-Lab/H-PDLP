@@ -72,22 +72,25 @@ static const char *SOS_MPS =
     "    XB        2.0\n"
     "ENDATA\n";
 
-static lp_problem_t *parse_text(const char *path, const char *text)
+static lp_problem_t *read_fixture(const char *text)
 {
+    const char *path = "test_mps_fixture.mps";
     FILE *f = fopen(path, "w");
-    if (f == NULL)
+    if (!f)
+    {
+        check("fixture file opened", 0);
         return NULL;
+    }
     fputs(text, f);
     fclose(f);
-
-    lp_problem_t *prob = read_mps_file(path);
+    lp_problem_t *p = read_mps_file(path);
     remove(path);
-    return prob;
+    return p;
 }
 
 static int check_mps_bounds(void)
 {
-    lp_problem_t *prob = parse_text("test_mps_bounds_int.mps", INT_DEFAULT_MPS);
+    lp_problem_t *prob = read_fixture(INT_DEFAULT_MPS);
     check("integer fixture parses", prob != NULL);
     if (prob != NULL)
     {
@@ -106,7 +109,7 @@ static int check_mps_bounds(void)
         lp_problem_free(prob);
     }
 
-    prob = parse_text("test_mps_bounds_neg.mps", NEGATIVE_UPPER_MPS);
+    prob = read_fixture(NEGATIVE_UPPER_MPS);
     check("negative-upper fixture parses", prob != NULL);
     if (prob != NULL)
     {
@@ -118,10 +121,10 @@ static int check_mps_bounds(void)
         lp_problem_free(prob);
     }
 
-    prob = parse_text("test_mps_bounds_quad.mps", QUADOBJ_MPS);
+    prob = read_fixture(QUADOBJ_MPS);
     check("QUADOBJ is rejected", prob == NULL);
 
-    prob = parse_text("test_mps_bounds_sos.mps", SOS_MPS);
+    prob = read_fixture(SOS_MPS);
     check("SOS fixture parses", prob != NULL);
     if (prob != NULL)
     {
@@ -185,7 +188,7 @@ static const char *OVERFLOW_BOUND_MPS =
 
 static int check_mps_numbers(void)
 {
-    lp_problem_t *prob = parse_text("test_mps_non_finite_ok.mps", FINITE_MPS);
+    lp_problem_t *prob = read_fixture(FINITE_MPS);
     check("finite fixture parses", prob != NULL);
     if (prob != NULL)
     {
@@ -194,17 +197,17 @@ static int check_mps_numbers(void)
         lp_problem_free(prob);
     }
 
-    prob = parse_text("test_mps_non_finite_nan.mps", NAN_COLUMN_MPS);
+    prob = read_fixture(NAN_COLUMN_MPS);
     check("nan in COLUMNS is rejected", prob == NULL);
     if (prob != NULL)
         lp_problem_free(prob);
 
-    prob = parse_text("test_mps_non_finite_inf.mps", INF_RHS_MPS);
+    prob = read_fixture(INF_RHS_MPS);
     check("inf in RHS is rejected", prob == NULL);
     if (prob != NULL)
         lp_problem_free(prob);
 
-    prob = parse_text("test_mps_non_finite_ovr.mps", OVERFLOW_BOUND_MPS);
+    prob = read_fixture(OVERFLOW_BOUND_MPS);
     check("overflowing literal in BOUNDS is rejected", prob == NULL);
     if (prob != NULL)
         lp_problem_free(prob);
@@ -216,22 +219,13 @@ static int check_mps_numbers(void)
 static void check_objective(const char *selector, int after_rows,
                             double coefficient, double constant, int accepted)
 {
-    const char *path = "test_mps_objective.mps";
-    FILE *file = fopen(path, "w");
-    if (!file)
-    {
-        check("create fixture", 0);
-        return;
-    }
-    fputs("NAME OBJECTIVE\n", file);
-    if (!after_rows) fputs(selector, file);
-    fputs("ROWS\n N FIRST\n N SECOND\n L LIMIT\n", file);
-    if (after_rows) fputs(selector, file);
-    fputs("COLUMNS\n X FIRST 1 SECOND -2\n X LIMIT 3\n"
-          "RHS\n R LIMIT 4 FIRST 5\n R SECOND 7\nENDATA\n", file);
-    fclose(file);
-    lp_problem_t *problem = read_mps_file(path);
-    remove(path);
+    char text[256];
+    snprintf(text, sizeof(text),
+             "NAME OBJECTIVE\n%sROWS\n N FIRST\n N SECOND\n L LIMIT\n%s"
+             "COLUMNS\n X FIRST 1 SECOND -2\n X LIMIT 3\n"
+             "RHS\n R LIMIT 4 FIRST 5\n R SECOND 7\nENDATA\n",
+             after_rows ? "" : selector, after_rows ? selector : "");
+    lp_problem_t *problem = read_fixture(text);
     check("selection accepted", (problem != NULL) == accepted);
     if (problem)
     {
@@ -257,13 +251,7 @@ static int check_mps_objective_selection(void)
 
 static void check_mps(const char *name, const char *text, int accepted)
 {
-    const char *path = "test_model_validation_fixture.mps";
-    FILE *f = fopen(path, "w");
-    if (!f) { check("fixture file opened", 0); return; }
-    fputs(text, f);
-    fclose(f);
-    lp_problem_t *p = read_mps_file(path);
-    remove(path);
+    lp_problem_t *p = read_fixture(text);
     check(name, (p != NULL) == accepted);
     lp_problem_free(p);
 }
@@ -281,22 +269,6 @@ static int check_mps_ranges(void)
     check_mps("free variable and finite D exponent accepted",
         "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1D0 R 1\nRHS\n RHS R 1\nBOUNDS\n FR B X\nENDATA\n", 1);
     return failures != 0;
-}
-
-static lp_problem_t *read_fixture(const char *text)
-{
-    const char *path = "test_mps_fixture.mps";
-    FILE *f = fopen(path, "w");
-    if (!f)
-    {
-        check("fixture file opened", 0);
-        return NULL;
-    }
-    fputs(text, f);
-    fclose(f);
-    lp_problem_t *p = read_mps_file(path);
-    remove(path);
-    return p;
 }
 
 static const char *RANGES_FIRST_MPS =

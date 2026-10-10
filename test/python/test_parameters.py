@@ -84,15 +84,27 @@ def test_params_view(model):
         _ = model.Params.NoSuchParameter
 
 
+def _changed_value(value):
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, int):
+        return value + 1
+    if isinstance(value, float):
+        if not value or not np.isfinite(value):
+            return 1.0
+        return value * 2 if value > 1 else value / 2
+    return 'linf' if value == 'l2' else 'l2'
+
+
 def test_param_aliases_resolve_consistently(model):
     for alias, key in PDLP._PARAM_ALIAS.items():
-        assert alias in model.Params
-        assert key in model.Params
-        value = model.getParam(key)
-        assert model.getParam(alias) == value
+        before = dict(model.Params.items())
+        value = _changed_value(before[key])
         model.setParam(alias, value)
-        assert getattr(model.Params, alias) == value
-        assert model.Params[alias] == value
+        after = dict(model.Params.items())
+        assert {name for name in after if after[name] != before[name]} == {key}
+        assert model.getParam(alias) == model.getParam(key) == value
+        assert getattr(model.Params, alias) == model.Params[alias] == value
 
 
 def test_param_name_validation(model):
@@ -134,6 +146,7 @@ def test_defaults_are_usable_without_gpu_work(base_lp_data):
 @pytest.mark.parametrize("alias,canonical,value", [
     ("TimeLimit", "time_sec_limit", 12.),
     ("OptimalityTol", "eps_optimal_relative", 1e-5),
+    ("FeasibilityTol", "eps_feasible_relative", 1e-5),
     ("Presolve", "presolve", False),
     ("ActiveSetBoost", "active_set_boost", False),
     ("OptimalityNorm", "optimality_norm", "linf"),

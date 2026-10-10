@@ -329,9 +329,6 @@ static int check_result_export(void)
                  TERMINATION_REASON_NUMERICAL_FAILURE, false,
                  NULL, NULL, NULL);
 
-    CUDA_CHECK(cudaMemcpy(state.dual_product_d, dual_product, sizeof(dual_product),
-                          cudaMemcpyHostToDevice));
-
     state.num_variables = problem.num_variables = 0;
     state.num_constraints = problem.num_constraints = 0;
     state.var_bytes = state.con_bytes = 0;
