@@ -237,11 +237,17 @@ endif()
 # -----------------------------------------------------------------------------
 
 if(NOT HPDLP_BUILD_PYTHON)
+  install(
+    TARGETS PSLP
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin)
+
   if(TARGET hpdlp_core)
     install(TARGETS hpdlp_core ARCHIVE DESTINATION lib)
   endif()
 
   if(TARGET hpdlp_shared)
+    set_target_properties(hpdlp_shared PROPERTIES INSTALL_RPATH "$ORIGIN")
     install(
       TARGETS hpdlp_shared
       LIBRARY DESTINATION lib
@@ -249,6 +255,7 @@ if(NOT HPDLP_BUILD_PYTHON)
   endif()
 
   if(TARGET hpdlp_cli)
+    set_target_properties(hpdlp_cli PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
     install(TARGETS hpdlp_cli RUNTIME DESTINATION bin)
   endif()
 

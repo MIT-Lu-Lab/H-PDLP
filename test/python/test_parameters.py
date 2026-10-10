@@ -82,6 +82,13 @@ def test_params_view(model):
     assert dict(model.Params.items())['time_sec_limit'] == 123.0
     with pytest.raises(AttributeError):
         _ = model.Params.NoSuchParameter
+    with pytest.raises(AttributeError):
+        model.Params.NoSuchParameter = 1
+    for name in ('NoSuchParameter', 'keys', '_m'):
+        with pytest.raises(KeyError):
+            _ = model.Params[name]
+        with pytest.raises(KeyError):
+            model.Params[name] = 1
 
 
 def _changed_value(value):

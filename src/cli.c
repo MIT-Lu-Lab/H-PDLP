@@ -188,7 +188,7 @@ int main(int argc, char *argv[])
                 params.optimality_norm = NORM_TYPE_L_INF;
             else
             {
-                fprintf(stderr, "ERROR: --opt_norm must be 'l2' or 'linf'\n");
+                fprintf(stderr, "ERROR: '--opt_norm' must be 'l2' or 'linf'\n");
                 return 1;
             }
         }
@@ -316,7 +316,7 @@ static bool parse_int_arg(const char *option_name, const char *value, int *out)
     if (errno != 0 || end == value || *end != '\0' ||
         parsed < INT_MIN || parsed > INT_MAX)
     {
-        fprintf(stderr, "ERROR: invalid integer for %s: '%s'\n", option_name, value);
+        fprintf(stderr, "ERROR: invalid integer for '%s': '%s'\n", option_name, value);
         return false;
     }
 
@@ -331,7 +331,7 @@ static bool parse_double_arg(const char *option_name, const char *value, double 
     double parsed = strtod(value, &end);
     if (errno != 0 || end == value || *end != '\0')
     {
-        fprintf(stderr, "ERROR: invalid floating-point value for %s: '%s'\n",
+        fprintf(stderr, "ERROR: invalid floating-point value for '%s': '%s'\n",
                 option_name, value);
         return false;
     }
@@ -361,6 +361,8 @@ static char *extract_instance_name(const char *filename)
 
     char *instance_name = strdup(base);
     free(filename_copy);
+    if (instance_name == NULL)
+        fprintf(stderr, "ERROR: out of memory\n");
     return instance_name;
 }
 

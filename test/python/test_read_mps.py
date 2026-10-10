@@ -1,6 +1,9 @@
 import gzip
 
 
+import os
+
+
 import numpy as np
 
 
@@ -108,6 +111,11 @@ def test_read_builds_model(mps_min_file):
 
 def test_read_accepts_pathlike(mps_min_file):
     model = hpdlp.read(mps_min_file)
+    _check_min_model_data(model)
+
+
+def test_read_accepts_bytes_path(mps_min_file):
+    model = hpdlp.read(os.fsencode(mps_min_file))
     _check_min_model_data(model)
 
 

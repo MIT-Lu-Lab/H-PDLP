@@ -142,11 +142,11 @@ def read(filename: Union[str, os.PathLike]) -> "Model":
     - filename: Path to a .mps or .mps.gz file.
     """
     # normalize path and check existence
-    filename = os.fspath(filename)
+    filename = os.fsdecode(filename)
     if not os.path.isfile(filename):
         raise FileNotFoundError(f"No such MPS file: {filename}")
     # parse the MPS file into raw problem data
-    data = read_mps(str(filename))
+    data = read_mps(filename)
     # rebuild the constraint matrix in CSR form
     m = int(data["num_constraints"])
     n = int(data["num_variables"])
@@ -176,16 +176,19 @@ class _ParamsView:
         object.__setattr__(self, "_m", model)
 
     def __getattr__(self, name: str):
-        key = PDLP._PARAM_ALIAS.get(name, name)
-        if key in self._m._params:
-            return self._m._params[key]
-        raise AttributeError(f"Unknown parameter '{name}'")
+        try:
+            return self._m.getParam(name)
+        except KeyError:
+            raise AttributeError(f"Unknown parameter '{name}'") from None
 
     def __setattr__(self, name: str, value):
-        self._m.setParam(name, value)
+        try:
+            self._m.setParam(name, value)
+        except KeyError:
+            raise AttributeError(f"Unknown parameter '{name}'") from None
 
     def __getitem__(self, name: str):
-        return getattr(self, name)
+        return self._m.getParam(name)
 
     def __setitem__(self, name: str, value):
         self._m.setParam(name, value)

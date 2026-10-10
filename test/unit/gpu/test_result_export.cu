@@ -168,9 +168,10 @@ static void check_values(const char *name, const double *actual,
 static void check_device_values(const char *name, const double *device_values,
                                 const double *expected, int count)
 {
-    double actual[2];
+    double *actual = (double *)malloc(count * sizeof(double));
     CUDA_CHECK(cudaMemcpy(actual, device_values, count * sizeof(double), cudaMemcpyDeviceToHost));
     check_values(name, actual, expected, count);
+    free(actual);
 }
 
 static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,

@@ -2,6 +2,7 @@
 #include "test_checks.h"
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 static void check_active_set_parameters(void)
 {
@@ -106,9 +107,26 @@ static void check_parameter_validation(void)
 
 #undef REJECT
 
+static void check_restart_reduction_errors(void)
+{
+    pdhg_parameters_t params;
+    char error[256];
+    set_default_parameters(&params);
+    params.restart_params.necessary_reduction_for_restart = 1.0;
+    hpdlp_validate_parameters(&params, error, sizeof(error));
+    check("an invalid necessary reduction is reported with its own value",
+          strstr(error, "'necessary_reduction_for_restart' must be < 1 (got 1)") != NULL);
+    set_default_parameters(&params);
+    params.restart_params.sufficient_reduction_for_restart = 0.9;
+    hpdlp_validate_parameters(&params, error, sizeof(error));
+    check("an inverted reduction pair is reported with the sufficient reduction",
+          strstr(error, "'sufficient_reduction_for_restart' must be <= 'necessary_reduction_for_restart' (got 0.9)") != NULL);
+}
+
 int main(void)
 {
     check_active_set_parameters();
     check_parameter_validation();
+    check_restart_reduction_errors();
     return failures != 0;
 }
