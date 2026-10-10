@@ -38,7 +38,7 @@ static double measure_initial_norm(const double *values, const pdhg_parameters_t
     lp_problem_t *problem = create_problem(values);
     if (problem == NULL)
     {
-        printf("  FAIL: could not build the problem\n");
+        fprintf(stderr, "FAIL: could not build the problem\n");
         ++failures;
         return NAN;
     }

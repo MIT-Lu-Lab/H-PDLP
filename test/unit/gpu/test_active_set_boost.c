@@ -14,9 +14,6 @@ enum { HADAMARD_ORDER = 16,
        NUM_VARIABLES = 2 * HADAMARD_ORDER,
        NUM_CONSTRAINTS = HADAMARD_ORDER };
 
-
-
-
 static double hadamard_entry(int row, int column)
 {
     int bits = 0;
@@ -105,14 +102,14 @@ static int solve_and_check(const char *label, const pdhg_parameters_t *params)
     lp_problem_t *problem = create_hadamard_problem();
     if (problem == NULL)
     {
-        printf("  FAIL: %s could not build the problem\n", label);
+        fprintf(stderr, "FAIL: %s could not build the problem\n", label);
         ++failures;
         return 0;
     }
     hpdlp_result_t *result = solve_lp_problem(problem, params);
     if (result == NULL || result->primal_solution == NULL)
     {
-        printf("  FAIL: %s produced no solution\n", label);
+        fprintf(stderr, "FAIL: %s produced no solution\n", label);
         ++failures;
         hpdlp_result_free(result);
         lp_problem_free(problem);
@@ -571,7 +568,7 @@ static void check_active_set_revert_state(void)
     lp_problem_free(problem);
 }
 
-static void check_active_set_boost(void)
+static void check_boost_solves(void)
 {
     pdhg_parameters_t params;
 
@@ -588,6 +585,12 @@ static void check_active_set_boost(void)
     check("the disabled controller reports no raise", raises_without_boost == 0);
     check("the operative submatrix earns at least one raise", raises_with_boost >= 1);
     check("a zero revert budget disables the boost", raises_without_revert_budget == 0);
+}
+
+int main(void)
+{
+    const int status = test_gpu_status();
+    if (status) return status;
     check_active_set_resources(false);
     check_active_set_resources(true);
     check_zero_revert_budget_disables_resources();
@@ -599,12 +602,6 @@ static void check_active_set_boost(void)
     check_revert_budget(false);
     check_revert_budget(true);
     check_active_set_revert_state();
-}
-
-int main(void)
-{
-    const int status = test_gpu_status();
-    if (status) return status;
-    check_active_set_boost();
+    check_boost_solves();
     return failures != 0;
 }

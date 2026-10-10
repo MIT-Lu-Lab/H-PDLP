@@ -23,9 +23,6 @@ static const double UNWRITTEN_OBSERVATION = -123.0;
 static const double CLAMPED_GRADIENT = -3.0;
 static const double EXPECTED_CLAMPED_MULTIPLIER = 3.0;
 
-
-
-
 static double read_device_double(const double *device_value)
 {
     double value = NAN;
@@ -359,7 +356,7 @@ static void check_projection(int num_blocks, int max_iter, double current_scale,
         valid = valid && isfinite(vectors[2 * n + i]) && vectors[2 * n + i] == 0;
     if (!valid)
     {
-        fprintf(stderr, "FAIL blocks=%d max_iter=%d current_tau=%g gradient=%g tau=%.17g x=%.17g expected_tau=%g\n",
+        fprintf(stderr, "FAIL: blocks=%d max_iter=%d current_tau=%g gradient=%g tau=%.17g x=%.17g expected_tau=%g\n",
             num_blocks, max_iter, current_scale, homogeneous_gradient, scalars[5], vectors[2 * n], expected_scale);
         ++failures;
     }

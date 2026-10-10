@@ -43,7 +43,7 @@ static void check_fixed_point_error(void)
         CUDA_CHECK(cudaDeviceSynchronize());
         if (values[4] != expected[i])
         {
-            printf("FAIL: FPI case %d: expected %g, got %g\n", i, expected[i], values[4]);
+            fprintf(stderr, "FAIL: FPI case %d: expected %g, got %g\n", i, expected[i], values[4]);
             ++failures;
         }
     }

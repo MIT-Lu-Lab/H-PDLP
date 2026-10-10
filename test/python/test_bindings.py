@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-
 from hpdlp import PDLP
 from hpdlp._core import solve_once
 

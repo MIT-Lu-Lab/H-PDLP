@@ -84,9 +84,6 @@ static const struct zero_scale_column_case ZERO_SCALE_COLUMNS[NUM_ZERO_SCALE_COL
     {"zero primal scale retains an upper-bound column at zero multiplier",
      -1.0, 0.0, 0.0, 1}};
 
-
-
-
 static double project_dual_response(double q, double lower, double upper, double scale)
 {
     const double box_lower = isfinite(lower) ? lower * scale : -INFINITY;
@@ -356,24 +353,17 @@ static void check_zero_primal_scale(struct mask_buffers *b)
               (int)b->free_variable_mask[j] == ZERO_SCALE_COLUMNS[j].retained);
 }
 
-static void check_active_set_masks(void)
+int main(void)
 {
+    const int status = test_gpu_status();
+    if (status) return status;
     struct mask_buffers b;
     allocate_buffers(&b);
-
     check_nonbinding_rows_have_vanishing_response();
     check_retention_table(&b);
     check_gauge_invariance(&b);
     check_zero_tolerance(&b);
     check_zero_primal_scale(&b);
-
     release_buffers(&b);
-}
-
-int main(void)
-{
-    const int status = test_gpu_status();
-    if (status) return status;
-    check_active_set_masks();
     return failures != 0;
 }

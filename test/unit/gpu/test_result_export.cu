@@ -134,8 +134,6 @@ static void check_bound_candidates(norm_type_t norm)
     lp_problem_free(problem);
 }
 
-
-
 static double *copy_to_device(const double *values, size_t count)
 {
     double *device_values;
@@ -212,16 +210,8 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
     }
 }
 
-
-
 static void check_result_export(void)
 {
-    check_bound_candidates(NORM_TYPE_L_INF);
-    check_bound_candidates(NORM_TYPE_L2);
-    check_small_box_certificate(false, NORM_TYPE_L_INF);
-    check_small_box_certificate(false, NORM_TYPE_L2);
-    check_small_box_certificate(true, NORM_TYPE_L_INF);
-    check_small_box_certificate(true, NORM_TYPE_L2);
     const double primal_source[] = {8, 12};
     const double dual_source[] = {30};
     const double reduced_cost_source[] = {-40, 20};
@@ -434,8 +424,6 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
     lp_problem_free(problem);
 }
 
-
-
 static void check_multiplier_export(void)
 {
     for (bool scaled : {false, true})
@@ -448,6 +436,12 @@ int main(void)
 {
     const int status = test_gpu_status();
     if (status) return status;
+    check_small_box_certificate(false, NORM_TYPE_L_INF);
+    check_small_box_certificate(false, NORM_TYPE_L2);
+    check_small_box_certificate(true, NORM_TYPE_L_INF);
+    check_small_box_certificate(true, NORM_TYPE_L2);
+    check_bound_candidates(NORM_TYPE_L_INF);
+    check_bound_candidates(NORM_TYPE_L2);
     check_result_export();
     check_multiplier_export();
     return failures != 0;

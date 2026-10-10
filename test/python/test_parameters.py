@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 
-
 from hpdlp import Model, PDLP
 from hpdlp._core import get_default_params, validate_params
 

@@ -86,7 +86,7 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
         variable_lower, variable_upper, &objective_constant);
     if (problem == NULL)
     {
-        printf("  FAIL: %s could not build the problem\n", label);
+        fprintf(stderr, "FAIL: %s could not build the problem\n", label);
         ++failures;
         return;
     }
@@ -102,7 +102,7 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
     hpdlp_result_t *result = solve_lp_problem(problem, &params);
     if (result == NULL || result->primal_solution == NULL)
     {
-        printf("  FAIL: %s produced no solution\n", label);
+        fprintf(stderr, "FAIL: %s produced no solution\n", label);
         ++failures;
         hpdlp_result_free(result);
         lp_problem_free(problem);
@@ -154,7 +154,7 @@ static void check_signs(const char *label, bool presolve)
         variable_lower, variable_upper, &objective_constant);
     if (problem == NULL)
     {
-        printf("  FAIL: %s could not build the problem\n", label);
+        fprintf(stderr, "FAIL: %s could not build the problem\n", label);
         ++failures;
         return;
     }
@@ -168,7 +168,7 @@ static void check_signs(const char *label, bool presolve)
     if (result == NULL || result->primal_solution == NULL ||
         result->dual_solution == NULL || result->reduced_cost == NULL)
     {
-        printf("  FAIL: %s produced no solution\n", label);
+        fprintf(stderr, "FAIL: %s produced no solution\n", label);
         ++failures;
         hpdlp_result_free(result);
         lp_problem_free(problem);

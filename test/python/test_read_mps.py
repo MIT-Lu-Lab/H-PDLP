@@ -1,21 +1,11 @@
 import gzip
-
-
 import os
 
-
 import numpy as np
-
-
 import pytest
-
-
 import scipy.sparse as sp
 
-
 import hpdlp
-
-
 from hpdlp import Model, PDLP
 
 
