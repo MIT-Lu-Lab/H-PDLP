@@ -115,7 +115,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. Build CI checks compilation only.
+See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. CI builds everything and runs the CPU-only C tests and the non-GPU Python tests.
 
 ## Acknowledgements
 

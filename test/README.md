@@ -12,4 +12,4 @@ The `cpu`, `gpu`, and `integration` labels select model/API checks, CUDA algorit
 
 The Python package has its own pytest suite; see [Python tests](../python/README.md#tests).
 
-The [Build workflow](../.github/workflows/build.yml) compiles the native targets and Python bindings with CUDA 12.4 and 13.3. It does not run the solver tests on a GPU.
+The [Build workflow](../.github/workflows/build.yml) builds with CUDA 12.4 and 13.3 and runs the `cpu` ctest label and `pytest -m "not gpu"`. GPU tests do not run in CI.
