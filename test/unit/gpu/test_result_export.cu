@@ -6,7 +6,6 @@
 #include "termination_checker.h"
 #include "test_checks.h"
 #include <cuda_runtime.h>
-#include <float.h>
 #include <initializer_list>
 #include <math.h>
 #include <stdio.h>
@@ -199,16 +198,16 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
         hpdlp_result_t *result = create_result_from_state(state, problem);
         if (primal)
             check_values("primal", result->primal_solution, primal, 2);
-        else if (result->primal_solution)
-            ++failures;
+        else
+            check("no primal vector is exported", !result->primal_solution);
         if (dual)
             check_values("dual", result->dual_solution, dual, 1);
-        else if (result->dual_solution)
-            ++failures;
+        else
+            check("no dual vector is exported", !result->dual_solution);
         if (reduced_cost)
             check_values("reduced cost", result->reduced_cost, reduced_cost, 2);
-        else if (result->reduced_cost)
-            ++failures;
+        else
+            check("no reduced cost is exported", !result->reduced_cost);
         hpdlp_result_free(result);
     }
 }
@@ -326,9 +325,9 @@ static void check_result_export(void)
     state.control.termination_reason = TERMINATION_REASON_OPTIMAL;
     metrics.primal_pdhg_scale = 2;
     hpdlp_result_t *empty_result = create_result_from_state(&state, &problem);
-    if (!empty_result->primal_solution || !empty_result->dual_solution ||
-        !empty_result->reduced_cost)
-        ++failures;
+    check("an empty optimal result still exports all three vectors",
+          empty_result->primal_solution && empty_result->dual_solution &&
+              empty_result->reduced_cost);
     hpdlp_result_free(empty_result);
 
     check_device_values("state primal", state.primal_pdhg_solution_d, primal_source, 2);

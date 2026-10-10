@@ -60,11 +60,10 @@ def test_stopping_limits_return_candidates(model, parameter, value, status):
     model.setParam(parameter, value)
     model.optimize()
     assert model.Status == status
-    assert model.IterCount >= 0
-    if status == PDLP.ITERATION_LIMIT:
-        assert model.IterCount >= 1
+    assert model.IterCount == model.getParam("TermCheckFreq")
     assert model.X.shape == (2,) and model.Pi.shape == (3,) and model.RC.shape == (2,)
     assert np.all(np.isfinite(model.X))
+    assert np.all(np.isfinite(model.Pi)) and np.all(np.isfinite(model.RC))
     assert model.ObjVal == pytest.approx(model.c @ model.X + model.c0, abs=1e-10, rel=0)
 
 

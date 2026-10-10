@@ -1,5 +1,4 @@
 #include "hpdlp.h"
-#include "mps_parser.h"
 #include "test_checks.h"
 #include <math.h>
 #include <stdio.h>

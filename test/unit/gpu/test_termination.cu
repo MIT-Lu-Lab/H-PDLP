@@ -9,7 +9,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
 __global__ void compute_fixed_point_error_kernel(
@@ -124,44 +123,47 @@ static void check_solution_norms(void)
     lp_problem_free(problem);
 }
 
-static void check_termination(double scale, int iteration_limit, int certificate,
+static void check_termination(double scale, bool at_iteration_limit,
+                              termination_reason_t certificate,
                               termination_reason_t expected)
 {
     pdhg_parameters_t params;
     set_default_parameters(&params);
     pdhg_metrics_t metrics = {};
     metrics.primal_pdhg_scale = scale;
-    if (certificate)
-    {
+    if (certificate != TERMINATION_REASON_UNSPECIFIED)
         metrics.normalized_homogeneous_ratio = 1;
+    if (certificate == TERMINATION_REASON_PRIMAL_INFEASIBLE)
+        metrics.primal_infeasibility_homogeneous_margin = 1;
+    if (certificate == TERMINATION_REASON_DUAL_INFEASIBLE)
         metrics.dual_infeasibility_homogeneous_margin = 1;
-    }
     pdhg_solver_state_t state = {};
     state.metrics_h = &metrics;
     state.control.start_time = clock();
-    if (iteration_limit)
+    if (at_iteration_limit)
         state.control.total_count = params.termination_criteria.iteration_limit;
     check_termination_criteria(&state, &params.termination_criteria);
     if (state.control.termination_reason != expected)
     {
-        fprintf(stderr, "FAIL tau=%.17g limit=%d certificate=%d reason=%d expected=%d\n",
-                scale, iteration_limit, certificate, state.control.termination_reason, expected);
+        fprintf(stderr, "FAIL: tau=%.17g limit=%d certificate=%d reason=%d expected=%d\n",
+                scale, at_iteration_limit, certificate, state.control.termination_reason, expected);
         ++failures;
     }
 }
 
 static void check_scale_termination(void)
 {
-    check_termination(-1, 0, 0, TERMINATION_REASON_UNSPECIFIED);
-    check_termination(0, 0, 0, TERMINATION_REASON_UNSPECIFIED);
-    check_termination(1e-51, 0, 0, TERMINATION_REASON_UNSPECIFIED);
-    check_termination(1e-50, 0, 0, TERMINATION_REASON_UNSPECIFIED);
-    check_termination(nextafter(1e-50, INFINITY), 0, 0, TERMINATION_REASON_OPTIMAL);
-    check_termination(1, 0, 0, TERMINATION_REASON_OPTIMAL);
-    check_termination(NAN, 0, 0, TERMINATION_REASON_NUMERICAL_FAILURE);
-    check_termination(INFINITY, 0, 0, TERMINATION_REASON_NUMERICAL_FAILURE);
-    check_termination(0, 1, 0, TERMINATION_REASON_ITERATION_LIMIT);
-    check_termination(0, 0, 1, TERMINATION_REASON_DUAL_INFEASIBLE);
+    check_termination(-1, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_UNSPECIFIED);
+    check_termination(0, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_UNSPECIFIED);
+    check_termination(1e-51, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_UNSPECIFIED);
+    check_termination(1e-50, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_UNSPECIFIED);
+    check_termination(nextafter(1e-50, INFINITY), false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_OPTIMAL);
+    check_termination(1, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_OPTIMAL);
+    check_termination(NAN, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_NUMERICAL_FAILURE);
+    check_termination(INFINITY, false, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_NUMERICAL_FAILURE);
+    check_termination(0, true, TERMINATION_REASON_UNSPECIFIED, TERMINATION_REASON_ITERATION_LIMIT);
+    check_termination(0, false, TERMINATION_REASON_PRIMAL_INFEASIBLE, TERMINATION_REASON_PRIMAL_INFEASIBLE);
+    check_termination(0, false, TERMINATION_REASON_DUAL_INFEASIBLE, TERMINATION_REASON_DUAL_INFEASIBLE);
 }
 
 int main(void)

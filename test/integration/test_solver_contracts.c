@@ -56,6 +56,7 @@ static void check_certificates(void)
     matrix.m = 2; matrix.n = 1; matrix.fmt = matrix_dense;
     matrix.data.dense.A = matrix_values;
     lp_problem_t *problem = create_lp_problem(&objective, &matrix, lower, upper, NULL, NULL, NULL);
+    CHECK(problem != NULL);
     pdhg_parameters_t params;
     set_default_parameters(&params);
     params.verbose = params.presolve = false;
@@ -72,12 +73,14 @@ static void check_certificates(void)
         CHECK(fabs(result->reduced_cost[0]) < 1e-6);
         CHECK(2 * y[0] + y[1] > 0);
     }
-    else CHECK(0);
+    else
+        check("a primal-infeasible result carries a dual certificate", 0);
     hpdlp_result_free(result);
     lp_problem_free(problem);
     const double decreasing = -1, zero = 0;
     matrix.m = matrix.n = 1;
     problem = create_lp_problem(&decreasing, &matrix, &zero, NULL, NULL, NULL, NULL);
+    CHECK(problem != NULL);
     result = solve_lp_problem(problem, &params);
     CHECK(result && result->termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE);
     if (result && result->primal_solution)
@@ -85,7 +88,8 @@ static void check_certificates(void)
         CHECK(result->primal_solution[0] > 0);
         CHECK(result->dual_solution == NULL && result->reduced_cost == NULL);
     }
-    else CHECK(0);
+    else
+        check("a dual-infeasible result carries a primal certificate", 0);
     hpdlp_result_free(result);
     lp_problem_free(problem);
 }

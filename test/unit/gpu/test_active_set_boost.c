@@ -71,7 +71,7 @@ static lp_problem_t *create_hadamard_problem(void)
     }
     row_ptr[NUM_CONSTRAINTS] = nnz;
 
-    matrix_desc_t A_desc;
+    matrix_desc_t A_desc = {0};
     A_desc.m = NUM_CONSTRAINTS;
     A_desc.n = NUM_VARIABLES;
     A_desc.fmt = matrix_csr;
@@ -230,7 +230,7 @@ static void check_estimator_owns_work_vectors(void)
         state->dual_product_d, dual_product, sizeof(dual_product),
         cudaMemcpyHostToDevice));
 
-    sv_estimator_opts_t opts = {};
+    sv_estimator_opts_t opts = {0};
     opts.max_iter = 1;
     opts.tol = params.power_iter_params.tol;
     sv_estimator_ctx_t *estimator = sv_estimator_create(
@@ -402,6 +402,8 @@ static void check_revert_budget(bool is_exhausted)
     {
         check("a remaining revert slot still allows a raise",
               state->control.step_size > 0.01 && active_set->raise_count == 1);
+        check("a remaining revert slot runs norm estimation",
+              active_set->power_iteration_count > 0);
     }
 
     pdhg_solver_state_free(state);

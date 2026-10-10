@@ -72,7 +72,7 @@ static void solve_and_check(const char *label, int num_constraints, norm_type_t 
     const double variable_upper[2] = {5.0, 3.0};
     const double objective_constant = 0.0;
 
-    matrix_desc_t A_desc;
+    matrix_desc_t A_desc = {0};
     A_desc.m = num_constraints;
     A_desc.n = 2;
     A_desc.fmt = matrix_csr;
@@ -124,7 +124,8 @@ static void check_zero_constraint_norm(void)
 {
     solve_and_check("no constraints, L2", 0, NORM_TYPE_L2);
     solve_and_check("no constraints, Linf", 0, NORM_TYPE_L_INF);
-    solve_and_check("one all-zero constraint", 1, NORM_TYPE_L_INF);
+    solve_and_check("one all-zero constraint, L2", 1, NORM_TYPE_L2);
+    solve_and_check("one all-zero constraint, Linf", 1, NORM_TYPE_L_INF);
 }
 
 static void check_signs(const char *label, bool presolve)
@@ -139,7 +140,7 @@ static void check_signs(const char *label, bool presolve)
     const double variable_upper[3] = {5.0, INFINITY, INFINITY};
     const double objective_constant = 0.0;
 
-    matrix_desc_t A_desc;
+    matrix_desc_t A_desc = {0};
     A_desc.m = 1;
     A_desc.n = 3;
     A_desc.fmt = matrix_csr;

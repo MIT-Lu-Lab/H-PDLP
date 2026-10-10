@@ -48,6 +48,7 @@ def test_bounds_none_clears(model):
     model.lb = [0.0, 0.0]
     model.lb = None
     assert model.lb is None
+    model.ub = [1.0, 1.0]
     model.ub = None
     assert model.ub is None
     model.constr_lb = None

@@ -153,7 +153,10 @@ static void check_boost_revert_policy(void)
     check("an optimal result does not revert",
           !should_revert_active_set_boost(&state, &params));
     state.control.termination_reason = TERMINATION_REASON_PRIMAL_INFEASIBLE;
-    check("an infeasibility certificate does not revert",
+    check("a primal infeasibility certificate does not revert",
+          !should_revert_active_set_boost(&state, &params));
+    state.control.termination_reason = TERMINATION_REASON_DUAL_INFEASIBLE;
+    check("a dual infeasibility certificate does not revert",
           !should_revert_active_set_boost(&state, &params));
     state.control.termination_reason = TERMINATION_REASON_TIME_LIMIT;
     check("a time limit may restore a diverging boosted epoch",
