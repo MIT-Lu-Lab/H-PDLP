@@ -290,15 +290,15 @@ void display_iteration_stats(
         {
             printf(" | %8.1e %8.1e %8.1e | %8.1e %8.1e %8.1e"
                    " | %8.1e %8.1e %8.1e | %8.1e %8.1e",
-                   state->metrics_h->current_primal_scale,
+                   state->metrics_h->primal_current_scale,
                    state->metrics_h->normalized_homogeneous_gap,
                    state->metrics_h->normalized_homogeneous_ratio,
                    state->control.step_size_primal,
                    state->control.step_size_dual,
                    state->control.step_size_homogeneous,
                    state->control.primal_weight,
-                   state->metrics_h->pdhg_primal_scale,
-                   state->metrics_h->pdhg_dual_scale,
+                   state->metrics_h->primal_pdhg_scale,
+                   state->metrics_h->dual_pdhg_scale,
                    state->metrics_h->primal_solution_norm,
                    state->metrics_h->dual_solution_norm);
         }

@@ -48,11 +48,11 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
     const double tau = 2.0;
     const double x = 5e-5 * column_scale * state->constraint_bound_rescaling * tau;
     const double y = 1e-5 * row_scale * state->objective_vector_rescaling * tau;
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, &x, sizeof(x), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution_d, &y, sizeof(y), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->primal_pdhg_solution_d, &x, sizeof(x), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->dual_pdhg_solution_d, &y, sizeof(y), cudaMemcpyHostToDevice));
 
-    CUDA_CHECK(cudaMemcpy(state->initial_dual_solution_d, &y, sizeof(y), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->hsd_primal_scale_pdhg_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->dual_initial_solution_d, &y, sizeof(y), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->hsd_primal_pdhg_scale_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
     compute_termination_metrics(state, &params);
     state->control.start_time = clock();
     check_termination_criteria(state, &params.termination_criteria);
@@ -102,8 +102,8 @@ static void check_bound_candidates(norm_type_t norm)
     disable_rescaling(&params);
     pdhg_solver_state_t *state = create_solver_state(problem, &params);
     const double tau = 1;
-    CUDA_CHECK(cudaMemcpy(state->hsd_primal_scale_pdhg_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, x, sizeof(x), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->hsd_primal_pdhg_scale_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->primal_pdhg_solution_d, x, sizeof(x), cudaMemcpyHostToDevice));
     compute_termination_metrics(state, &params);
     double z[n];
     CUDA_CHECK(cudaMemcpy(z, state->pdhg_reduced_cost_d, sizeof(z), cudaMemcpyDeviceToHost));
@@ -226,8 +226,8 @@ static void check_result_export(void)
     const double primal_source[] = {8, 12};
     const double dual_source[] = {30};
     const double reduced_cost_source[] = {-40, 20};
-    const double delta_primal[] = {16, 20};
-    const double delta_dual[] = {50};
+    const double primal_delta[] = {16, 20};
+    const double dual_delta[] = {50};
     const double dual_product[] = {3, -7};
     const double primal_infeasibility_reduced_cost[] = {-6, 8};
     const double variable_rescaling[] = {2, 4};
@@ -236,9 +236,9 @@ static void check_result_export(void)
     const double variable_upper_bound[] = {2, INFINITY};
     const double expected_primal[] = {1, 0.75};
     const double expected_homogeneous_primal[] = {0.4, 0.3};
-    const double expected_delta_primal[] = {0.5, 0.3125};
+    const double expected_primal_delta[] = {0.5, 0.3125};
     const double expected_dual[] = {0.3};
-    const double expected_delta_dual[] = {0.25};
+    const double expected_dual_delta[] = {0.25};
     const double expected_reduced_cost[] = {-4, 4};
     const double expected_homogeneous_reduced_cost[] = {-0.6, 1.6};
     const double expected_displacement_reduced_cost[] = {-0.15, 0.7};
@@ -259,11 +259,11 @@ static void check_result_export(void)
     state.objective_vector_rescaling = 10;
     CUDA_CHECK(cudaStreamCreate(&state.stream_A));
 
-    state.pdhg_primal_solution_d = copy_to_device(primal_source, 2);
-    state.pdhg_dual_solution_d = copy_to_device(dual_source, 1);
+    state.primal_pdhg_solution_d = copy_to_device(primal_source, 2);
+    state.dual_pdhg_solution_d = copy_to_device(dual_source, 1);
     state.pdhg_reduced_cost_d = copy_to_device(reduced_cost_source, 2);
-    state.delta_primal_solution_d = copy_to_device(delta_primal, 2);
-    state.delta_dual_solution_d = copy_to_device(delta_dual, 1);
+    state.primal_delta_solution_d = copy_to_device(primal_delta, 2);
+    state.dual_delta_solution_d = copy_to_device(dual_delta, 1);
     state.dual_product_d = copy_to_device(dual_product, 2);
     state.primal_infeasibility_reduced_cost_d =
         copy_to_device(primal_infeasibility_reduced_cost, 2);
@@ -285,7 +285,7 @@ static void check_result_export(void)
     CUDA_CHECK(cudaMemcpy(state.termination_reductions_d, &reductions,
                           sizeof(reductions), cudaMemcpyHostToDevice));
 
-    metrics.pdhg_primal_scale = 2;
+    metrics.primal_pdhg_scale = 2;
     check_result(&state, &problem, &params.termination_criteria,
                  TERMINATION_REASON_OPTIMAL, false,
                  expected_primal, expected_dual, expected_reduced_cost);
@@ -307,15 +307,15 @@ static void check_result_export(void)
     metrics.primal_infeasibility_displacement_margin = 1;
     check_result(&state, &problem, &params.termination_criteria,
                  TERMINATION_REASON_PRIMAL_INFEASIBLE, false,
-                 NULL, expected_delta_dual, expected_displacement_reduced_cost);
+                 NULL, expected_dual_delta, expected_displacement_reduced_cost);
 
     metrics.primal_infeasibility_displacement_margin = 0;
     metrics.dual_infeasibility_displacement_margin = 1;
     check_result(&state, &problem, &params.termination_criteria,
                  TERMINATION_REASON_DUAL_INFEASIBLE, false,
-                 expected_delta_primal, NULL, NULL);
+                 expected_primal_delta, NULL, NULL);
 
-    metrics.pdhg_primal_scale = NAN;
+    metrics.primal_pdhg_scale = NAN;
     check_result(&state, &problem, &params.termination_criteria,
                  TERMINATION_REASON_NUMERICAL_FAILURE, false,
                  NULL, NULL, NULL);
@@ -324,32 +324,32 @@ static void check_result_export(void)
     state.num_constraints = problem.num_constraints = 0;
     state.var_bytes = state.con_bytes = 0;
     state.control.termination_reason = TERMINATION_REASON_OPTIMAL;
-    metrics.pdhg_primal_scale = 2;
+    metrics.primal_pdhg_scale = 2;
     hpdlp_result_t *empty_result = create_result_from_state(&state, &problem);
     if (!empty_result->primal_solution || !empty_result->dual_solution ||
         !empty_result->reduced_cost)
         ++failures;
     hpdlp_result_free(empty_result);
 
-    check_device_values("state primal", state.pdhg_primal_solution_d, primal_source, 2);
-    check_device_values("state dual", state.pdhg_dual_solution_d, dual_source, 1);
+    check_device_values("state primal", state.primal_pdhg_solution_d, primal_source, 2);
+    check_device_values("state dual", state.dual_pdhg_solution_d, dual_source, 1);
     check_device_values("state reduced cost", state.pdhg_reduced_cost_d,
                         reduced_cost_source, 2);
-    check_device_values("state delta primal", state.delta_primal_solution_d,
-                        delta_primal, 2);
-    check_device_values("state delta dual", state.delta_dual_solution_d,
-                        delta_dual, 1);
+    check_device_values("state delta primal", state.primal_delta_solution_d,
+                        primal_delta, 2);
+    check_device_values("state delta dual", state.dual_delta_solution_d,
+                        dual_delta, 1);
     check_device_values("state dual product", state.dual_product_d,
                         dual_product, 2);
     check_device_values("state infeasibility reduced cost",
                         state.primal_infeasibility_reduced_cost_d,
                         primal_infeasibility_reduced_cost, 2);
 
-    CUDA_CHECK(cudaFree(state.pdhg_primal_solution_d));
-    CUDA_CHECK(cudaFree(state.pdhg_dual_solution_d));
+    CUDA_CHECK(cudaFree(state.primal_pdhg_solution_d));
+    CUDA_CHECK(cudaFree(state.dual_pdhg_solution_d));
     CUDA_CHECK(cudaFree(state.pdhg_reduced_cost_d));
-    CUDA_CHECK(cudaFree(state.delta_primal_solution_d));
-    CUDA_CHECK(cudaFree(state.delta_dual_solution_d));
+    CUDA_CHECK(cudaFree(state.primal_delta_solution_d));
+    CUDA_CHECK(cudaFree(state.dual_delta_solution_d));
     CUDA_CHECK(cudaFree(state.dual_product_d));
     CUDA_CHECK(cudaFree(state.primal_infeasibility_reduced_cost_d));
     CUDA_CHECK(cudaFree(state.variable_rescaling_d));
@@ -401,12 +401,12 @@ static void check_projection_multipliers(bool scaled, norm_type_t norm, double t
     CUDA_CHECK(cudaMemcpy(scales, state->variable_rescaling_d, sizeof(scales), cudaMemcpyDeviceToHost));
     for (int j = 0; j < n; ++j)
         homogeneous_x[j] = x[j] * scales[j] * state->constraint_bound_rescaling * tau;
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, homogeneous_x, sizeof(homogeneous_x), cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(state->hsd_primal_scale_pdhg_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->primal_pdhg_solution_d, homogeneous_x, sizeof(homogeneous_x), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->hsd_primal_pdhg_scale_d, &tau, sizeof(tau), cudaMemcpyHostToDevice));
     double observed[n];
     for (int j = 0; j < n; ++j)
         observed[j] = expected_z[j] * state->objective_vector_rescaling * tau / scales[j];
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_projection_multiplier_d, observed,
+    CUDA_CHECK(cudaMemcpy(state->primal_pdhg_projection_multiplier_d, observed,
                           sizeof(observed), cudaMemcpyHostToDevice));
     compute_termination_metrics(state, &params);
 

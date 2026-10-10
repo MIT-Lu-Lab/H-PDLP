@@ -41,9 +41,9 @@ extern "C"
         double bound_multiplier_objective_gap;
         double bound_multiplier_relative_objective_gap;
 
-        double current_primal_scale;
-        double pdhg_primal_scale;
-        double pdhg_dual_scale;
+        double primal_current_scale;
+        double primal_pdhg_scale;
+        double dual_pdhg_scale;
 
         double primal_solution_norm;
         double dual_solution_norm;

@@ -29,14 +29,14 @@ limitations under the License.
 typedef struct pdhg_metrics_t pdhg_metrics_t;
 
 typedef struct {
-    double delta_primal_norm;
-    double delta_dual_norm;
+    double primal_delta_norm;
+    double dual_delta_norm;
     double operator_cross_term;
 } fixed_point_reductions_t;
 
 typedef struct {
-    double delta_primal_norm;
-    double delta_dual_norm;
+    double primal_delta_norm;
+    double dual_delta_norm;
 } restart_reductions_t;
 
 typedef struct {
@@ -168,24 +168,24 @@ typedef struct {
     double *objective_vector_d;
     double objective_constant;
 
-    cusparseHandle_t  sparse_handle_A;
-    cusparseHandle_t  sparse_handle_At;
-    cublasHandle_t    blas_handle_A;
-    curandGenerator_t curand_gen;
     cudaStream_t      stream_A;
     cudaStream_t      stream_At;
     cudaEvent_t       event_A;
     cudaEvent_t       event_At;
+    cusparseHandle_t  sparse_handle_A;
+    cusparseHandle_t  sparse_handle_At;
+    cublasHandle_t    blas_handle_A;
+    curandGenerator_t curand_gen;
     cudaGraphExec_t   iteration_graph_exec;
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
-    cusparseDnVecDescr_t spmv_current_primal_solution;
-    cusparseDnVecDescr_t spmv_reflected_dual_solution;
-    cusparseDnVecDescr_t spmv_pdhg_primal_solution;
-    cusparseDnVecDescr_t spmv_pdhg_dual_solution;
-    cusparseDnVecDescr_t spmv_delta_primal_solution;
-    cusparseDnVecDescr_t spmv_delta_dual_solution;
+    cusparseDnVecDescr_t spmv_primal_current_solution;
+    cusparseDnVecDescr_t spmv_dual_reflected_solution;
+    cusparseDnVecDescr_t spmv_primal_pdhg_solution;
+    cusparseDnVecDescr_t spmv_dual_pdhg_solution;
+    cusparseDnVecDescr_t spmv_primal_delta_solution;
+    cusparseDnVecDescr_t spmv_dual_delta_solution;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
     spmv_plan_t constraint_matrix_spmv_plan;
@@ -209,25 +209,25 @@ typedef struct {
     double *constraint_bound_rescaling_d;
     double *objective_vector_rescaling_d;
 
-    double *initial_primal_solution_d;
-    double *current_primal_solution_d;
-    double *pdhg_primal_solution_d;
-    double *reflected_primal_solution_d;
-    double *delta_primal_solution_d;
+    double *primal_initial_solution_d;
+    double *primal_current_solution_d;
+    double *primal_pdhg_solution_d;
+    double *primal_reflected_solution_d;
+    double *primal_delta_solution_d;
     double *primal_product_d;
     double *variable_reduction_entries_d;
 
-    double *initial_dual_solution_d;
-    double *current_dual_solution_d;
-    double *pdhg_dual_solution_d;
-    double *reflected_dual_solution_d;
-    double *delta_dual_solution_d;
+    double *dual_initial_solution_d;
+    double *dual_current_solution_d;
+    double *dual_pdhg_solution_d;
+    double *dual_reflected_solution_d;
+    double *dual_delta_solution_d;
     double *dual_product_d;
     double *constraint_reduction_entries_d;
 
     double *pdhg_reduced_cost_d;
     double *bound_multiplier_d;
-    double *pdhg_primal_projection_multiplier_d;
+    double *primal_pdhg_projection_multiplier_d;
     double *primal_infeasibility_reduced_cost_d;
     double *reduced_cost_ray_d;
     double *dual_ray_d;
@@ -235,14 +235,14 @@ typedef struct {
 
     double *hsd_scalars_d;
     double *hsd_inverse_scale_d;
-    double *hsd_primal_scale_initial_d;
-    double *hsd_primal_scale_current_d;
-    double *hsd_primal_scale_pdhg_d;
-    double *hsd_primal_scale_reflected_d;
-    double *hsd_dual_scale_initial_d;
-    double *hsd_dual_scale_current_d;
-    double *hsd_dual_scale_pdhg_d;
-    double *hsd_dual_scale_reflected_d;
+    double *hsd_primal_initial_scale_d;
+    double *hsd_primal_current_scale_d;
+    double *hsd_primal_pdhg_scale_d;
+    double *hsd_primal_reflected_scale_d;
+    double *hsd_dual_initial_scale_d;
+    double *hsd_dual_current_scale_d;
+    double *hsd_dual_pdhg_scale_d;
+    double *hsd_dual_reflected_scale_d;
     double *primal_residual_d;
     double *dual_residual_d;
     double *bound_multiplier_dual_residual_d;

@@ -34,8 +34,8 @@ static void check_fixed_point_error(void)
     {
         for (int j = 0; j < 5; ++j)
             values[j] = 0.0;
-        reductions->delta_primal_norm = inputs[i][0];
-        reductions->delta_dual_norm = inputs[i][1];
+        reductions->primal_delta_norm = inputs[i][0];
+        reductions->dual_delta_norm = inputs[i][1];
         reductions->operator_cross_term = inputs[i][2];
         compute_fixed_point_error_kernel<<<1, 1>>>(
             values + 4, reductions,
@@ -82,18 +82,18 @@ static void check_solution_norms(void)
     pdhg_solver_state_t *state = create_solver_state(problem, &params);
 
     const double negative[] = {-3., -2.};
-    CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, negative, sizeof(negative), cudaMemcpyHostToDevice));
-    reduce_device_abs_max(state, state->pdhg_primal_solution_d, 2, state->hsd_primal_scale_pdhg_d);
+    CUDA_CHECK(cudaMemcpy(state->primal_pdhg_solution_d, negative, sizeof(negative), cudaMemcpyHostToDevice));
+    reduce_device_abs_max(state, state->primal_pdhg_solution_d, 2, state->hsd_primal_pdhg_scale_d);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     double reduced_value;
-    CUDA_CHECK(cudaMemcpy(&reduced_value, state->hsd_primal_scale_pdhg_d, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&reduced_value, state->hsd_primal_pdhg_scale_d, sizeof(double), cudaMemcpyDeviceToHost));
     check("absolute maximum of negative values is their largest magnitude", reduced_value == 3.);
-    reduce_device_abs_max(state, state->pdhg_primal_solution_d, 0, state->hsd_primal_scale_pdhg_d);
+    reduce_device_abs_max(state, state->primal_pdhg_solution_d, 0, state->hsd_primal_pdhg_scale_d);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    CUDA_CHECK(cudaMemcpy(&reduced_value, state->hsd_primal_scale_pdhg_d, sizeof(double), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(&reduced_value, state->hsd_primal_pdhg_scale_d, sizeof(double), cudaMemcpyDeviceToHost));
     check("empty absolute maximum is zero", reduced_value == 0.);
     const double one = 1.;
-    CUDA_CHECK(cudaMemcpy(state->hsd_primal_scale_pdhg_d, &one, sizeof(double), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(state->hsd_primal_pdhg_scale_d, &one, sizeof(double), cudaMemcpyHostToDevice));
 
     const double primal[][2] = {{3.0, -4.0}, {0.0, 0.0}};
     const double dual[][2] = {{5.0, -12.0}, {0.0, 0.0}};
@@ -103,9 +103,9 @@ static void check_solution_norms(void)
         params.optimality_norm = norm;
         for (int sample = 0; sample < 2; ++sample)
         {
-            CUDA_CHECK(cudaMemcpy(state->pdhg_primal_solution_d, primal[sample],
+            CUDA_CHECK(cudaMemcpy(state->primal_pdhg_solution_d, primal[sample],
                                   sizeof(primal[sample]), cudaMemcpyHostToDevice));
-            CUDA_CHECK(cudaMemcpy(state->pdhg_dual_solution_d, dual[sample],
+            CUDA_CHECK(cudaMemcpy(state->dual_pdhg_solution_d, dual[sample],
                                   sizeof(dual[sample]), cudaMemcpyHostToDevice));
             compute_termination_metrics(state, &params);
             const double expected_primal = sample ? 0.0 : (norm == NORM_TYPE_L_INF ? 4.0 : 5.0);
@@ -130,7 +130,7 @@ static void check_termination(double scale, int iteration_limit, int certificate
     pdhg_parameters_t params;
     set_default_parameters(&params);
     pdhg_metrics_t metrics = {};
-    metrics.pdhg_primal_scale = scale;
+    metrics.primal_pdhg_scale = scale;
     if (certificate)
     {
         metrics.normalized_homogeneous_ratio = 1;

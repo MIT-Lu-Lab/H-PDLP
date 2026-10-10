@@ -7,13 +7,13 @@
 #include <stdio.h>
 
 static void restart(pid_state_t *pid, double *weight, bool guard,
-                    double gap, double primal, double dual, double ratio)
+                    double primal, double dual, double gap, double ratio)
 {
     const step_size_parameters_t params = {
         .k_p = 0.2, .k_i = 0.05, .k_d = 0.1, .i_smooth = 0.3,
         .primal_weight_safeguard = guard};
     apply_restart_pid(pid, weight, &params, 1.0, 1.0,
-                      gap, primal, dual, 1.0, ratio);
+                      primal, dual, gap, 1.0, ratio);
 }
 
 static void check_pid_control(void)
@@ -23,78 +23,78 @@ static void check_pid_control(void)
 
     initialize_pid_state(&pid);
     weight = 4.0;
-    restart(&pid, &weight, true, 0.0, 1e-2, 1e-2, 0.0);
+    restart(&pid, &weight, true, 1e-2, 1e-2, 0.0, 0.0);
     weight = 9.0;
-    restart(&pid, &weight, true, 0.0, 1.0, 1.0, 0.0);
+    restart(&pid, &weight, true, 1.0, 1.0, 0.0, 0.0);
     check("no rollback before reaching the tail", weight != 4.0);
 
     initialize_pid_state(&pid);
     weight = 4.0;
-    restart(&pid, &weight, true, 0.0, 2e-2, 2e-2, 0.0);
+    restart(&pid, &weight, true, 2e-2, 2e-2, 0.0, 0.0);
     weight = 6.0;
-    restart(&pid, &weight, true, 0.0, 1e-2, 1e-2, 0.0);
+    restart(&pid, &weight, true, 1e-2, 1e-2, 0.0, 0.0);
     weight = 9.0;
-    restart(&pid, &weight, true, 0.0, 1e-3, 2e-3, 0.0);
+    restart(&pid, &weight, true, 1e-3, 2e-3, 0.0, 0.0);
     weight = 16.0;
-    restart(&pid, &weight, true, 0.0, 1e-6, 4e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 4e-6, 0.0, 0.0);
     weight = 25.0;
-    restart(&pid, &weight, true, 4e-4, 1e-6, 4e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 4e-6, 4e-4, 0.0);
     check("rollback uses a weight recorded below 1e-2 but before the tail", weight == 9.0);
     check("rollback clears PID history", pid.error_sum == 0.0 && !pid.has_last_error);
     weight = 36.0;
-    restart(&pid, &weight, true, 1e-3, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 1e-6, 1e-3, 0.0);
     check("rollback retains guard history on repeated growth", weight == 9.0);
 
     pid_state_t fresh;
     initialize_pid_state(&fresh);
     double fresh_weight = 9.0;
-    restart(&fresh, &fresh_weight, false, 0.0, 1e-6, 2e-6, 0.0);
-    restart(&pid, &weight, true, 0.0, 1e-6, 2e-6, 0.0);
+    restart(&fresh, &fresh_weight, false, 1e-6, 2e-6, 0.0, 0.0);
+    restart(&pid, &weight, true, 1e-6, 2e-6, 0.0, 0.0);
     check("PID resumes with cleared history", fabs(weight - fresh_weight) < 1e-14);
 
     initialize_pid_state(&pid);
     weight = 4.0;
-    restart(&pid, &weight, true, 0.0, 1e-3, 2e-3, 0.0);
+    restart(&pid, &weight, true, 1e-3, 2e-3, 0.0, 0.0);
     weight = 9.0;
-    restart(&pid, &weight, true, 2e-2, 1e-3, 1e-3, 0.0);
+    restart(&pid, &weight, true, 1e-3, 1e-3, 2e-2, 0.0);
     weight = 16.0;
-    restart(&pid, &weight, true, 0.0, 1e-6, 4e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 4e-6, 0.0, 0.0);
     weight = 25.0;
-    restart(&pid, &weight, true, 1e-3, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 1e-6, 1e-3, 0.0);
     check("recording stays enabled after the objective gap rebounds", weight == 9.0);
 
     initialize_pid_state(&pid);
     weight = 4.0;
-    restart(&pid, &weight, true, 0.0, 2e-2, 2e-2, 0.0);
+    restart(&pid, &weight, true, 2e-2, 2e-2, 0.0, 0.0);
     weight = 9.0;
-    restart(&pid, &weight, true, 0.0, 1e-3, 2e-3, 0.0);
+    restart(&pid, &weight, true, 1e-3, 2e-3, 0.0, 0.0);
     weight = 16.0;
-    restart(&pid, &weight, true, 0.0, 1.5e-2, 2e-2, 0.0);
+    restart(&pid, &weight, true, 1.5e-2, 2e-2, 0.0, 0.0);
     weight = 25.0;
-    restart(&pid, &weight, true, 0.0, 1e-6, 4e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 4e-6, 0.0, 0.0);
     weight = 36.0;
-    restart(&pid, &weight, true, 1e-3, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 1e-6, 1e-3, 0.0);
     check("rollback uses the better balance recorded during a residual rebound", weight == 16.0);
 
     initialize_pid_state(&pid);
     weight = 4.0;
-    restart(&pid, &weight, true, 0.0, 1e-6, 8e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 8e-6, 0.0, 0.0);
     weight = 9.0;
-    restart(&pid, &weight, true, 0.0, 4e-6, 1e-6, 0.0);
+    restart(&pid, &weight, true, 4e-6, 1e-6, 0.0, 0.0);
     weight = 16.0;
-    restart(&pid, &weight, true, 1e-3, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 1e-6, 1e-3, 0.0);
     check("balance ranking is symmetric in primal and dual", weight == 9.0);
     weight = 25.0;
-    restart(&pid, &weight, true, 1e-3, 1e-6, 1e-6, 0.95);
+    restart(&pid, &weight, true, 1e-6, 1e-6, 1e-3, 0.95);
     check("high homogeneous ratio leaves the weight unchanged", weight == 25.0);
-    restart(&pid, &weight, true, 1e-3, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, true, 1e-6, 1e-6, 1e-3, 0.0);
     check("high homogeneous ratio preserves guard history", weight == 9.0);
 
     initialize_pid_state(&pid);
     weight = 4.0;
-    restart(&pid, &weight, false, 0.0, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, false, 1e-6, 1e-6, 0.0, 0.0);
     weight = 9.0;
-    restart(&pid, &weight, false, 1e-3, 1e-6, 1e-6, 0.0);
+    restart(&pid, &weight, false, 1e-6, 1e-6, 1e-3, 0.0);
     check("disabled guard does not roll back", weight != 4.0);
 }
 

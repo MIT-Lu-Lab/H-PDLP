@@ -414,7 +414,7 @@ static void scale_problem(
         state->objective_vector_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        state->initial_primal_solution_d,
+        state->primal_initial_solution_d,
         variable_rescaling,
         num_variables);
     CUDA_CHECK(cudaGetLastError());
@@ -426,7 +426,7 @@ static void scale_problem(
         state->stream_A>>>(
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
-        state->initial_dual_solution_d,
+        state->dual_initial_solution_d,
         constraint_rescaling,
         num_constraints);
     CUDA_CHECK(cudaGetLastError());
@@ -581,7 +581,7 @@ static void bound_objective_rescaling(
     scale_bounds_kernel<<<state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
-        state->initial_dual_solution_d,
+        state->dual_initial_solution_d,
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
         num_constraints);
@@ -590,7 +590,7 @@ static void bound_objective_rescaling(
         state->objective_vector_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        state->initial_primal_solution_d,
+        state->primal_initial_solution_d,
         state->constraint_bound_rescaling_d,
         state->objective_vector_rescaling_d,
         num_variables);

@@ -110,6 +110,16 @@ extern "C"
 
     typedef struct
     {
+        double eps_optimal_relative;
+        double eps_feasible_relative;
+        double eps_farkas_homogeneous;
+        double eps_farkas_displacement;
+        double time_sec_limit;
+        int iteration_limit;
+    } termination_criteria_t;
+
+    typedef struct
+    {
         double artificial_restart_threshold;
         double sufficient_reduction_for_restart;
         double necessary_reduction_for_restart;
@@ -127,16 +137,6 @@ extern "C"
         double divergence_margin;
         int max_reverts;
     } active_set_parameters_t;
-
-    typedef struct
-    {
-        double eps_optimal_relative;
-        double eps_feasible_relative;
-        double eps_farkas_homogeneous;
-        double eps_farkas_displacement;
-        double time_sec_limit;
-        int iteration_limit;
-    } termination_criteria_t;
 
     typedef struct
     {

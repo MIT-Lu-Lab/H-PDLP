@@ -84,16 +84,17 @@ static lp_problem_t *build_lp_problem(
     lp_problem_t *prob = (lp_problem_t *)safe_calloc(1, sizeof(lp_problem_t));
     prob->num_variables = A_desc->n;
     prob->num_constraints = A_desc->m;
+    fill_or_copy(&prob->variable_lower_bound, prob->num_variables, var_lb, -INFINITY);
+    fill_or_copy(&prob->variable_upper_bound, prob->num_variables, var_ub, INFINITY);
+    fill_or_copy(&prob->objective_vector, prob->num_variables, objective_c, 0.0);
+    prob->objective_constant = objective_constant ? *objective_constant : 0.0;
+    prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
+
     prob->constraint_matrix_row_pointers = row_ptr;
     prob->constraint_matrix_col_indices = col_ind;
     prob->constraint_matrix_values = vals;
     prob->constraint_matrix_num_nonzeros = nnz;
 
-    prob->objective_constant = objective_constant ? *objective_constant : 0.0;
-    prob->objective_sense = OBJECTIVE_SENSE_MINIMIZE;
-    fill_or_copy(&prob->objective_vector, prob->num_variables, objective_c, 0.0);
-    fill_or_copy(&prob->variable_lower_bound, prob->num_variables, var_lb, -INFINITY);
-    fill_or_copy(&prob->variable_upper_bound, prob->num_variables, var_ub, INFINITY);
     fill_or_copy(&prob->constraint_lower_bound, prob->num_constraints, con_lb, -INFINITY);
     fill_or_copy(&prob->constraint_upper_bound, prob->num_constraints, con_ub, INFINITY);
 
@@ -234,12 +235,12 @@ void lp_problem_free(lp_problem_t *prob)
 {
     if (!prob)
         return;
-    free(prob->constraint_matrix_row_pointers);
-    free(prob->constraint_matrix_col_indices);
-    free(prob->constraint_matrix_values);
     free(prob->variable_lower_bound);
     free(prob->variable_upper_bound);
     free(prob->objective_vector);
+    free(prob->constraint_matrix_row_pointers);
+    free(prob->constraint_matrix_col_indices);
+    free(prob->constraint_matrix_values);
     free(prob->constraint_lower_bound);
     free(prob->constraint_upper_bound);
     free(prob->primal_start);

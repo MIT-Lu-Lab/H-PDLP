@@ -103,12 +103,12 @@ static void initialize_projection_state(
     double *primal = (double *)calloc((size_t)num_variables, sizeof(double));
     primal[0] = INITIAL_PRIMAL;
     CUDA_CHECK(cudaMemcpy(
-        state->initial_primal_solution_d,
+        state->primal_initial_solution_d,
         primal,
         state->var_bytes,
         cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(
-        state->current_primal_solution_d,
+        state->primal_current_solution_d,
         primal,
         state->var_bytes,
         cudaMemcpyHostToDevice));
@@ -121,7 +121,7 @@ static void initialize_projection_state(
             sizeof(CLAMPED_GRADIENT),
             cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemset(
-        state->pdhg_dual_solution_d, 0, state->con_bytes));
+        state->dual_pdhg_solution_d, 0, state->con_bytes));
 
     double hsd_scalars[HSD_SCALARS_COUNT] = {};
     hsd_scalars[HSD_PRIMAL_SCALE_INITIAL] = 1.0;
@@ -159,23 +159,23 @@ static void run_primal_resolvent(
     update_primal_box_cone_resolvent(
         &params->cone_params,
         &state->primal_box_cone_state,
-        state->current_primal_solution_d,
-        state->reflected_primal_solution_d,
-        state->pdhg_primal_solution_d,
-        state->pdhg_primal_projection_multiplier_d,
-        state->initial_primal_solution_d,
+        state->primal_current_solution_d,
+        state->primal_reflected_solution_d,
+        state->primal_pdhg_solution_d,
+        state->primal_pdhg_projection_multiplier_d,
+        state->primal_initial_solution_d,
         state->dual_product_d,
         state->objective_vector_d,
         state->control.step_size_primal_d,
         state->control.step_size_homogeneous_d,
-        state->hsd_dual_scale_reflected_d,
+        state->hsd_dual_reflected_scale_d,
         state->control.inner_count_d,
         1,
         1.0,
-        state->hsd_primal_scale_initial_d,
-        state->hsd_primal_scale_current_d,
-        state->hsd_primal_scale_pdhg_d,
-        state->hsd_primal_scale_reflected_d,
+        state->hsd_primal_initial_scale_d,
+        state->hsd_primal_current_scale_d,
+        state->hsd_primal_pdhg_scale_d,
+        state->hsd_primal_reflected_scale_d,
         is_major,
         state->stream_A);
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
@@ -189,17 +189,17 @@ static void check_major_observation(
     run_primal_resolvent(state, params, true);
 
     check_close("primal scale follows the closed-form resolvent",
-                read_device_double(state->hsd_primal_scale_pdhg_d),
+                read_device_double(state->hsd_primal_pdhg_scale_d),
                 EXPECTED_SCALE, 1e-10);
     check_close("primal shadow follows the closed-form resolvent",
-                read_device_double(state->pdhg_primal_solution_d),
+                read_device_double(state->primal_pdhg_solution_d),
                 EXPECTED_SHADOW, 1e-10);
     check_close("an interior projection records a zero multiplier",
-                read_device_double(state->pdhg_primal_projection_multiplier_d),
+                read_device_double(state->primal_pdhg_projection_multiplier_d),
                 0.0, 1e-10);
     if (num_variables > 1)
         check_close("a clamped projection records its bound multiplier",
-                    read_device_double(state->pdhg_primal_projection_multiplier_d + 1),
+                    read_device_double(state->primal_pdhg_projection_multiplier_d + 1),
                     EXPECTED_CLAMPED_MULTIPLIER, 1e-10);
 }
 
@@ -220,11 +220,11 @@ static void check_interior_column_retained(
                     read_device_double(state->pdhg_reduced_cost_d + 1),
                     0.0, 1e-10);
     check_close("termination preserves the interior projection multiplier",
-                read_device_double(state->pdhg_primal_projection_multiplier_d),
+                read_device_double(state->primal_pdhg_projection_multiplier_d),
                 0.0, 1e-10);
     if (num_variables > 1)
         check_close("termination preserves the clamped projection multiplier",
-                    read_device_double(state->pdhg_primal_projection_multiplier_d + 1),
+                    read_device_double(state->primal_pdhg_projection_multiplier_d + 1),
                     EXPECTED_CLAMPED_MULTIPLIER, 1e-10);
 
     state->control.total_count = EVALUATION_ITERATION;
@@ -258,7 +258,7 @@ static void check_non_major_preserves_observation(
     for (int j = 0; j < num_variables; ++j)
         unwritten_observation[j] = UNWRITTEN_OBSERVATION - j;
     CUDA_CHECK(cudaMemcpy(
-        state->pdhg_primal_projection_multiplier_d,
+        state->primal_pdhg_projection_multiplier_d,
         unwritten_observation,
         state->var_bytes,
         cudaMemcpyHostToDevice));
@@ -267,7 +267,7 @@ static void check_non_major_preserves_observation(
 
     CUDA_CHECK(cudaMemcpy(
         observation_after_non_major,
-        state->pdhg_primal_projection_multiplier_d,
+        state->primal_pdhg_projection_multiplier_d,
         state->var_bytes,
         cudaMemcpyDeviceToHost));
     bool observation_preserved = true;

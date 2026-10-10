@@ -68,8 +68,8 @@ hpdlp_result_t *create_result_from_state(
         {
             const double *primal_input_d =
                 from_displacement
-                    ? state->delta_primal_solution_d
-                    : state->pdhg_primal_solution_d;
+                    ? state->primal_delta_solution_d
+                    : state->primal_pdhg_solution_d;
             result->primal_solution = (double *)safe_malloc(state->var_bytes);
             rescale_solution_component_kernel<<<
                 state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -86,8 +86,8 @@ hpdlp_result_t *create_result_from_state(
         {
             const double *dual_input_d =
                 from_displacement
-                    ? state->delta_dual_solution_d
-                    : state->pdhg_dual_solution_d;
+                    ? state->dual_delta_solution_d
+                    : state->dual_pdhg_solution_d;
             result->dual_solution = (double *)safe_malloc(state->con_bytes);
             rescale_solution_component_kernel<<<
                 state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -140,13 +140,13 @@ hpdlp_result_t *create_result_from_state(
     result->termination_reason = state->control.termination_reason;
 
     result->restart_count = state->control.restart_count;
-    result->active_set_raise_count = state->active_set.raise_count;
-    result->active_set_revert_count = state->active_set.revert_count;
-    result->active_set_power_iteration_count = state->active_set.power_iteration_count;
-    result->homogeneous_scale = state->metrics_h->pdhg_primal_scale;
+    result->homogeneous_scale = state->metrics_h->primal_pdhg_scale;
     result->final_step_size_primal = state->control.step_size_primal;
     result->final_step_size_dual = state->control.step_size_dual;
     result->final_step_size_homogeneous = state->control.step_size_homogeneous;
+    result->active_set_raise_count = state->active_set.raise_count;
+    result->active_set_revert_count = state->active_set.revert_count;
+    result->active_set_power_iteration_count = state->active_set.power_iteration_count;
 
     return result;
 }
@@ -155,7 +155,7 @@ static double compute_result_divisor(const pdhg_solver_state_t *state)
 {
     if (state->control.termination_reason != TERMINATION_REASON_PRIMAL_INFEASIBLE &&
         state->control.termination_reason != TERMINATION_REASON_DUAL_INFEASIBLE)
-        return state->metrics_h->pdhg_primal_scale;
+        return state->metrics_h->primal_pdhg_scale;
 
     termination_reductions_t reductions_h;
     CUDA_CHECK(cudaMemcpy(&reductions_h, state->termination_reductions_d,

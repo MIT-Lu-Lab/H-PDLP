@@ -163,7 +163,7 @@ static void check_active_set_resources(bool step_size_boost)
     check("active-set constraint observations follow enablement",
           (active_set->constraint_dual_projection_input_d != NULL) == step_size_boost);
     check("primal projection multipliers are available without the boost",
-          state->pdhg_primal_projection_multiplier_d != NULL);
+          state->primal_pdhg_projection_multiplier_d != NULL);
     check("active-set variable history follows enablement",
           (active_set->variable_last_free_iter_d != NULL) == step_size_boost);
     check("active-set constraint history follows enablement",
@@ -471,34 +471,34 @@ static void check_active_set_revert_state(void)
 
     revert_active_set_step_size(state, &params);
 
-    double restored_initial_primal[NUM_VARIABLES];
-    double restored_current_primal[NUM_VARIABLES];
-    double restored_pdhg_primal[NUM_VARIABLES];
-    double restored_initial_dual[NUM_CONSTRAINTS];
-    double restored_current_dual[NUM_CONSTRAINTS];
-    double restored_pdhg_dual[NUM_CONSTRAINTS];
+    double restored_primal_initial[NUM_VARIABLES];
+    double restored_primal_current[NUM_VARIABLES];
+    double restored_primal_pdhg[NUM_VARIABLES];
+    double restored_dual_initial[NUM_CONSTRAINTS];
+    double restored_dual_current[NUM_CONSTRAINTS];
+    double restored_dual_pdhg[NUM_CONSTRAINTS];
     double restored_reduced_cost[NUM_VARIABLES];
     double restored_multiplier[NUM_VARIABLES];
     double restored_hsd_scalars[HSD_SCALARS_COUNT];
     double restored_cone_scale_history[BOX_CONE_SCALE_COUNT];
     CUDA_CHECK(cudaMemcpy(
-        restored_initial_primal, state->initial_primal_solution_d,
-        sizeof(restored_initial_primal), cudaMemcpyDeviceToHost));
+        restored_primal_initial, state->primal_initial_solution_d,
+        sizeof(restored_primal_initial), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
-        restored_current_primal, state->current_primal_solution_d,
-        sizeof(restored_current_primal), cudaMemcpyDeviceToHost));
+        restored_primal_current, state->primal_current_solution_d,
+        sizeof(restored_primal_current), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
-        restored_pdhg_primal, state->pdhg_primal_solution_d,
-        sizeof(restored_pdhg_primal), cudaMemcpyDeviceToHost));
+        restored_primal_pdhg, state->primal_pdhg_solution_d,
+        sizeof(restored_primal_pdhg), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
-        restored_initial_dual, state->initial_dual_solution_d,
-        sizeof(restored_initial_dual), cudaMemcpyDeviceToHost));
+        restored_dual_initial, state->dual_initial_solution_d,
+        sizeof(restored_dual_initial), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
-        restored_current_dual, state->current_dual_solution_d,
-        sizeof(restored_current_dual), cudaMemcpyDeviceToHost));
+        restored_dual_current, state->dual_current_solution_d,
+        sizeof(restored_dual_current), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
-        restored_pdhg_dual, state->pdhg_dual_solution_d,
-        sizeof(restored_pdhg_dual), cudaMemcpyDeviceToHost));
+        restored_dual_pdhg, state->dual_pdhg_solution_d,
+        sizeof(restored_dual_pdhg), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
         restored_reduced_cost, state->pdhg_reduced_cost_d,
         sizeof(restored_reduced_cost), cudaMemcpyDeviceToHost));
@@ -509,7 +509,7 @@ static void check_active_set_revert_state(void)
         restored_cone_scale_history, state->dual_box_cone_state.scale_history_d,
         sizeof(restored_cone_scale_history), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(
-        restored_multiplier, state->pdhg_primal_projection_multiplier_d,
+        restored_multiplier, state->primal_pdhg_projection_multiplier_d,
         sizeof(restored_multiplier), cudaMemcpyDeviceToHost));
 
     bool iterates_restored = true;
@@ -517,18 +517,18 @@ static void check_active_set_revert_state(void)
     bool multipliers_restored = true;
     for (int j = 0; j < NUM_VARIABLES; ++j)
     {
-        iterates_restored &= restored_initial_primal[j] == anchor_primal[j];
-        iterates_restored &= restored_current_primal[j] == anchor_primal[j];
-        iterates_restored &= restored_pdhg_primal[j] == anchor_primal[j];
+        iterates_restored &= restored_primal_initial[j] == anchor_primal[j];
+        iterates_restored &= restored_primal_current[j] == anchor_primal[j];
+        iterates_restored &= restored_primal_pdhg[j] == anchor_primal[j];
         reduced_cost_untouched &=
             restored_reduced_cost[j] == existing_reduced_cost[j];
         multipliers_restored &= restored_multiplier[j] == anchor_multiplier[j];
     }
     for (int i = 0; i < NUM_CONSTRAINTS; ++i)
     {
-        iterates_restored &= restored_initial_dual[i] == anchor_dual[i];
-        iterates_restored &= restored_current_dual[i] == anchor_dual[i];
-        iterates_restored &= restored_pdhg_dual[i] == anchor_dual[i];
+        iterates_restored &= restored_dual_initial[i] == anchor_dual[i];
+        iterates_restored &= restored_dual_current[i] == anchor_dual[i];
+        iterates_restored &= restored_dual_pdhg[i] == anchor_dual[i];
     }
     bool hsd_state_restored = true;
     for (int i = 0; i < HSD_SCALARS_COUNT; ++i)

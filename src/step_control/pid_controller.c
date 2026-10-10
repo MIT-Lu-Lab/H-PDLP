@@ -20,9 +20,9 @@ limitations under the License.
 static void reset_pid_errors(pid_state_t *pid);
 static bool apply_primal_weight_safeguard(pid_state_t *pid,
                                           double *primal_weight,
-                                          double relative_objective_gap,
                                           double relative_primal_residual,
-                                          double relative_dual_residual);
+                                          double relative_dual_residual,
+                                          double relative_objective_gap);
 static void apply_pid_update(pid_state_t *pid,
                              double *primal_weight,
                              const step_size_parameters_t *step_size_params,
@@ -50,9 +50,9 @@ void apply_restart_pid(pid_state_t *pid,
                        const step_size_parameters_t *step_size_params,
                        double primal_dist,
                        double dual_dist,
-                       double relative_objective_gap,
                        double relative_primal_residual,
                        double relative_dual_residual,
+                       double relative_objective_gap,
                        double homogeneous_scale,
                        double homogeneous_ratio)
 {
@@ -63,8 +63,8 @@ void apply_restart_pid(pid_state_t *pid,
     }
 
     if (step_size_params->primal_weight_safeguard &&
-        apply_primal_weight_safeguard(pid, primal_weight, relative_objective_gap,
-                                      relative_primal_residual, relative_dual_residual))
+        apply_primal_weight_safeguard(pid, primal_weight, relative_primal_residual,
+                                      relative_dual_residual, relative_objective_gap))
         return;
 
     double scale_reference = fmax(homogeneous_scale, 1e-300);
@@ -84,15 +84,15 @@ void apply_restart_pid(pid_state_t *pid,
 
 static bool apply_primal_weight_safeguard(pid_state_t *pid,
                                           double *primal_weight,
-                                          double relative_objective_gap,
                                           double relative_primal_residual,
-                                          double relative_dual_residual)
+                                          double relative_dual_residual,
+                                          double relative_objective_gap)
 {
     const double kkt_recording_threshold = 1e-2;
     const double kkt_activation_threshold = 1e-5;
     const double kkt_growth_factor = 100.0;
-    double kkt_error = fmax(relative_objective_gap,
-                            fmax(relative_primal_residual, relative_dual_residual));
+    double kkt_error = fmax(fmax(relative_primal_residual, relative_dual_residual),
+                            relative_objective_gap);
 
     if (pid->min_kkt_error < kkt_activation_threshold &&
         pid->balanced_primal_weight > 0.0 &&
