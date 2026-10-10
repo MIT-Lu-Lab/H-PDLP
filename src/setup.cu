@@ -38,7 +38,7 @@ __global__ void build_row_ind_kernel(
     const int *__restrict__ row_ptr,
     int num_rows,
     int *__restrict__ row_ind);
-__global__ void init_hsd_scalars_kernel(double *hsd_scalars_d);
+__global__ void initialize_hsd_scalars_kernel(double *hsd_scalars_d);
 static void upload_problem_data(
     pdhg_solver_state_t *state,
     const lp_problem_t *working_problem);
@@ -133,7 +133,7 @@ void initialize_solver_state(
     initialize_newton_workspaces(state);
     apply_warm_starts(state, working_problem);
 
-    init_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
+    initialize_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(state->hsd_scalars_d);
 
     setup_sparse_resources(state);
 
@@ -734,7 +734,7 @@ __global__ void build_row_ind_kernel(
         row_ind[k] = row;
 }
 
-__global__ void init_hsd_scalars_kernel(double *hsd_scalars_d)
+__global__ void initialize_hsd_scalars_kernel(double *hsd_scalars_d)
 {
     for (int i = 0; i < HSD_SCALARS_COUNT; ++i)
         hsd_scalars_d[i] = 1.0;

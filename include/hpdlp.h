@@ -48,7 +48,7 @@ extern "C"
     HPDLP_API int hpdlp_validate_parameters(const pdhg_parameters_t *params,
                                              char *error, size_t error_size);
 
-    HPDLP_API void hpdlp_result_free(hpdlp_result_t *results);
+    HPDLP_API void hpdlp_result_free(hpdlp_result_t *result);
 
     HPDLP_API void lp_problem_free(lp_problem_t *prob);
 

@@ -201,15 +201,15 @@ hpdlp_result_t *solve_lp_problem(
     return optimize(&local_params, prob);
 }
 
-void hpdlp_result_free(hpdlp_result_t *results)
+void hpdlp_result_free(hpdlp_result_t *result)
 {
-    if (results == NULL)
+    if (!result)
         return;
 
-    free(results->primal_solution);
-    free(results->dual_solution);
-    free(results->reduced_cost);
-    free(results);
+    free(result->primal_solution);
+    free(result->dual_solution);
+    free(result->reduced_cost);
+    free(result);
 }
 
 void lp_problem_free(lp_problem_t *prob)

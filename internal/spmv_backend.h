@@ -25,8 +25,8 @@ extern "C"
 
     typedef struct {
         cusparseSpMatDescr_t matrix;
-        void *descriptor;
-        void *plan;
+        void *spmvop_descriptor;
+        void *spmvop_plan;
         void *buffer;
     } spmv_plan_t;
 

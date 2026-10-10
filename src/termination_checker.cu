@@ -634,18 +634,16 @@ __global__ void compute_residual_kernel(
                       ? 0.0
                       : reduced_cost * inverse_primal_scale * var_rescaling[idx];
 
-        double multiplier_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
-        double multiplier_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
-        double bound_multiplier = fmax(multiplier_lower_bound,
-                                       fmin(reduced_cost, multiplier_upper_bound));
+        double reduced_cost_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
+        double reduced_cost_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
+        double bound_multiplier = fmax(reduced_cost_lower_bound,
+                                       fmin(reduced_cost, reduced_cost_upper_bound));
         bound_multiplier_out[idx] = bound_multiplier;
         bound_multiplier_dual_res[idx] = (reduced_cost - bound_multiplier)
                                        * inverse_primal_scale * var_rescaling[idx];
 
-        double farkas_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
-        double farkas_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
-        double farkas_reduced_cost = fmax(farkas_lower_bound,
-                                          fmin(-aty, farkas_upper_bound));
+        double farkas_reduced_cost = fmax(reduced_cost_lower_bound,
+                                          fmin(-aty, reduced_cost_upper_bound));
         primal_infeasibility_reduced_cost[idx] = farkas_reduced_cost;
         primal_infeasibility_stationarity_res[idx] =
             (aty + farkas_reduced_cost) * var_rescaling[idx];
@@ -787,6 +785,7 @@ __global__ void compute_termination_metrics_kernel(
 {
     double primal_scale = *primal_pdhg_scale;
     double inv_primal_scale = (fabs(primal_scale) > 1e-50) ? 1.0 / primal_scale : 0.0;
+    double bound_objective_scale = constraint_bound_rescaling * objective_vector_rescaling;
     double dual_scale = *dual_pdhg_scale;
     double absolute_primal_residual = reductions->primal_residual_norm / constraint_bound_rescaling;
     double absolute_dual_residual = reductions->dual_residual_norm / objective_vector_rescaling;
@@ -795,10 +794,10 @@ __global__ void compute_termination_metrics_kernel(
                                   + reductions->variable_support;
 
     double primal_objective_value = objective_dot_primal_value * inv_primal_scale
-                                  / (constraint_bound_rescaling * objective_vector_rescaling)
+                                  / bound_objective_scale
                                   + objective_constant;
     double dual_objective_value = support_dual_objective * inv_primal_scale
-                                / (constraint_bound_rescaling * objective_vector_rescaling)
+                                / bound_objective_scale
                                 + objective_constant;
     double objective_gap = fabs(primal_objective_value - dual_objective_value);
     double relative_primal_residual = absolute_primal_residual / (1.0 + original_bound_norm);
@@ -809,7 +808,7 @@ __global__ void compute_termination_metrics_kernel(
         reductions->bound_multiplier_dual_residual_norm / objective_vector_rescaling;
     double bound_multiplier_dual_objective =
         (reductions->constraint_support + reductions->bound_multiplier_variable_support)
-        * inv_primal_scale / (constraint_bound_rescaling * objective_vector_rescaling)
+        * inv_primal_scale / bound_objective_scale
         + objective_constant;
     double bound_multiplier_objective_gap =
         fabs(primal_objective_value - bound_multiplier_dual_objective);
@@ -829,8 +828,8 @@ __global__ void compute_termination_metrics_kernel(
     metrics_d->bound_multiplier_objective_gap = bound_multiplier_objective_gap;
     metrics_d->bound_multiplier_relative_objective_gap = bound_multiplier_objective_gap
         / (1.0 + fabs(primal_objective_value) + fabs(bound_multiplier_dual_objective));
-    metrics_d->primal_current_scale   = *primal_current_scale;
-    metrics_d->primal_pdhg_scale      = primal_scale;
+    metrics_d->primal_current_scale = *primal_current_scale;
+    metrics_d->primal_pdhg_scale = primal_scale;
     metrics_d->dual_pdhg_scale = dual_scale;
 
     double primal_solution_norm = metrics_d->primal_solution_norm;
@@ -856,20 +855,18 @@ __global__ void compute_termination_metrics_kernel(
                                             ? homogeneous_gap_positive / ratio_denominator
                                             : 0.0;
 
-    double stationarity_residual_norm = reductions->primal_infeasibility_stationarity_residual_norm;
-    double original_dual_norm = reductions->original_dual_ray_norm;
-    double original_reduced_cost_norm = reductions->original_reduced_cost_ray_norm;
-    double original_dual_ray_norm = fmax(original_dual_norm, original_reduced_cost_norm);
-    double inv_original_dual_ray_norm = (original_dual_ray_norm > 1e-30)
-                                      ? 1.0 / original_dual_ray_norm
-                                      : 0.0;
+    double dual_certificate_norm = fmax(reductions->original_dual_ray_norm,
+                                        reductions->original_reduced_cost_ray_norm);
+    double inv_dual_certificate_norm = (dual_certificate_norm > 1e-30)
+                                     ? 1.0 / dual_certificate_norm
+                                     : 0.0;
     double support_total = (reductions->constraint_support
                           + reductions->homogeneous_variable_support)
                          / constraint_bound_rescaling;
     metrics_d->primal_infeasibility_homogeneous_margin =
-        support_total * inv_original_dual_ray_norm;
+        support_total * inv_dual_certificate_norm;
     metrics_d->primal_infeasibility_homogeneous_residual =
-        stationarity_residual_norm * inv_original_dual_ray_norm;
+        reductions->primal_infeasibility_stationarity_residual_norm * inv_dual_certificate_norm;
 
     double original_primal_ray_norm = reductions->original_primal_ray_norm;
     double inv_original_primal_ray_norm = (original_primal_ray_norm > 1e-30)
@@ -884,16 +881,15 @@ __global__ void compute_termination_metrics_kernel(
              reductions->variable_recession_residual_norm
                  * inv_original_primal_ray_norm);
 
-    double ray_scale = constraint_bound_rescaling * objective_vector_rescaling;
     metrics_d->primal_infeasibility_displacement_margin =
         (reductions->primal_infeasibility_constraint_support
          + reductions->primal_infeasibility_variable_support)
-        / ray_scale;
+        / bound_objective_scale;
     metrics_d->primal_infeasibility_displacement_residual =
         reductions->primal_infeasibility_residual
         / objective_vector_rescaling;
     metrics_d->dual_infeasibility_displacement_margin =
-        -reductions->dual_infeasibility_objective / ray_scale;
+        -reductions->dual_infeasibility_objective / bound_objective_scale;
     metrics_d->dual_infeasibility_displacement_residual =
         reductions->dual_infeasibility_residual
         / constraint_bound_rescaling;

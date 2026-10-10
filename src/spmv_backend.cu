@@ -46,8 +46,8 @@ void create_spmv_plan(
         handle, &spmvop_descriptor, CUSPARSE_OPERATION_NON_TRANSPOSE, matrix,
         input, output, output, CUDA_R_64F, CUSPARSE_SPMVOP_ALG2, plan->buffer));
     CUSPARSE_CHECK(cusparseSpMVOp_createPlan(handle, spmvop_descriptor, &spmvop_plan, NULL, 0));
-    plan->descriptor = (void *)spmvop_descriptor;
-    plan->plan = (void *)spmvop_plan;
+    plan->spmvop_descriptor = (void *)spmvop_descriptor;
+    plan->spmvop_plan = (void *)spmvop_plan;
 #else
     CUSPARSE_CHECK(cusparseSpMV_bufferSize(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, matrix, input,
@@ -56,8 +56,8 @@ void create_spmv_plan(
     CUSPARSE_CHECK(cusparseSpMV_preprocess(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, matrix, input,
         &HOST_ZERO, output, CUDA_R_64F, CUSPARSE_SPMV_CSR_ALG2, plan->buffer));
-    plan->descriptor = NULL;
-    plan->plan = NULL;
+    plan->spmvop_descriptor = NULL;
+    plan->spmvop_plan = NULL;
 #endif
 }
 
@@ -69,7 +69,7 @@ void execute_spmv(
 {
 #if HPDLP_HAS_SPMVOP
     CUSPARSE_CHECK(cusparseSpMVOp(
-        handle, (cusparseSpMVOpPlan_t)plan->plan, &HOST_ONE, &HOST_ZERO, input, output, output));
+        handle, (cusparseSpMVOpPlan_t)plan->spmvop_plan, &HOST_ONE, &HOST_ZERO, input, output, output));
 #else
     CUSPARSE_CHECK(cusparseSpMV(
         handle, CUSPARSE_OPERATION_NON_TRANSPOSE, &HOST_ONE, plan->matrix, input,
@@ -80,13 +80,13 @@ void execute_spmv(
 void destroy_spmv_plan(spmv_plan_t *plan)
 {
 #if HPDLP_HAS_SPMVOP
-    if (plan->plan)
-        CUSPARSE_CHECK(cusparseSpMVOp_destroyPlan((cusparseSpMVOpPlan_t)plan->plan));
-    if (plan->descriptor)
-        CUSPARSE_CHECK(cusparseSpMVOp_destroyDescr((cusparseSpMVOpDescr_t)plan->descriptor));
+    if (plan->spmvop_plan)
+        CUSPARSE_CHECK(cusparseSpMVOp_destroyPlan((cusparseSpMVOpPlan_t)plan->spmvop_plan));
+    if (plan->spmvop_descriptor)
+        CUSPARSE_CHECK(cusparseSpMVOp_destroyDescr((cusparseSpMVOpDescr_t)plan->spmvop_descriptor));
 #endif
-    plan->plan = NULL;
-    plan->descriptor = NULL;
+    plan->spmvop_plan = NULL;
+    plan->spmvop_descriptor = NULL;
     if (plan->buffer)
         CUDA_CHECK(cudaFree(plan->buffer));
     plan->buffer = NULL;

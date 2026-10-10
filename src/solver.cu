@@ -57,16 +57,16 @@ typedef struct {
 } solve_resources_t;
 
 __global__ void compute_delta_kernel(
-    const double *__restrict__ primal_initial,
-    const double *__restrict__ primal_pdhg,
+    const double *__restrict__ primal_from,
+    const double *__restrict__ primal_to,
     double *__restrict__ primal_delta,
-    const double *__restrict__ dual_initial,
-    const double *__restrict__ dual_pdhg,
+    const double *__restrict__ dual_from,
+    const double *__restrict__ dual_to,
     double *__restrict__ dual_delta,
     int n_vars,
     int n_cons);
 __global__ void compute_fixed_point_error_kernel(
-    double *fixed_point_error_d,
+    double *fixed_point_error,
     const fixed_point_reductions_t *reductions,
     const double *primal_pdhg_scale,
     const double *primal_reflected_scale,
@@ -973,11 +973,11 @@ static void working_problem_free(working_problem_t *working)
 }
 
 __global__ void compute_delta_kernel(
-    const double *__restrict__ primal_initial,
-    const double *__restrict__ primal_pdhg,
+    const double *__restrict__ primal_from,
+    const double *__restrict__ primal_to,
     double *__restrict__ primal_delta,
-    const double *__restrict__ dual_initial,
-    const double *__restrict__ dual_pdhg,
+    const double *__restrict__ dual_from,
+    const double *__restrict__ dual_to,
     double *__restrict__ dual_delta,
     int n_vars,
     int n_cons)
@@ -985,17 +985,17 @@ __global__ void compute_delta_kernel(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n_vars)
     {
-        primal_delta[i] = primal_pdhg[i] - primal_initial[i];
+        primal_delta[i] = primal_to[i] - primal_from[i];
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        dual_delta[idx] = dual_pdhg[idx] - dual_initial[idx];
+        dual_delta[idx] = dual_to[idx] - dual_from[idx];
     }
 }
 
 __global__ void compute_fixed_point_error_kernel(
-    double *fixed_point_error_d,
+    double *fixed_point_error,
     const fixed_point_reductions_t *reductions,
     const double *primal_pdhg_scale,
     const double *primal_reflected_scale,
@@ -1021,7 +1021,7 @@ __global__ void compute_fixed_point_error_kernel(
     double interaction =
         -2.0 * (primal_delta_scale * delta_constraint_offset + operator_cross_term);
     const double squared_error = movement + interaction;
-    fixed_point_error_d[0] =
+    fixed_point_error[0] =
         isfinite(squared_error) ? sqrt(fmax(0.0, squared_error)) : INFINITY;
 }
 

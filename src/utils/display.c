@@ -20,6 +20,7 @@ limitations under the License.
 #include "spmv_backend.h"
 #include "termination_checker.h"
 #include <stdio.h>
+#include <string.h>
 
 #define SETTING_LABEL_WIDTH 32
 
@@ -28,14 +29,14 @@ limitations under the License.
         if ((current) != (default_val)) { \
             printf("  %-*s : %d\n", SETTING_LABEL_WIDTH, name, current); \
         } \
-    } while(0)
+    } while (0)
 
 #define PRINT_DIFF_DBL(name, current, default_val) \
     do { \
         if ((current) != (default_val)) { \
             printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, name, (double)(current)); \
         } \
-    } while(0)
+    } while (0)
 
 #define PRINT_DIFF_BOOL(name, current, default_val) \
     do { \
@@ -44,6 +45,7 @@ limitations under the License.
         } \
     } while (0)
 
+static void print_centered(const char *text);
 static void print_iteration_divider(bool diagnose);
 static int get_print_frequency(int iter);
 
@@ -51,6 +53,8 @@ const char *termination_reason_to_string(termination_reason_t reason)
 {
     switch (reason)
     {
+    case TERMINATION_REASON_UNSPECIFIED:
+        return "UNSPECIFIED";
     case TERMINATION_REASON_OPTIMAL:
         return "OPTIMAL";
     case TERMINATION_REASON_PRIMAL_INFEASIBLE:
@@ -65,8 +69,6 @@ const char *termination_reason_to_string(termination_reason_t reason)
         return "ITERATION_LIMIT";
     case TERMINATION_REASON_NUMERICAL_FAILURE:
         return "NUMERICAL_FAILURE";
-    case TERMINATION_REASON_UNSPECIFIED:
-        return "UNSPECIFIED";
     default:
         return "UNKNOWN";
     }
@@ -76,22 +78,18 @@ void print_initial_info(
     const pdhg_parameters_t *params,
     const lp_problem_t *problem)
 {
-    pdhg_parameters_t default_params;
-    set_default_parameters(&default_params);
-
     if (!params->verbose)
     {
         return;
     }
+    pdhg_parameters_t default_params;
+    set_default_parameters(&default_params);
+
     printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
-    printf("%*sH-PDLP v%s\n", (124 - (int)(sizeof("H-PDLP v" HPDLP_VERSION) - 1)) / 2,
-           "", HPDLP_VERSION);
-    printf("%*sA GPU-Accelerated First-Order LP Solver\n", (124 - 39) / 2, "");
-    printf(
-        "%*s(c) Haihao Lu, Massachusetts Institute of Technology, 2026\n",
-        (124 - 58) / 2,
-        "");
+    print_centered("H-PDLP v" HPDLP_VERSION);
+    print_centered("A GPU-Accelerated First-Order LP Solver");
+    print_centered("(c) Haihao Lu, Massachusetts Institute of Technology, 2026");
     printf("-----------------------------------------------------------"
            "-----------------------------------------------------------------\n");
     printf("\n");
@@ -218,6 +216,11 @@ void print_initial_info(
     PRINT_DIFF_INT("asb_max_reverts",
                    params->active_set_params.max_reverts,
                    default_params.active_set_params.max_reverts);
+}
+
+static void print_centered(const char *text)
+{
+    printf("%*s%s\n", (124 - (int)strlen(text)) / 2, "", text);
 }
 
 #undef PRINT_DIFF_INT

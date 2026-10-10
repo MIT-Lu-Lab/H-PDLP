@@ -134,7 +134,8 @@ static void geometric_mean_rescaling(
     double *variable_rescaling);
 static void compute_longest_csr_rows(
     pdhg_solver_state_t *state,
-    int *longest);
+    int *longest_row,
+    int *longest_column);
 static int compute_log2_vector_width(
     long long num_nonzeros,
     int num_rows,
@@ -167,16 +168,16 @@ void rescale_problem(
 {
     const scaling_parameters_t *scaling_params = &params->scaling_params;
     const power_iteration_parameters_t *power_iter_params = &params->power_iter_params;
-    norm_type_t optimality_norm = params->optimality_norm;
-    bool verbose = params->verbose;
+    const norm_type_t optimality_norm = params->optimality_norm;
+    const bool verbose = params->verbose;
 
     if (verbose)
     {
         printf("\nPreconditioning...\n");
     }
 
-    int num_variables = state->num_variables;
-    int num_constraints = state->num_constraints;
+    const int num_variables = state->num_variables;
+    const int num_constraints = state->num_constraints;
 
     clock_t start_rescaling = clock();
 
@@ -246,8 +247,8 @@ void rescale_problem(
             state->curand_gen,
             state->constraint_matrix,
             state->constraint_matrix_t,
-            state->num_constraints,
-            state->num_variables);
+            num_constraints,
+            num_variables);
         const sv_estimator_result_t estimate =
             sv_estimator_run(estimator, &opts);
         sv_estimator_free(estimator);
@@ -286,12 +287,12 @@ static void geometric_mean_rescaling(
     fill_vector_kernel<<<state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
         variable_rescaling, num_variables, 1.0);
 
-    int longest[2] = {0, 0};
-    compute_longest_csr_rows(state, longest);
+    int longest_row, longest_column;
+    compute_longest_csr_rows(state, &longest_row, &longest_column);
 
     const long long num_nonzeros = state->constraint_matrix->num_nonzeros;
-    const int row_log2 = compute_log2_vector_width(num_nonzeros, num_constraints, longest[0]);
-    const int col_log2 = compute_log2_vector_width(num_nonzeros, num_variables, longest[1]);
+    const int row_log2 = compute_log2_vector_width(num_nonzeros, num_constraints, longest_row);
+    const int col_log2 = compute_log2_vector_width(num_nonzeros, num_variables, longest_column);
     const int row_blocks =
         (int)((((long long)num_constraints << row_log2) + THREADS_PER_BLOCK) / THREADS_PER_BLOCK);
     const int col_blocks =
@@ -347,7 +348,8 @@ static void geometric_mean_rescaling(
 
 static void compute_longest_csr_rows(
     pdhg_solver_state_t *state,
-    int *longest)
+    int *longest_row,
+    int *longest_column)
 {
     int *longest_d = NULL;
     CUDA_CHECK(cudaMalloc(&longest_d, 2 * sizeof(int)));
@@ -370,6 +372,7 @@ static void compute_longest_csr_rows(
         state->num_variables,
         longest_d + 1);
 
+    int longest[2];
     CUDA_CHECK(cudaMemcpyAsync(
         longest,
         longest_d,
@@ -378,6 +381,8 @@ static void compute_longest_csr_rows(
         state->stream_A));
     CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
     CUDA_CHECK(cudaFree(longest_d));
+    *longest_row = longest[0];
+    *longest_column = longest[1];
 }
 
 static int compute_log2_vector_width(
@@ -402,9 +407,9 @@ static void scale_problem(
     double *constraint_rescaling,
     double *variable_rescaling)
 {
-    int num_variables = state->num_variables;
-    int num_constraints = state->num_constraints;
-    int num_nonzeros = state->constraint_matrix->num_nonzeros;
+    const int num_variables = state->num_variables;
+    const int num_constraints = state->num_constraints;
+    const int num_nonzeros = state->constraint_matrix->num_nonzeros;
 
     scale_variables_kernel<<<
         state->num_blocks_primal,
@@ -567,7 +572,7 @@ static void bound_objective_rescaling(
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
-        state->num_variables,
+        num_variables,
         state->objective_vector_d,
         1,
         state->objective_norm_workspace_mp));
