@@ -33,3 +33,15 @@ hpdlp_add_test(test_result_export unit/gpu/test_result_export.cu "gpu")
 
 hpdlp_add_test(test_solver_results integration/test_solver_results.c "gpu;integration")
 hpdlp_add_test(test_solver_contracts integration/test_solver_contracts.c "gpu;integration")
+
+if(TARGET hpdlp_cli)
+  foreach(mode cpu gpu)
+    add_test(NAME test_cli_${mode}
+      COMMAND ${CMAKE_COMMAND} -DCLI=$<TARGET_FILE:hpdlp_cli> -DMODE=${mode}
+              -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/cli_${mode}
+              -P ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli.cmake)
+  endforeach()
+  set_tests_properties(test_cli_cpu PROPERTIES LABELS "cpu;integration")
+  set_tests_properties(test_cli_gpu PROPERTIES LABELS "gpu;integration"
+    RESOURCE_LOCK cuda_device TIMEOUT 120)
+endif()
