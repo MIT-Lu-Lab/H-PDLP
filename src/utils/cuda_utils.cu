@@ -175,7 +175,6 @@ void reduce_device_sum(
         output,
         length,
         state->stream_A));
-    CUDA_CHECK(cudaGetLastError());
 }
 
 void reduce_device_max(
@@ -191,7 +190,6 @@ void reduce_device_max(
         output,
         length,
         state->stream_A));
-    CUDA_CHECK(cudaGetLastError());
 }
 
 void reduce_device_abs_max(
@@ -216,7 +214,6 @@ void reduce_device_abs_max(
         output,
         length,
         state->stream_A));
-    CUDA_CHECK(cudaGetLastError());
 }
 
 __global__ void compute_objective_norm_entries_kernel(

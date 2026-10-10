@@ -691,9 +691,6 @@ static void compute_fixed_point_error(
         metric_step_size_primal,
         metric_step_size_dual,
         metric_step_size_homogeneous);
-
-    CUDA_CHECK(cudaEventRecord(state->event_A, state->stream_A));
-    CUDA_CHECK(cudaStreamWaitEvent(state->stream_At, state->event_A, 0));
 }
 
 static void perform_active_set_boost_revert(

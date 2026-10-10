@@ -69,8 +69,7 @@ static void create_dense_vector_descriptor(
     cusparseDnVecDescr_t *descriptor,
     int length,
     double *values);
-static void release_preprocessing_resources(pdhg_solver_state_t *state);
-static void release_setup_only_matrix_data(pdhg_solver_state_t *state);
+static void release_setup_only_resources(pdhg_solver_state_t *state);
 static void initialize_iterates_from_starts(pdhg_solver_state_t *state);
 static void initialize_convergence_tracking(pdhg_solver_state_t *state);
 static void free_sparse_resources(pdhg_solver_state_t *state);
@@ -166,8 +165,7 @@ void initialize_solver_state(
 
     rescale_problem(params, state);
 
-    release_preprocessing_resources(state);
-    release_setup_only_matrix_data(state);
+    release_setup_only_resources(state);
     initialize_iterates_from_starts(state);
     initialize_convergence_tracking(state);
 
@@ -194,11 +192,9 @@ static void upload_problem_data(
                                 working_problem->constraint_matrix_values,
                                 (size_t)nnz * sizeof(double));
 
-    const size_t row_index_count =
-        (nnz > 0) ? (size_t)nnz : 1;
-    CUDA_CHECK(cudaMalloc(
-        &state->constraint_matrix->row_ind,
-        row_index_count * sizeof(int)));
+    allocate_zeroed_device_buffer(
+        (void **)&state->constraint_matrix->row_ind,
+        (size_t)nnz * sizeof(int));
     build_row_ind_kernel<<<
         state->num_blocks_dual,
         THREADS_PER_BLOCK,
@@ -516,7 +512,6 @@ static void create_csr_descriptor(
         CUSPARSE_INDEX_32I,
         CUSPARSE_INDEX_BASE_ZERO,
         CUDA_R_64F));
-    CUDA_CHECK(cudaGetLastError());
 }
 
 static void create_dense_vector_descriptor(
@@ -527,17 +522,12 @@ static void create_dense_vector_descriptor(
     CUSPARSE_CHECK(cusparseCreateDnVec(descriptor, length, values, CUDA_R_64F));
 }
 
-static void release_preprocessing_resources(
-    pdhg_solver_state_t *state)
+static void release_setup_only_resources(pdhg_solver_state_t *state)
 {
     CUDA_CHECK(cudaFreeHost(state->bound_norm_workspace_mp));
     state->bound_norm_workspace_mp = NULL;
     CUDA_CHECK(cudaFreeHost(state->objective_norm_workspace_mp));
     state->objective_norm_workspace_mp = NULL;
-}
-
-static void release_setup_only_matrix_data(pdhg_solver_state_t *state)
-{
     CUDA_CHECK(cudaFree(state->constraint_matrix->row_ind));
     state->constraint_matrix->row_ind = NULL;
     CUDA_CHECK(cudaFree(state->constraint_matrix->transpose_map));
