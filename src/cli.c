@@ -27,10 +27,13 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static void print_usage(const char *prog_name);
 static bool parse_int_arg(const char *option_name, const char *value, int *out);
 static bool parse_double_arg(const char *option_name, const char *value, double *out);
+static bool is_writable_directory(const char *path);
 static char *extract_instance_name(const char *filename);
 static void strip_suffix(char *name, const char *suffix);
 static bool save_solver_summary(const hpdlp_result_t *result, const char *output_dir,
@@ -204,6 +207,12 @@ int main(int argc, char *argv[])
 
     const char *filename = argv[optind];
     const char *output_dir = argv[optind + 1];
+    if (!is_writable_directory(output_dir))
+    {
+        fprintf(stderr, "ERROR: output directory '%s' does not exist or is not writable\n",
+                output_dir);
+        return 1;
+    }
 
     char *instance_name = extract_instance_name(filename);
     if (instance_name == NULL)
@@ -329,6 +338,12 @@ static bool parse_double_arg(const char *option_name, const char *value, double 
 
     *out = parsed;
     return true;
+}
+
+static bool is_writable_directory(const char *path)
+{
+    struct stat info;
+    return stat(path, &info) == 0 && S_ISDIR(info.st_mode) && access(path, W_OK) == 0;
 }
 
 static char *extract_instance_name(const char *filename)
