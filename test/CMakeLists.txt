@@ -2,12 +2,10 @@ function(hpdlp_add_test name source labels)
   add_executable(${name} ${source})
   target_link_libraries(${name} PRIVATE hpdlp_core)
   target_include_directories(${name} PRIVATE
-    "${PROJECT_SOURCE_DIR}/include"
     "${PROJECT_SOURCE_DIR}/internal"
     "${CMAKE_CURRENT_SOURCE_DIR}/support")
   set_target_properties(${name} PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests"
-    CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+    RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
   add_test(NAME ${name} COMMAND ${name})
   set_tests_properties(${name} PROPERTIES LABELS "${labels}")
   if("gpu" IN_LIST labels)

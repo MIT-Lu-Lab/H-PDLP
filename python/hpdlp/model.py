@@ -112,7 +112,6 @@ def _as_csr_f64_i32(A) -> sp.csr_matrix:
     """
     _validate_sparse_structure(A)
     csr = A.tocsr()
-    _validate_sparse_structure(csr)
     if csr is A:
         csr = csr.copy()
     if csr.dtype != np.float64:
@@ -131,7 +130,7 @@ def _as_csr_f64_i32(A) -> sp.csr_matrix:
         if csr.indices.size and csr.indices.max() > _INT32_MAX:
             raise OverflowError("constraint_matrix CSR indices exceed int32 range")
         csr.indices = csr.indices.astype(np.int32, copy=False)
-    return _readonly_matrix(csr)
+    return csr
 
 
 def read(filename: Union[str, os.PathLike]) -> "Model":
@@ -345,7 +344,7 @@ class Model:
         # validate existing constraint bounds against the new row count before committing
         l = self._constr_lb
         if l is not None:
-            n_l = np.asarray(l).ravel().size
+            n_l = l.size
             if n_l != m:
                 raise ValueError(
                     f"setConstraintMatrix: constraint_lower_bound length {n_l} != rows {m}. "
@@ -353,7 +352,7 @@ class Model:
                 )
         u = self._constr_ub
         if u is not None:
-            n_u = np.asarray(u).ravel().size
+            n_u = u.size
             if n_u != m:
                 raise ValueError(
                     f"setConstraintMatrix: constraint_upper_bound length {n_u} != rows {m}. "
@@ -594,9 +593,6 @@ class Model:
         """
         # clear cached solution
         self._clear_solution_cache()
-        # check model sense
-        if self.ModelSense not in (PDLP.MINIMIZE, PDLP.MAXIMIZE):
-            raise ValueError("model_sense must be PDLP.MINIMIZE or PDLP.MAXIMIZE")
         self._validate_bounds()
         minimize = self.ModelSense == PDLP.MINIMIZE
         # call the core solver

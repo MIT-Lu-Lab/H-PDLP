@@ -82,7 +82,7 @@ static const double *get_arr_ptr_f64_or_null(py::object obj, const char *name, M
     }
     // cast to numpy array
     py::array arr = py::cast<py::array>(obj);
-    // must have at least 1 dim
+    // must be 1D
     if (arr.ndim() != 1)
     {
         throw std::invalid_argument(std::string(name) + " must be 1D.");
@@ -106,7 +106,7 @@ get_index_ptr_i32(py::object obj, const char *name, MatrixKeepalive &keep, std::
     }
     // cast to numpy array
     py::array arr = py::cast<py::array>(obj);
-    // must have at least 1 dim
+    // must be 1D
     if (arr.ndim() != 1)
     {
         throw std::invalid_argument(std::string(name) + " must be 1D.");
@@ -165,27 +165,29 @@ static norm_type_t parse_norm_string(const std::string &s)
     }
 }
 
-// ensure 1D array or None with expected length
-static void ensure_len_or_null(py::object obj, const char *name, int expect_len)
+// throw if a 1D array's length differs from the expected value
+static void expect_len(py::object obj, py::ssize_t expected, const char *name)
 {
-    // nullptr if obj is None
-    if (!obj || obj.is_none())
-    {
-        return;
-    }
-    // cast to numpy array
     py::array arr = py::cast<py::array>(obj);
-    // must have at least 1 dim
     if (arr.ndim() != 1)
     {
         throw std::invalid_argument(std::string(name) + " must be 1D.");
     }
-    // check length
-    if (arr.size() != expect_len)
+    if (arr.size() != expected)
     {
-        throw std::invalid_argument(std::string(name) + " length mismatch: expect " + std::to_string(expect_len) +
-                                    ", got " + std::to_string((int)arr.size()));
+        throw std::invalid_argument(std::string(name) + " has wrong length: expected " + std::to_string(expected) +
+                                    ", got " + std::to_string((long long)arr.size()));
     }
+}
+
+// same as expect_len, but None is allowed
+static void ensure_len_or_null(py::object obj, const char *name, int expected)
+{
+    if (!obj || obj.is_none())
+    {
+        return;
+    }
+    expect_len(obj, expected, name);
 }
 
 // convert termination reason to string
@@ -409,21 +411,6 @@ static void parse_params_from_python(py::object params_obj, pdhg_parameters_t *p
     if (hpdlp_validate_parameters(p, validation_error, sizeof(validation_error)) != 0)
     {
         throw std::invalid_argument(validation_error);
-    }
-}
-
-// throw if a 1D array's length differs from the expected value
-static void expect_len(py::object obj, py::ssize_t expected, const char *name)
-{
-    py::array arr = py::cast<py::array>(obj);
-    if (arr.ndim() != 1)
-    {
-        throw std::invalid_argument(std::string(name) + " must be 1D.");
-    }
-    if (arr.size() != expected)
-    {
-        throw std::invalid_argument(std::string(name) + " has wrong length: expected " + std::to_string(expected) +
-                                    ", got " + std::to_string((long long)arr.size()));
     }
 }
 
@@ -852,7 +839,6 @@ static py::dict read_mps_py(const std::string &filename)
     return d;
 }
 
-// module
 // Validate a params dict the way solve_once will: defaults overlaid with the dict,
 // then hpdlp_validate_parameters. Raises ValueError on the first violation.
 static void validate_params_py(py::object params_obj)
@@ -864,7 +850,7 @@ static void validate_params_py(py::object params_obj)
 
 PYBIND11_MODULE(_hpdlp_core, m)
 {
-    m.doc() = "hpdlp core bindings (auto-detect dense/CSR/CSC/COO; initialize default params here)";
+    m.doc() = "hpdlp core bindings (auto-detect dense/CSR/CSC/COO)";
 
     m.def("get_default_params", &get_default_params_py, "Return default PDHG parameters as a dict");
 

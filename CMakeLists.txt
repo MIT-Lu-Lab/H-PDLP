@@ -21,8 +21,6 @@ set(HPDLP_VERSION
     "${HPDLP_VERSION_MAJOR}.${HPDLP_VERSION_MINOR}.${HPDLP_VERSION_PATCH}")
 add_compile_definitions(HPDLP_VERSION="${HPDLP_VERSION}")
 
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION OFF)
-
 # C/C++ standards
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
@@ -149,15 +147,8 @@ set(CORE_SOURCES
     src/utils/mps_parser.c
     src/utils/utils.c)
 
-# Set common include directories for the core libraries
-set(CORE_INCLUDE_DIRS
-    PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include # Public API headers
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal # Internal implementation headers
-)
-
 # Set common link libraries
-set(CORE_LINK_LIBS PUBLIC
-                   CUDA::cudart
+set(CORE_LINK_LIBS CUDA::cudart
                    CUDA::cublas
                    CUDA::cusparse
                    CUDA::curand
@@ -172,9 +163,7 @@ target_include_directories(
   PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/internal ${pslp_SOURCE_DIR}/PSLP)
 target_compile_definitions(hpdlp_objects PRIVATE PSLP_VERSION=\"${PSLP_VERSION_TAG}\")
-target_link_libraries(hpdlp_objects PRIVATE CUDA::cudart CUDA::cublas
-                                                 CUDA::cusparse CUDA::curand
-                                                 ZLIB::ZLIB PSLP)
+target_link_libraries(hpdlp_objects PRIVATE ${CORE_LINK_LIBS})
 set_target_properties(
   hpdlp_objects
   PROPERTIES POSITION_INDEPENDENT_CODE ON
@@ -187,8 +176,8 @@ set_target_properties(
 # -----------------------------------------------------------------------------
 if(HPDLP_BUILD_STATIC_LIB)
   add_library(hpdlp_core STATIC $<TARGET_OBJECTS:hpdlp_objects>)
-  target_include_directories(hpdlp_core ${CORE_INCLUDE_DIRS})
-  target_link_libraries(hpdlp_core ${CORE_LINK_LIBS})
+  target_include_directories(hpdlp_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(hpdlp_core PUBLIC ${CORE_LINK_LIBS})
 
   set_target_properties(
     hpdlp_core
@@ -202,8 +191,8 @@ endif()
 # -----------------------------------------------------------------------------
 if(HPDLP_BUILD_SHARED_LIB)
   add_library(hpdlp_shared SHARED $<TARGET_OBJECTS:hpdlp_objects>)
-  target_include_directories(hpdlp_shared ${CORE_INCLUDE_DIRS})
-  target_link_libraries(hpdlp_shared ${CORE_LINK_LIBS})
+  target_include_directories(hpdlp_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(hpdlp_shared PUBLIC ${CORE_LINK_LIBS})
 
   # Shared library must resolve device symbols as it is a final link point
   set_target_properties(
@@ -253,9 +242,7 @@ endif()
 # 6. Install Targets
 # -----------------------------------------------------------------------------
 
-if(HPDLP_BUILD_PYTHON)
-  install(DIRECTORY include/ DESTINATION include/ FILES_MATCHING PATTERN "*.h")
-else()
+if(NOT HPDLP_BUILD_PYTHON)
   if(TARGET hpdlp_core)
     install(TARGETS hpdlp_core ARCHIVE DESTINATION lib)
   endif()
