@@ -13,7 +13,7 @@ static void check_empty_solve(const matrix_desc_t *matrix)
             NULL, matrix, NULL, NULL, NULL, NULL, &offsets[i]);
         if (!problem)
         {
-            fprintf(stderr, "empty problem creation failed\n");
+            fprintf(stderr, "FAIL: empty problem creation failed\n");
             ++failures;
             return;
         }
@@ -44,7 +44,7 @@ static void check_empty_solve(const matrix_desc_t *matrix)
                     result->objective_gap != 0.0 ||
                     result->relative_objective_gap != 0.0)
                 {
-                    fprintf(stderr, "empty solve failed: format=%d offset=%g maximize=%d presolve=%d\n",
+                    fprintf(stderr, "FAIL: empty solve failed: format=%d offset=%g maximize=%d presolve=%d\n",
                             matrix->fmt, offsets[i], maximize, presolve);
                     ++failures;
                 }

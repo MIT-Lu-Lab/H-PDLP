@@ -118,7 +118,7 @@ static void check_start_aliasing(void)
     if (p->primal_start[0] != 2 || p->primal_start[1] != 3 ||
         p->dual_start[0] != 4 || p->dual_start[1] != 5)
     {
-        fprintf(stderr, "self-referenced start values were corrupted\n");
+        fprintf(stderr, "FAIL: self-referenced start values were corrupted\n");
         ++failures;
     }
 
@@ -127,7 +127,7 @@ static void check_start_aliasing(void)
     if (p->primal_start[0] != 4 || p->primal_start[1] != 5 ||
         p->dual_start[0] != 2 || p->dual_start[1] != 3)
     {
-        fprintf(stderr, "cross-referenced start values were corrupted\n");
+        fprintf(stderr, "FAIL: cross-referenced start values were corrupted\n");
         ++failures;
     }
 

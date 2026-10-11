@@ -57,7 +57,7 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
     check_termination_criteria(state, &params.termination_criteria);
     if (state->control.termination_reason != TERMINATION_REASON_OPTIMAL)
     {
-        fprintf(stderr, "small box certificate rejected (scaled=%d norm=%d)\n", scaled, norm);
+        fprintf(stderr, "FAIL: small box certificate rejected (scaled=%d norm=%d)\n", scaled, norm);
         ++failures;
     }
     else
@@ -70,7 +70,7 @@ static void check_small_box_certificate(bool scaled, norm_type_t norm)
               fabs(result->objective_gap - 1e-9) <= 1e-15 &&
               result->dual_objective_value == 0.0))
         {
-            fprintf(stderr, "small box exported certificate disagrees with its metrics\n");
+            fprintf(stderr, "FAIL: small box exported certificate disagrees with its metrics\n");
             ++failures;
         }
         hpdlp_result_free(result);
@@ -107,7 +107,7 @@ static void check_bound_candidates(norm_type_t norm)
     double z[n];
     CUDA_CHECK(cudaMemcpy(z, state->pdhg_reduced_cost_d, sizeof(z), cudaMemcpyDeviceToHost));
     for (int j = 0; j < n; ++j)
-        if (z[j] != 0) { fprintf(stderr, "unobserved projection column %d\n", j); ++failures; }
+        if (z[j] != 0) { fprintf(stderr, "FAIL: unobserved projection column %d\n", j); ++failures; }
     if (!(fabs(state->metrics_h->absolute_dual_residual - (norm == NORM_TYPE_L_INF ? 9 : sqrt(280.0))) <= 1e-12) ||
         state->metrics_h->dual_objective != 0)
     {
@@ -126,7 +126,7 @@ static void check_bound_candidates(norm_type_t norm)
     compute_termination_metrics(state, &params);
     const double expected_norm = norm == NORM_TYPE_L_INF ? 9 : sqrt(280.0);
     if (!(fabs(state->metrics_h->absolute_dual_residual - expected_norm) <= 1e-12))
-    { fprintf(stderr, "one-sided stationarity residual mismatch\n"); ++failures; }
+    { fprintf(stderr, "FAIL: one-sided stationarity residual mismatch\n"); ++failures; }
     const double expected_bound_norm = norm == NORM_TYPE_L_INF ? 9 : sqrt(191.0);
     check("invalid one-sided signs remain in the bound candidate residual",
           fabs(state->metrics_h->bound_multiplier_absolute_dual_residual - expected_bound_norm) < 1e-12);
@@ -147,7 +147,7 @@ static void check_values(const char *name, const double *actual,
 {
     if (!actual)
     {
-        fprintf(stderr, "%s is missing\n", name);
+        fprintf(stderr, "FAIL: %s is missing\n", name);
         ++failures;
         return;
     }
@@ -155,7 +155,7 @@ static void check_values(const char *name, const double *actual,
     {
         if (!isfinite(actual[i]) || fabs(actual[i] - expected[i]) > 1e-12)
         {
-            fprintf(stderr, "%s[%d]: %.17g expected %.17g\n",
+            fprintf(stderr, "FAIL: %s[%d]: %.17g expected %.17g\n",
                     name, i, actual[i], expected[i]);
             ++failures;
         }
@@ -185,7 +185,7 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
           reason == TERMINATION_REASON_DUAL_INFEASIBLE) &&
          state->control.certificate_from_homogeneous != homogeneous))
     {
-        fprintf(stderr, "wrong termination decision: %d expected %d\n",
+        fprintf(stderr, "FAIL: wrong termination decision: %d expected %d\n",
                 state->control.termination_reason, reason);
         ++failures;
         return;

@@ -112,7 +112,7 @@ static void check_solution_norms(void)
             if (!(fabs(state->metrics_h->primal_solution_norm - expected_primal) < 1e-12) ||
                 !(fabs(state->metrics_h->dual_solution_norm - expected_dual) < 1e-12))
             {
-                fprintf(stderr, "solution norms: norm=%d sample=%d primal=%g dual=%g\n",
+                fprintf(stderr, "FAIL: solution norms: norm=%d sample=%d primal=%g dual=%g\n",
                         (int)norm, sample, state->metrics_h->primal_solution_norm,
                         state->metrics_h->dual_solution_norm);
                 ++failures;

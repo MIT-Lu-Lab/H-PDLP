@@ -19,7 +19,7 @@ static int test_gpu_status(void)
     }
     if (status != cudaSuccess)
     {
-        fprintf(stderr, "CUDA device query failed: %s\n", cudaGetErrorString(status));
+        fprintf(stderr, "FAIL: CUDA device query failed: %s\n", cudaGetErrorString(status));
         return 1;
     }
     return 0;

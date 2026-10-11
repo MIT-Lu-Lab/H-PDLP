@@ -77,7 +77,7 @@ static void check_creation(matrix_format_t format, double first, double second,
         NULL, &matrix, NULL, NULL, NULL, NULL, NULL);
     if ((problem != NULL) != accepted)
     {
-        fprintf(stderr, "format=%d values=(%g, %g) duplicate=%d: expected %s\n",
+        fprintf(stderr, "FAIL: format=%d values=(%g, %g) duplicate=%d: expected %s\n",
                 format, first, second, duplicate,
                 accepted ? "a problem" : "NULL");
         ++failures;
@@ -135,7 +135,7 @@ static void check_dimensions(matrix_format_t format, int m, int n, int accepted)
         NULL, &matrix, NULL, NULL, NULL, NULL, NULL);
     if ((problem != NULL) != accepted)
     {
-        fprintf(stderr, "format=%d m=%d n=%d: expected %s\n",
+        fprintf(stderr, "FAIL: format=%d m=%d n=%d: expected %s\n",
                 format, m, n, accepted ? "a problem" : "NULL");
         ++failures;
     }
@@ -157,7 +157,7 @@ static void check_model_dimensions(void)
         NULL, NULL, NULL, NULL, NULL, NULL, NULL);
     if (problem != NULL)
     {
-        fprintf(stderr, "NULL matrix descriptor: expected NULL\n");
+        fprintf(stderr, "FAIL: NULL matrix descriptor: expected NULL\n");
         ++failures;
     }
     lp_problem_free(problem);

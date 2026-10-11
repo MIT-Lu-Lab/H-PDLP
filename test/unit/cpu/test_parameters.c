@@ -29,9 +29,15 @@ static void expect_rejected(lp_problem_t *problem, pdhg_parameters_t *params,
     hpdlp_result_t *result = solve_lp_problem(problem, params);
     if (result)
     {
-        fprintf(stderr, "invalid %s accepted (presolve=%d)\n", field, params->presolve);
+        fprintf(stderr, "FAIL: invalid %s accepted (presolve=%d)\n", field, params->presolve);
         ++failures;
         hpdlp_result_free(result);
+    }
+    else if (!strstr(hpdlp_last_error(), " must "))
+    {
+        fprintf(stderr, "FAIL: invalid %s failed for another reason: %s (presolve=%d)\n",
+                field, hpdlp_last_error(), params->presolve);
+        ++failures;
     }
 }
 
