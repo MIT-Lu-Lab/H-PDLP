@@ -208,17 +208,20 @@ void pslp_postsolve(const hpdlp_presolve_info_t *info,
               result->dual_solution,
               result->reduced_cost);
 
+    double *primal_solution = (double *)safe_malloc(working_problem->num_variables * sizeof(double));
+    double *dual_solution = (double *)safe_malloc(working_problem->num_constraints * sizeof(double));
+    double *reduced_cost = (double *)safe_malloc(working_problem->num_variables * sizeof(double));
+
+    memcpy(primal_solution, info->presolver->sol->x, working_problem->num_variables * sizeof(double));
+    memcpy(dual_solution, info->presolver->sol->y, working_problem->num_constraints * sizeof(double));
+    memcpy(reduced_cost, info->presolver->sol->z, working_problem->num_variables * sizeof(double));
+
     free(result->primal_solution);
     free(result->dual_solution);
     free(result->reduced_cost);
-
-    result->primal_solution = (double *)safe_malloc(working_problem->num_variables * sizeof(double));
-    result->dual_solution = (double *)safe_malloc(working_problem->num_constraints * sizeof(double));
-    result->reduced_cost = (double *)safe_malloc(working_problem->num_variables * sizeof(double));
-
-    memcpy(result->primal_solution, info->presolver->sol->x, working_problem->num_variables * sizeof(double));
-    memcpy(result->dual_solution, info->presolver->sol->y, working_problem->num_constraints * sizeof(double));
-    memcpy(result->reduced_cost, info->presolver->sol->z, working_problem->num_variables * sizeof(double));
+    result->primal_solution = primal_solution;
+    result->dual_solution = dual_solution;
+    result->reduced_cost = reduced_cost;
 
     for (int j = 0; j < working_problem->num_variables; ++j)
     {

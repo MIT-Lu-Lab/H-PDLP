@@ -337,6 +337,11 @@ static int parse_mps_stream(MpsParserState *state, FastLineReader *reader)
         report_error("MPS file has no %s section", has_rows_section ? "COLUMNS" : "ROWS");
         return -1;
     }
+    if (section != SEC_ENDATA)
+    {
+        report_error("MPS file ends without ENDATA");
+        return -1;
+    }
     return 0;
 }
 

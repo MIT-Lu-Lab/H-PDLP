@@ -67,6 +67,13 @@ def test_invalid_sparse_structure_rejected(indptr):
         Model([1.0, 1.0], matrix, [1.0, 1.0], None)
 
 
+def test_duplicates_summing_to_inf_rejected():
+    matrix = sp.coo_matrix((np.array([1e308, 1e308]), (np.array([0, 0]), np.array([0, 0]))),
+                           shape=(1, 1))
+    with pytest.raises(ValueError, match='finite'):
+        Model([1.0], matrix, [1.0], None)
+
+
 @pytest.mark.parametrize("format", [sp.csr_matrix, sp.csc_matrix, sp.coo_matrix,
                                    sp.csr_array, sp.lil_matrix])
 def test_sparse_inputs_preserve_values_and_caller_ownership(format):

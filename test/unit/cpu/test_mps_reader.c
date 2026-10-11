@@ -304,6 +304,8 @@ static void check_mps_rejections(void)
         "NAME T\nrows\n N COST\n L R\ncolumns\n X COST 1 R 1\nENDATA\n", 0);
     check_mps("missing COLUMNS section rejected",
         "NAME T\nROWS\n N COST\n L R\nENDATA\n", 0);
+    check_mps("file truncated before ENDATA rejected",
+        "NAME T\nROWS\n N COST\n L R\nCOLUMNS\n X COST 1 R 1\nRHS\n RHS R 1\n", 0);
     check_mps("duplicate constraint row rejected",
         "NAME T\nROWS\n N COST\n L R\n G R\nCOLUMNS\n X COST 1 R 1\nENDATA\n", 0);
     check_mps("row declared as N and L rejected",

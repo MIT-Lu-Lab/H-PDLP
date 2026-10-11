@@ -116,10 +116,11 @@ def _as_csr_f64_i32(A) -> sp.csr_matrix:
         csr = csr.copy()
     if csr.dtype != np.float64:
         csr = csr.astype(np.float64)
-    _require_finite("constraint_matrix", csr.data)
     # merge duplicate (row, col) entries and sort indices within each row
     csr.sum_duplicates()
     csr.sort_indices()
+    # check after merging: finite duplicates can sum to inf
+    _require_finite("constraint_matrix", csr.data)
     # force int32 indices (common C/CUDA req); int32 arrays can't overflow
     if csr.indptr.dtype != np.int32:
         # indptr is non-decreasing, so its last entry (== nnz) is the maximum
