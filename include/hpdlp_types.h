@@ -145,6 +145,7 @@ extern "C"
         bool diagnose;
         norm_type_t optimality_norm;
         double reflection_coefficient;
+        double normalization_strength;
         int termination_evaluation_frequency;
 
         scaling_parameters_t scaling_params;

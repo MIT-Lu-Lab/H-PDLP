@@ -577,6 +577,7 @@ static void update_hsd_primal_block(
         state->control.inner_count_d,
         k_offset,
         params->reflection_coefficient,
+        params->normalization_strength,
         state->hsd_primal_initial_scale_d,
         state->hsd_primal_current_scale_d,
         state->hsd_primal_pdhg_scale_d,

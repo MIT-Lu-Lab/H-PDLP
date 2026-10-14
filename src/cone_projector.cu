@@ -121,6 +121,7 @@ __global__ void update_primal_box_cone_resolvent_kernel(
     const int *__restrict__ base_count_d,
     int k_offset,
     double reflection_coefficient,
+    double normalization_strength,
     const double *primal_initial_scale,
     double *primal_current_scale,
     double *primal_evaluation_scale,
@@ -237,6 +238,7 @@ void update_primal_box_cone_resolvent(
     const int *base_count_d,
     int k_offset,
     double reflection_coefficient,
+    double normalization_strength,
     const double *primal_initial_scale,
     double *primal_current_scale,
     double *primal_evaluation_scale,
@@ -263,6 +265,7 @@ void update_primal_box_cone_resolvent(
         base_count_d,
         k_offset,
         reflection_coefficient,
+        normalization_strength,
         primal_initial_scale,
         primal_current_scale,
         primal_evaluation_scale,
@@ -615,6 +618,7 @@ __global__ void update_primal_box_cone_resolvent_kernel(
     const int *__restrict__ base_count_d,
     int k_offset,
     double reflection_coefficient,
+    double normalization_strength,
     const double *primal_initial_scale,
     double *primal_current_scale,
     double *primal_evaluation_scale,
@@ -630,12 +634,13 @@ __global__ void update_primal_box_cone_resolvent_kernel(
     const double inv_homogeneous_step = 1.0 / homogeneous_step;
     const double current_scale = *primal_current_scale;
     const double unprojected_scale =
-        current_scale + homogeneous_step * (*homogeneous_dual_gradient + 1.0);
+        current_scale + homogeneous_step *
+            (*homogeneous_dual_gradient + normalization_strength);
     const int newton_max_iter =
         state.newton_terms_are_zero ? 0 : max_iter;
     double scale = state.newton_terms_are_zero
         ? fmax(0.0, unprojected_scale)
-        : compute_newton_start_scale(state.scale_history_d);
+        : fmin(1.0, compute_newton_start_scale(state.scale_history_d));
 
     newton_bracket_t bracket = {0.0, INFINITY, INFINITY};
     scale = solve_scale_newton<COOPERATIVE>(
@@ -751,6 +756,8 @@ __device__ __forceinline__ bool update_primal_scale_newton_step(
     const double function_value =
         total.function_value +
         inv_homogeneous_step * (unprojected_scale - scale);
+    if (scale == 1.0 && function_value >= 0.0)
+        return true;
     if (iter == 0)
         initialize_newton_bracket(
             function_value,
@@ -758,7 +765,7 @@ __device__ __forceinline__ bool update_primal_scale_newton_step(
             inv_homogeneous_step,
             bracket);
     const double newton_step =
-        fmax(0.0, scale + function_value / negative_derivative);
+        fmin(1.0, fmax(0.0, scale + function_value / negative_derivative));
     return update_newton_bracket_safeguarded(
         newton_step, function_value, unprojected_scale, tol,
         scale, bracket);

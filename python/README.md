@@ -94,6 +94,7 @@ H-PDLP-specific controls:
 | `PrimalWeightSafeguard` | `primal_weight_safeguard` |
 | `ConeNewtonMaxIter` | `cone_newton_max_iter` |
 | `ConeNewtonTol` | `cone_newton_tol` |
+| `NormalizationStrength` | `normalization_strength` |
 | `FarkasHomogeneousTol` | `eps_farkas_homogeneous` |
 | `FarkasDisplacementTol` | `eps_farkas_displacement` |
 | `ASBRelativeTol` | `asb_relative_tol` |

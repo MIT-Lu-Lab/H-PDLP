@@ -55,9 +55,12 @@ By default, PSLP presolve is followed by geometric-mean scaling (12 iterations),
 | `--sv_max_iter` | `int` | Max power iterations for σ_max(A). | `5000` |
 | `--sv_tol` | `double` | Power-iteration tolerance. | `1e-4` |
 | `--step_size_factor` | `double` | Step-size scaling factor in (0, 1). | `0.998` |
+| `--normalization_strength` | `double` | Positive, finite HSD normalization strength, fixed throughout the solve. | `100.0` |
 | `--no_primal_weight_safeguard` | `flag` | Disable primal-weight safeguarding. | `false` |
 | `--cone_newton_max_iter` | `int` | Max Newton iterations for cone projection. | `100` |
 | `--cone_newton_tol` | `double` | Newton tolerance for cone projection. | `1e-6` |
+
+The normalization strength sets the constant term in the primal scalar update. The upper bound on the homogeneous scale remains one. Set the strength to `1` to use the unit-strength normalized embedding.
 
 **Termination**
 

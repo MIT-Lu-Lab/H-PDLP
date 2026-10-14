@@ -29,6 +29,7 @@ void set_default_parameters(pdhg_parameters_t *params)
     params->diagnose = false;
     params->optimality_norm = NORM_TYPE_L2;
     params->reflection_coefficient = 1.0;
+    params->normalization_strength = 100.0;
     params->termination_evaluation_frequency = 200;
 
     params->scaling_params.geometric_mean_iterations = 12;
@@ -94,6 +95,12 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
     {
         return parameter_error(error, error_size, "'reflection_coefficient' must be in (0, 1]",
                                params->reflection_coefficient);
+    }
+    if (!(params->normalization_strength > 0.0 &&
+          isfinite(params->normalization_strength)))
+    {
+        return parameter_error(error, error_size, "'normalization_strength' must be finite and > 0",
+                               params->normalization_strength);
     }
     if (params->termination_evaluation_frequency < 3)
     {

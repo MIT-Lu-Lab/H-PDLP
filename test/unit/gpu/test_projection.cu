@@ -169,6 +169,7 @@ static void run_primal_resolvent(
         state->control.inner_count_d,
         1,
         1.0,
+        params->normalization_strength,
         state->hsd_primal_initial_scale_d,
         state->hsd_primal_current_scale_d,
         state->hsd_primal_pdhg_scale_d,
@@ -320,6 +321,7 @@ static void check_projection_observation(void)
 typedef struct
 {
     const char *name;
+    double normalization_strength;
     int num_variables;
     int max_iter;
     bool zero_terms;
@@ -397,6 +399,7 @@ static void check_projection(int num_blocks, const projection_case_t *test)
     update_primal_box_cone_resolvent(&params, &state,
         current, reflected, evaluation, multiplier, initial, gradient, objective,
         primal_step, homogeneous_step, homogeneous_gradient, count, 1, 1.0,
+        test->normalization_strength,
         initial_scale, current_scale, evaluation_scale, reflected_scale, true, 0);
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -432,50 +435,66 @@ static void check_projection(int num_blocks, const projection_case_t *test)
 static void check_homogeneous_scale(void)
 {
     const projection_case_t cases[] = {
-        {"lower endpoint with one Newton step", 1, 1, false,
+        {"lower endpoint with one Newton step", 1.0, 1, 1, false,
          1.0, 1.0, -1.0, -1.0,
          {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
          0.0, {0.0}},
-        {"lower endpoint", 1, 100, false,
+        {"lower endpoint", 1.0, 1, 100, false,
          1.0, 1.0, 1.0, -3.0,
          {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
          0.0, {0.0}},
-        {"upper endpoint with reflection above one", 1, 100, false,
+        {"upper endpoint with reflection above one", 1.0, 1, 100, false,
          1.0, 1.0, -1.0, 3.0,
          {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
          1.0, {0.0}},
-        {"upper endpoint", 1, 100, false,
+        {"upper endpoint", 1.0, 1, 100, false,
          1.0, 1.0, 1.0, 1.0,
          {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
          1.0, {0.0}},
-        {"interior scale", 1, 100, false,
+        {"interior scale", 1.0, 1, 100, false,
          1.0, 1.0, -0.5, 0.0,
          {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
          0.5, {0.0}},
-        {"zero-term interior scale", 1, 100, true,
+        {"zero-term interior scale", 1.0, 1, 100, true,
          0.5, 0.5, 0.2, 0.0,
          {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
          0.7, {0.0}},
-        {"zero-term upper endpoint", 1, 100, true,
+        {"zero-term upper endpoint", 1.0, 1, 100, true,
          0.5, 0.5, 0.8, 0.0,
          {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
          1.0, {0.0}},
-        {"zero-term lower endpoint", 1, 100, true,
+        {"zero-term lower endpoint", 1.0, 1, 100, true,
          0.5, 0.5, -1.0, 0.0,
          {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
          0.0, {0.0}},
-        {"coupled primal recomputed at cap", 1, 100, false,
+        {"coupled primal recomputed at cap", 1.0, 1, 100, false,
          0.5, 0.5, 0.8, 0.0,
          {3.0}, {0.0}, {1.0}, {-INFINITY}, {INFINITY},
          1.0, {2.5}},
-        {"coupled interior scale", 1, 100, false,
+        {"coupled interior scale", 1.0, 1, 100, false,
          0.5, 0.5, 0.0, 0.0,
          {0.0}, {0.0}, {1.0}, {-INFINITY}, {INFINITY},
          0.4, {-0.2}},
-        {"escape non-informative fixed point", 2, 100, false,
+        {"escape non-informative fixed point", 1.0, 2, 100, false,
          0.1, 0.5, 0.0, 0.0,
          {0.0, 0.0}, {-2.0, -1.0}, {-2.0, -1.0}, {1.0, -2.0}, {2.0, -1.0},
          1.0 / 52.0, {1.0 / 52.0, -1.0 / 26.0}},
+        {"interior scale with stronger normalization", 2.0, 1, 100, false,
+         0.5, 0.5, 0.0, 0.0,
+         {0.0}, {0.0}, {1.0}, {-INFINITY}, {INFINITY},
+         0.8, {-0.4}},
+        {"upper endpoint with stronger normalization", 10.0, 1, 100, false,
+         0.5, 0.5, 0.0, 0.0,
+         {0.0}, {0.0}, {1.0}, {-INFINITY}, {INFINITY},
+         1.0, {-0.5}},
+        {"zero-term interior scale with weaker normalization", 0.2, 1, 100, true,
+         0.5, 0.5, 0.2, 0.0,
+         {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
+         0.3, {0.0}},
+        {"escape non-informative fixed point with stronger normalization", 2.0, 2, 100, false,
+         0.1, 0.5, 0.0, 0.0,
+         {0.0, 0.0}, {-2.0, -1.0}, {-2.0, -1.0}, {1.0, -2.0}, {2.0, -1.0},
+         1.0 / 26.0, {1.0 / 26.0, -1.0 / 13.0}},
     };
     for (int blocks = 1; blocks <= 2; ++blocks)
         for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i)

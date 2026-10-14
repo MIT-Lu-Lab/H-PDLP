@@ -84,6 +84,7 @@ void update_primal_box_cone_resolvent(
     const int *base_count_d,
     int k_offset,
     double reflection_coefficient,
+    double normalization_strength,
     const double *primal_initial_scale,
     double *primal_current_scale,
     double *primal_evaluation_scale,

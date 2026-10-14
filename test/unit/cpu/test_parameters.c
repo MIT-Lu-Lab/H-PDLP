@@ -71,6 +71,10 @@ static void check_parameter_validation(void)
     {
         REJECT(termination_evaluation_frequency, 2);
         REJECT(reflection_coefficient, NAN);
+        REJECT(normalization_strength, 0.0);
+        REJECT(normalization_strength, -1.0);
+        REJECT(normalization_strength, NAN);
+        REJECT(normalization_strength, INFINITY);
         REJECT(scaling_params.geometric_mean_iterations, -1);
         REJECT(scaling_params.l_inf_ruiz_iterations, -1);
         REJECT(scaling_params.pock_chambolle_alpha, 3.0);
@@ -107,6 +111,12 @@ static void check_parameter_validation(void)
     params.verbose = false;
     char error[256];
     check("default parameters validate",
+          hpdlp_validate_parameters(&params, error, sizeof(error)) == 0);
+    params.normalization_strength = 0.1;
+    check("a small positive normalization strength validates",
+          hpdlp_validate_parameters(&params, error, sizeof(error)) == 0);
+    params.normalization_strength = 1000.0;
+    check("a large positive normalization strength validates",
           hpdlp_validate_parameters(&params, error, sizeof(error)) == 0);
     lp_problem_free(problem);
 }

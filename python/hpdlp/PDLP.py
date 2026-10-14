@@ -38,6 +38,7 @@ _PARAM_ALIAS = {
     "Diagnose": "diagnose",
     "OptimalityNorm": "optimality_norm",
     "ReflectionCoeff": "reflection_coefficient",
+    "NormalizationStrength": "normalization_strength",
     "TermCheckFreq": "termination_evaluation_frequency",
     # scaling
     "GeoMeanIters": "geometric_mean_iterations",

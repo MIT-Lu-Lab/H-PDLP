@@ -126,6 +126,9 @@ void print_initial_info(
     PRINT_DIFF_DBL("reflection_coefficient",
                    params->reflection_coefficient,
                    default_params.reflection_coefficient);
+    PRINT_DIFF_DBL("normalization_strength",
+                   params->normalization_strength,
+                   default_params.normalization_strength);
     PRINT_DIFF_INT("termination_evaluation_frequency",
                    params->termination_evaluation_frequency,
                    default_params.termination_evaluation_frequency);

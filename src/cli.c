@@ -73,6 +73,7 @@ int main(int argc, char *argv[])
         {"time_limit", required_argument, 0, 1018},
         {"iter_limit", required_argument, 0, 1019},
         {"no_active_set_boost", no_argument, 0, 1020},
+        {"normalization_strength", required_argument, 0, 1021},
         {0, 0, 0, 0}};
 
     int opt;
@@ -188,6 +189,11 @@ int main(int argc, char *argv[])
         case 1020:
             params.active_set_params.step_size_boost = false;
             break;
+        case 1021:
+            if (!parse_double_arg("--normalization_strength", optarg,
+                                  &params.normalization_strength))
+                return 1;
+            break;
         case '?':
             return 1;
         }
@@ -282,6 +288,8 @@ static void print_usage(const char *prog_name)
             defaults.power_iter_params.tol);
     fprintf(stderr, "      --step_size_factor <float>        Step size scaling factor in (0, 1) (default: %g).\n",
             defaults.step_size_params.step_size_factor);
+    fprintf(stderr, "      --normalization_strength <float> Positive HSD normalization strength (default: %g).\n",
+            defaults.normalization_strength);
     fprintf(stderr, "      --no_primal_weight_safeguard      Disable primal-weight safeguarding.\n");
     fprintf(stderr, "      --cone_newton_max_iter <int>      Max Newton iterations for cone projection (default: %d).\n",
             defaults.cone_params.max_iter);

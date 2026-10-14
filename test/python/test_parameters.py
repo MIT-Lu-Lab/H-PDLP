@@ -56,6 +56,18 @@ def test_set_params_value_validation_is_transactional(model):
     assert model.getParam('TimeLimit') == old_time_limit
 
 
+@pytest.mark.parametrize("strength", [0.1, 1.0, 100.0, 1000.0])
+def test_normalization_strength(model, strength):
+    model.setParam("NormalizationStrength", strength)
+    assert model.getParam("normalization_strength") == strength
+
+
+@pytest.mark.parametrize("strength", [0.0, -1.0, np.nan, np.inf])
+def test_invalid_normalization_strength(model, strength):
+    with pytest.raises(ValueError, match="normalization_strength"):
+        model.setParam("NormalizationStrength", strength)
+
+
 def test_reset_params(base_lp_data):
     c, A, l, u, lb, ub = base_lp_data
     model = Model(c, A, l, u, lb, ub)

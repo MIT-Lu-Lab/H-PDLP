@@ -277,6 +277,7 @@ static void visit_params(pdhg_parameters_t &p, Visitor &&visit)
     visit("diagnose", p.diagnose);
     visit("optimality_norm", p.optimality_norm);
     visit("reflection_coefficient", p.reflection_coefficient);
+    visit("normalization_strength", p.normalization_strength);
     visit("termination_evaluation_frequency", p.termination_evaluation_frequency);
     visit("geometric_mean_iterations", p.scaling_params.geometric_mean_iterations);
     visit("l_inf_ruiz_iterations", p.scaling_params.l_inf_ruiz_iterations);
