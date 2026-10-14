@@ -234,7 +234,6 @@ typedef struct {
     double *primal_ray_d;
 
     double *hsd_scalars_d;
-    double *hsd_inverse_scale_d;
     double *hsd_primal_initial_scale_d;
     double *hsd_primal_current_scale_d;
     double *hsd_primal_pdhg_scale_d;

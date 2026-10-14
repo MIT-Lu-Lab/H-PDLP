@@ -315,7 +315,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
         sizeof(termination_reductions_t));
 
     CUDA_CHECK(cudaMalloc(&state->metrics_d, sizeof(pdhg_metrics_t)));
-    CUDA_CHECK(cudaMalloc(&state->hsd_inverse_scale_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->constraint_bound_rescaling_d, sizeof(double)));
     CUDA_CHECK(cudaMalloc(&state->objective_vector_rescaling_d, sizeof(double)));
     allocate_zeroed_device_buffer((void **)&state->control.inner_count_d, sizeof(int));
@@ -666,7 +665,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->primal_ray_d);
 
     FREE_DEVICE_BUFFER(state->hsd_scalars_d);
-    FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
     FREE_DEVICE_BUFFER(state->primal_residual_d);
     FREE_DEVICE_BUFFER(state->dual_residual_d);
     FREE_DEVICE_BUFFER(state->bound_multiplier_dual_residual_d);

@@ -85,12 +85,7 @@ __global__ void restart_hsd_scalars_kernel(
     double *dual_pdhg_scale,
     double *dual_reflected_scale,
     double *primal_cone_scale_history,
-    double *dual_cone_scale_history,
-    double  cone_warm_start_scale);
-__global__ void scale_hsd_scalars_kernel(
-    double *primal_pdhg_scale,
-    double *dual_pdhg_scale,
-    double  inv_scale);
+    double *dual_cone_scale_history);
 static void run_optimization(
     solve_resources_t *resources,
     const lp_problem_t *original_problem,
@@ -144,7 +139,6 @@ static void perform_adaptive_restart(
 static void update_primal_weight_via_restart_pid(
     pdhg_solver_state_t *state,
     const step_size_parameters_t *step_size_params);
-static double apply_gauge_control(pdhg_solver_state_t *state);
 static void restore_original_objective_sense(
     hpdlp_result_t *result,
     objective_sense_t objective_sense);
@@ -775,8 +769,6 @@ static void perform_adaptive_restart(
 
     update_primal_weight_via_restart_pid(state, step_size_params);
 
-    double cone_warm_start_scale = apply_gauge_control(state);
-
     CUDA_CHECK(cudaMemcpyAsync(
         state->primal_initial_solution_d,
         state->primal_pdhg_solution_d,
@@ -812,8 +804,7 @@ static void perform_adaptive_restart(
         state->hsd_dual_pdhg_scale_d,
         state->hsd_dual_reflected_scale_d,
         state->primal_box_cone_state.scale_history_d,
-        state->dual_box_cone_state.scale_history_d,
-        cone_warm_start_scale);
+        state->dual_box_cone_state.scale_history_d);
 
     try_raise_active_set_step_size(state, params);
 
@@ -864,55 +855,6 @@ static void update_primal_weight_via_restart_pid(
                       state->metrics_h->relative_objective_gap,
                       hsd_scalars_h[HSD_PRIMAL_SCALE_PDHG],
                       state->metrics_h->normalized_homogeneous_ratio);
-}
-
-static double apply_gauge_control(pdhg_solver_state_t *state)
-{
-    double primal_scale =
-        state->metrics_h->primal_pdhg_scale;
-    double max_block_norm = fmax(fmax(state->metrics_h->primal_solution_norm,
-                                      state->metrics_h->dual_solution_norm),
-                            fmax(fabs(primal_scale),
-                                 fabs(state->metrics_h->dual_pdhg_scale)));
-
-    double inv_scale;
-    if (primal_scale >= 0.1 &&
-        primal_scale <= 10.0 &&
-        max_block_norm <= 1.0e12 &&
-        max_block_norm >= 1.0e-12)
-    {
-        return 1.0;
-    }
-    else if (primal_scale > 1.0e-3 &&
-             max_block_norm <= 1.0e12 * primal_scale)
-    {
-        inv_scale = 1.0 / primal_scale;
-    }
-    else
-    {
-        inv_scale = 1.0 / fmax(max_block_norm, 1.0e-300);
-    }
-
-    CUDA_CHECK(cudaMemcpyAsync(
-        state->hsd_inverse_scale_d,
-        &inv_scale, sizeof(double),
-        cudaMemcpyHostToDevice,
-        state->stream_A));
-    CUBLAS_CHECK(cublasDscal(
-        state->blas_handle_A,
-        state->num_variables,
-        state->hsd_inverse_scale_d,
-        state->primal_pdhg_solution_d, 1));
-    CUBLAS_CHECK(cublasDscal(
-        state->blas_handle_A,
-        state->num_constraints,
-        state->hsd_inverse_scale_d,
-        state->dual_pdhg_solution_d, 1));
-    scale_hsd_scalars_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->hsd_primal_pdhg_scale_d,
-        state->hsd_dual_pdhg_scale_d,
-        inv_scale);
-    return inv_scale;
 }
 
 static void restore_original_objective_sense(
@@ -1035,8 +977,7 @@ __global__ void restart_hsd_scalars_kernel(
     double *dual_pdhg_scale,
     double *dual_reflected_scale,
     double *primal_cone_scale_history,
-    double *dual_cone_scale_history,
-    double  cone_warm_start_scale)
+    double *dual_cone_scale_history)
 {
     const double s = *primal_pdhg_scale;
     *primal_initial_scale   = s;
@@ -1049,21 +990,12 @@ __global__ void restart_hsd_scalars_kernel(
     *dual_reflected_scale = dc;
 
     const double primal_cone_scale =
-        primal_cone_scale_history[BOX_CONE_SCALE_LATEST] * cone_warm_start_scale;
+        primal_cone_scale_history[BOX_CONE_SCALE_LATEST];
     const double dual_cone_scale =
-        dual_cone_scale_history[BOX_CONE_SCALE_LATEST] * cone_warm_start_scale;
+        dual_cone_scale_history[BOX_CONE_SCALE_LATEST];
     for (int i = 0; i < BOX_CONE_SCALE_COUNT; ++i)
     {
         primal_cone_scale_history[i] = primal_cone_scale;
         dual_cone_scale_history[i]   = dual_cone_scale;
     }
-}
-
-__global__ void scale_hsd_scalars_kernel(
-    double *primal_pdhg_scale,
-    double *dual_pdhg_scale,
-    double  inv_scale)
-{
-    *primal_pdhg_scale *= inv_scale;
-    *dual_pdhg_scale   *= inv_scale;
 }

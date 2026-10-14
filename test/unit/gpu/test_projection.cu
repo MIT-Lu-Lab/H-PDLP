@@ -16,8 +16,8 @@ enum { WINDOW_ITERATIONS = 10, EVALUATION_ITERATION = 20 };
 static const double INITIAL_PRIMAL = 10.0;
 static const double PRIMAL_STEP = 0.1;
 static const double HOMOGENEOUS_STEP = 0.1;
-static const double EXPECTED_SCALE = 200.0 / 101.0;
-static const double EXPECTED_SHADOW = 990.0 / 101.0;
+static const double EXPECTED_SCALE = 1.0;
+static const double EXPECTED_SHADOW = 9.9;
 static const double UNWRITTEN_SCALE = -7.0;
 static const double UNWRITTEN_OBSERVATION = -123.0;
 static const double CLAMPED_GRADIENT = -3.0;
@@ -185,7 +185,7 @@ static void check_major_observation(
 {
     run_primal_resolvent(state, params, true);
 
-    check_close("primal scale follows the closed-form resolvent",
+    check_close("primal scale is capped at one",
                 read_device_double(state->hsd_primal_pdhg_scale_d),
                 EXPECTED_SCALE, 1e-10);
     check_close("primal shadow follows the closed-form resolvent",
@@ -248,6 +248,8 @@ static void check_non_major_preserves_observation(
     const pdhg_parameters_t *params,
     int num_variables)
 {
+    const double previous_scale = read_device_double(state->hsd_primal_pdhg_scale_d);
+    const double previous_shadow = read_device_double(state->primal_pdhg_solution_d);
     double *unwritten_observation =
         (double *)malloc((size_t)num_variables * sizeof(double));
     double *observation_after_non_major =
@@ -273,6 +275,10 @@ static void check_non_major_preserves_observation(
             observation_after_non_major[j] == unwritten_observation[j];
     check("non-major projection preserves the major projection multiplier",
           observation_preserved);
+    check_close("non-major projection preserves the major scale",
+                read_device_double(state->hsd_primal_pdhg_scale_d), previous_scale, 0.0);
+    check_close("non-major projection preserves the major primal point",
+                read_device_double(state->primal_pdhg_solution_d), previous_shadow, 0.0);
 
     free(observation_after_non_major);
     free(unwritten_observation);
@@ -311,10 +317,31 @@ static void check_projection_observation(void)
     check_projection_path(4 * THREADS_PER_BLOCK + 1, true);
 }
 
-static void check_projection(int num_blocks, int max_iter, double current_scale,
-                             double homogeneous_gradient, double expected_scale)
+typedef struct
 {
-    const int n = num_blocks == 1 ? 1 : 4 * THREADS_PER_BLOCK + 1;
+    const char *name;
+    int num_variables;
+    int max_iter;
+    bool zero_terms;
+
+    double primal_step;
+    double homogeneous_step;
+    double current_scale;
+    double homogeneous_gradient;
+
+    double current[2];
+    double gradient[2];
+    double objective[2];
+    double lower[2];
+    double upper[2];
+
+    double expected_scale;
+    double expected_primal[2];
+} projection_case_t;
+
+static void check_projection(int num_blocks, const projection_case_t *test)
+{
+    const int n = num_blocks == 1 ? test->num_variables : 4 * THREADS_PER_BLOCK + 1;
     double *vectors, *scalars;
     int *count;
     newton_terms_t *partials;
@@ -322,42 +349,78 @@ static void check_projection(int num_blocks, int max_iter, double current_scale,
     CUDA_CHECK(cudaMallocManaged((void **)&scalars, 10 * sizeof(double), cudaMemAttachGlobal));
     CUDA_CHECK(cudaMallocManaged((void **)&count, sizeof(int), cudaMemAttachGlobal));
     CUDA_CHECK(cudaMalloc((void **)&partials, 2 * num_blocks * sizeof(newton_terms_t)));
-    for (int i = 0; i < 9 * n; ++i) vectors[i] = 0;
-    vectors[6 * n] = 1;
-    vectors[8 * n] = 1;
-    scalars[0] = 1;
-    scalars[1] = 1;
-    scalars[2] = homogeneous_gradient;
-    scalars[3] = 1;
-    scalars[4] = current_scale;
-    scalars[5] = NAN;
-    scalars[6] = NAN;
-    scalars[7] = scalars[8] = scalars[9] = 1;
+
+    double *current = vectors;
+    double *reflected = vectors + n;
+    double *evaluation = vectors + 2 * n;
+    double *multiplier = vectors + 3 * n;
+    double *initial = vectors + 4 * n;
+    double *gradient = vectors + 5 * n;
+    double *objective = vectors + 6 * n;
+    double *lower = vectors + 7 * n;
+    double *upper = vectors + 8 * n;
+    for (int i = 0; i < 9 * n; ++i) vectors[i] = 0.0;
+    for (int i = 0; i < test->num_variables; ++i)
+    {
+        current[i] = initial[i] = test->current[i];
+        gradient[i] = test->gradient[i];
+        objective[i] = test->objective[i];
+        lower[i] = test->lower[i];
+        upper[i] = test->upper[i];
+    }
+    double *primal_step = scalars;
+    double *homogeneous_step = scalars + 1;
+    double *homogeneous_gradient = scalars + 2;
+    double *initial_scale = scalars + 3;
+    double *current_scale = scalars + 4;
+    double *evaluation_scale = scalars + 5;
+    double *reflected_scale = scalars + 6;
+    double *scale_history = scalars + 7;
+    *primal_step = test->primal_step;
+    *homogeneous_step = test->homogeneous_step;
+    *homogeneous_gradient = test->homogeneous_gradient;
+    *initial_scale = 1.0;
+    *current_scale = test->current_scale;
+    *evaluation_scale = *reflected_scale = NAN;
+    scale_history[0] = scale_history[1] = scale_history[2] = 1.0;
     *count = 10;
+
     box_newton_state_t state = {};
-    state.scale_history_d = scalars + 7;
-    state.lower_bound_d = vectors + 7 * n;
-    state.upper_bound_d = vectors + 8 * n;
+    state.scale_history_d = scale_history;
+    state.lower_bound_d = lower;
+    state.upper_bound_d = upper;
     state.num_elements = n;
     state.num_blocks_newton = num_blocks;
+    state.newton_terms_are_zero = test->zero_terms;
     state.newton_partials_d = partials;
-    cone_parameters_t params = {max_iter, 1e-6};
+    const cone_parameters_t params = {test->max_iter, 1e-12};
     update_primal_box_cone_resolvent(&params, &state,
-        vectors, vectors + n, vectors + 2 * n, vectors + 3 * n,
-        vectors + 4 * n, vectors + 5 * n, vectors + 6 * n,
-        scalars, scalars + 1, scalars + 2, count, 1, 1,
-        scalars + 3, scalars + 4, scalars + 5, scalars + 6, true, 0);
+        current, reflected, evaluation, multiplier, initial, gradient, objective,
+        primal_step, homogeneous_step, homogeneous_gradient, count, 1, 1.0,
+        initial_scale, current_scale, evaluation_scale, reflected_scale, true, 0);
     CUDA_CHECK(cudaDeviceSynchronize());
-    const double scale_tolerance = params.tol * fmax(1.0, fabs(expected_scale));
-    int valid = isfinite(scalars[5]) && scalars[5] >= 0 &&
-        fabs(scalars[5] - expected_scale) <= scale_tolerance &&
-        fabs(scalars[6] - (2 * expected_scale - current_scale)) <= 2 * scale_tolerance;
+
+    const double expected_reflected = 2.0 * test->expected_scale - test->current_scale;
+    const double weight = 11.0 / 12.0;
+    const double expected_halpern = weight * expected_reflected + (1.0 - weight);
+    const double tol = 1e-10;
+    bool valid = isfinite(*evaluation_scale) &&
+        *evaluation_scale >= 0.0 && *evaluation_scale <= 1.0 &&
+        fabs(*evaluation_scale - test->expected_scale) <= tol &&
+        fabs(*reflected_scale - expected_reflected) <= tol &&
+        fabs(*current_scale - expected_halpern) <= tol;
     for (int i = 0; i < n; ++i)
-        valid = valid && isfinite(vectors[2 * n + i]) && vectors[2 * n + i] == 0;
+    {
+        const double expected = i < test->num_variables ? test->expected_primal[i] : 0.0;
+        valid = valid && isfinite(evaluation[i]) && fabs(evaluation[i] - expected) <= tol;
+    }
     if (!valid)
     {
-        fprintf(stderr, "FAIL: blocks=%d max_iter=%d current_tau=%g gradient=%g tau=%.17g x=%.17g expected_tau=%g\n",
-            num_blocks, max_iter, current_scale, homogeneous_gradient, scalars[5], vectors[2 * n], expected_scale);
+        fprintf(stderr,
+            "FAIL: %s blocks=%d tau=%.17g x=%.17g reflected=%.17g halpern=%.17g "
+            "expected_tau=%.17g expected_x=%.17g\n",
+            test->name, num_blocks, *evaluation_scale, evaluation[0],
+            *reflected_scale, *current_scale, test->expected_scale, test->expected_primal[0]);
         ++failures;
     }
     CUDA_CHECK(cudaFree(partials));
@@ -368,14 +431,55 @@ static void check_projection(int num_blocks, int max_iter, double current_scale,
 
 static void check_homogeneous_scale(void)
 {
+    const projection_case_t cases[] = {
+        {"lower endpoint with one Newton step", 1, 1, false,
+         1.0, 1.0, -1.0, -1.0,
+         {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
+         0.0, {0.0}},
+        {"lower endpoint", 1, 100, false,
+         1.0, 1.0, 1.0, -3.0,
+         {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
+         0.0, {0.0}},
+        {"upper endpoint with reflection above one", 1, 100, false,
+         1.0, 1.0, -1.0, 3.0,
+         {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
+         1.0, {0.0}},
+        {"upper endpoint", 1, 100, false,
+         1.0, 1.0, 1.0, 1.0,
+         {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
+         1.0, {0.0}},
+        {"interior scale", 1, 100, false,
+         1.0, 1.0, -0.5, 0.0,
+         {0.0}, {0.0}, {1.0}, {0.0}, {1.0},
+         0.5, {0.0}},
+        {"zero-term interior scale", 1, 100, true,
+         0.5, 0.5, 0.2, 0.0,
+         {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
+         0.7, {0.0}},
+        {"zero-term upper endpoint", 1, 100, true,
+         0.5, 0.5, 0.8, 0.0,
+         {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
+         1.0, {0.0}},
+        {"zero-term lower endpoint", 1, 100, true,
+         0.5, 0.5, -1.0, 0.0,
+         {0.0}, {0.0}, {0.0}, {-INFINITY}, {INFINITY},
+         0.0, {0.0}},
+        {"coupled primal recomputed at cap", 1, 100, false,
+         0.5, 0.5, 0.8, 0.0,
+         {3.0}, {0.0}, {1.0}, {-INFINITY}, {INFINITY},
+         1.0, {2.5}},
+        {"coupled interior scale", 1, 100, false,
+         0.5, 0.5, 0.0, 0.0,
+         {0.0}, {0.0}, {1.0}, {-INFINITY}, {INFINITY},
+         0.4, {-0.2}},
+        {"escape non-informative fixed point", 2, 100, false,
+         0.1, 0.5, 0.0, 0.0,
+         {0.0, 0.0}, {-2.0, -1.0}, {-2.0, -1.0}, {1.0, -2.0}, {2.0, -1.0},
+         1.0 / 52.0, {1.0 / 52.0, -1.0 / 26.0}},
+    };
     for (int blocks = 1; blocks <= 2; ++blocks)
-    {
-        check_projection(blocks, 1, -1, -1, 0);
-        check_projection(blocks, 100, -1, -1, 0);
-        check_projection(blocks, 100, -1, 3, 2);
-        check_projection(blocks, 100, 1, -3, 0);
-        check_projection(blocks, 100, 1, 1, 2);
-    }
+        for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i)
+            check_projection(blocks, &cases[i]);
 }
 
 int main(void)

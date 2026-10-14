@@ -630,7 +630,7 @@ __global__ void update_primal_box_cone_resolvent_kernel(
     const double inv_homogeneous_step = 1.0 / homogeneous_step;
     const double current_scale = *primal_current_scale;
     const double unprojected_scale =
-        current_scale + homogeneous_step * (*homogeneous_dual_gradient);
+        current_scale + homogeneous_step * (*homogeneous_dual_gradient + 1.0);
     const int newton_max_iter =
         state.newton_terms_are_zero ? 0 : max_iter;
     double scale = state.newton_terms_are_zero
@@ -660,6 +660,8 @@ __global__ void update_primal_box_cone_resolvent_kernel(
                 total, iter, inv_homogeneous_step, unprojected_scale,
                 tol, trial_scale, bracket);
         });
+
+    scale = fmin(scale, 1.0);
 
     const int k = *base_count_d + k_offset;
     const double weight = (double)k / (double)(k + 1);
