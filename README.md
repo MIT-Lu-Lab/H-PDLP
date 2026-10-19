@@ -2,6 +2,7 @@
 
 [![Build](https://github.com/MIT-Lu-Lab/H-PDLP/actions/workflows/build.yml/badge.svg)](https://github.com/MIT-Lu-Lab/H-PDLP/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2610.17695-b31b1b.svg)](https://arxiv.org/abs/2610.17695)
 
 **H-PDLP** is a first-order linear programming solver for NVIDIA GPUs. It supports primal and dual infeasibility detection.
 
@@ -123,7 +124,19 @@ H-PDLP uses adaptive restart and primal-weight update techniques from [cuPDLPx](
 
 ## Citation
 
-Citation information will be added here.
+If you use H-PDLP in your work, please cite the [paper](https://arxiv.org/abs/2610.17695):
+
+```bibtex
+@article{lu2026hpdlp,
+  title         = {H-PDLP: GPU-Accelerated Linear Programming via Generalized PDHG and Homogeneous Self-Dual Embedding},
+  author        = {Lu, Haihao and Tang, Bo},
+  journal       = {arXiv preprint arXiv:2610.17695},
+  year          = {2026},
+  eprint        = {2610.17695},
+  archivePrefix = {arXiv},
+  primaryClass  = {math.OC}
+}
+```
 
 ## Support
 
