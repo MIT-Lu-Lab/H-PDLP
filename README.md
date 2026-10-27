@@ -116,7 +116,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. CI builds everything and runs the CPU-only C tests and the non-GPU Python tests.
+See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. CI builds on Linux and Windows across the supported CUDA versions. On CUDA 13.1, both platforms also run the CPU-only C tests and the non-GPU Python tests.
 
 ## Acknowledgements
 
