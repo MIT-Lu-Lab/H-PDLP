@@ -26,7 +26,7 @@ Maximization is supported through MPS `OBJSENSE` and the C/Python APIs. For MPS 
 
 ## Installation
 
-Linux and WSL2 are the primary build environments. Native Windows builds have not been validated.
+Linux and WSL2 support all build targets. Native Windows builds with MSVC support the libraries and Python bindings; the CLI requires Linux or WSL2.
 
 - **GPU:** an NVIDIA GPU supported by the selected CUDA toolkit.
 - **CUDA Toolkit:** 12.4+ with NVCC, cuBLAS, cuSPARSE, and cuRAND.
@@ -116,7 +116,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. CI builds everything and runs the CPU-only C tests and the non-GPU Python tests.
+See the [test guide](test/README.md) for CPU/GPU subsets and [Python tests](python/README.md#tests) for pytest instructions. CI builds on Linux and Windows across the supported CUDA versions. On CUDA 13.1, both platforms also run the CPU-only C tests and the non-GPU Python tests.
 
 ## Acknowledgements
 

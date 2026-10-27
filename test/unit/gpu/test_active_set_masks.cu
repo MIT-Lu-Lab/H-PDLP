@@ -6,11 +6,11 @@
 #include <stdio.h>
 
 __global__ void update_binding_constraint_mask_kernel(
-    const double *, const double *, const double *, const double *,
-    int *, bool *, active_set_mask_changes_t *, double, int, int, int);
+    const double *__restrict__, const double *, const double *__restrict__, const double *__restrict__,
+    int *__restrict__, bool *__restrict__, active_set_mask_changes_t *, double, int, int, int);
 __global__ void update_free_variable_mask_kernel(
-    const double *, const double *, const double *, const double *,
-    const double *, int *, bool *, active_set_mask_changes_t *, double,
+    const double *__restrict__, const double *__restrict__, const double *, const double *__restrict__,
+    const double *__restrict__, int *__restrict__, bool *__restrict__, active_set_mask_changes_t *, double,
     int, int, int);
 
 enum { NUM_ROWS = 10, NUM_COLUMNS = 12, NUM_ZERO_SCALE_COLUMNS = 4, NUM_GAUGES = 2 };

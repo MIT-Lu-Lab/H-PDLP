@@ -16,7 +16,7 @@ project(hpdlp VERSION 0.0.1 LANGUAGES C CXX CUDA)
 add_compile_definitions(HPDLP_VERSION="${PROJECT_VERSION}")
 
 # Language standards
-set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -31,15 +31,6 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
                                                      "MinSizeRel" "RelWithDebInfo")
 endif()
 
-# Global compile flags
-add_compile_definitions(CUSPARSE_ENABLE_EXPERIMENTAL_API)
-add_compile_options(-Wall -Wextra)
-
-# Windows compatibility
-if(WIN32)
-  add_compile_definitions(strtok_r=strtok_s)
-endif()
-
 # -----------------------------------------------------------------------------
 # CONTROL OPTIONS
 # -----------------------------------------------------------------------------
@@ -51,8 +42,9 @@ option(HPDLP_BUILD_SHARED_LIB "Build the H-PDLP shared library" ON)
 cmake_dependent_option(HPDLP_BUILD_PYTHON "Build the H-PDLP Python bindings" OFF
                        "HPDLP_BUILD_STATIC_LIB" OFF)
 
+# The CLI uses getopt.h, libgen.h and unistd.h, which MSVC does not provide.
 cmake_dependent_option(HPDLP_BUILD_CLI "Build the H-PDLP command-line executable" ON
-                       "HPDLP_BUILD_STATIC_LIB" OFF)
+                       "HPDLP_BUILD_STATIC_LIB;NOT MSVC" OFF)
 
 cmake_dependent_option(HPDLP_BUILD_TESTS "Build the H-PDLP test suite" OFF
                        "HPDLP_BUILD_STATIC_LIB" OFF)
@@ -111,6 +103,25 @@ FetchContent_Declare(
   GIT_TAG ${PSLP_VERSION_TAG})
 
 FetchContent_MakeAvailable(pslp)
+
+# Apply project flags after dependencies so they do not inherit our options.
+add_compile_definitions(CUSPARSE_ENABLE_EXPERIMENTAL_API)
+if(MSVC)
+  add_compile_options(
+    $<$<COMPILE_LANGUAGE:C,CXX>:/W4>
+    $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/W4>)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS strtok_r=strtok_s)
+  if(CMAKE_CUDA_COMPILER_ID STREQUAL "NVIDIA"
+     AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13)
+    # CUDA 13 CCCL headers require the conforming MSVC preprocessor.
+    # Keep CUDA 12 in its default mode.
+    add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>)
+  endif()
+else()
+  add_compile_options(
+    "$<$<COMPILE_LANGUAGE:C,CXX>:-Wall;-Wextra>"
+    $<$<COMPILE_LANG_AND_ID:CUDA,NVIDIA>:-Xcompiler=-Wall,-Wextra>)
+endif()
 
 # -----------------------------------------------------------------------------
 # SOURCE DISCOVERY & TARGET DEFINITION
@@ -187,6 +198,7 @@ if(HPDLP_BUILD_SHARED_LIB)
   set_target_properties(
     hpdlp_shared
     PROPERTIES OUTPUT_NAME "hpdlp"
+               WINDOWS_EXPORT_ALL_SYMBOLS ON
                RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
                CUDA_SEPARABLE_COMPILATION ON
                CUDA_RESOLVE_DEVICE_SYMBOLS ON)
@@ -245,6 +257,7 @@ if(NOT HPDLP_BUILD_PYTHON)
     install(
       TARGETS hpdlp_shared
       LIBRARY DESTINATION lib
+      ARCHIVE DESTINATION lib
       RUNTIME DESTINATION bin) # 'bin' for DLLs on Windows, 'lib' for .so on Linux
   endif()
 
