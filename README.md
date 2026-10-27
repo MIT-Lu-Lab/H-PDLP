@@ -26,7 +26,7 @@ Maximization is supported through MPS `OBJSENSE` and the C/Python APIs. For MPS 
 
 ## Installation
 
-Linux and WSL2 are the primary build environments. Native Windows builds have not been validated.
+Linux and WSL2 support all build targets. Native Windows builds with MSVC support the libraries and Python bindings; the CLI requires Linux or WSL2.
 
 - **GPU:** an NVIDIA GPU supported by the selected CUDA toolkit.
 - **CUDA Toolkit:** 12.4+ with NVCC, cuBLAS, cuSPARSE, and cuRAND.

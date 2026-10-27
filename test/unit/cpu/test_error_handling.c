@@ -27,7 +27,11 @@ static lp_problem_t *create_small_problem(void)
 
 int main(void)
 {
+#ifdef _WIN32
+    _putenv_s("CUDA_VISIBLE_DEVICES", "-1");
+#else
     setenv("CUDA_VISIBLE_DEVICES", "", 1);
+#endif
 
     lp_problem_t *problem = create_small_problem();
     check("problem is created without a GPU", problem != NULL);

@@ -19,6 +19,8 @@ jobs:
     name: Linux / CUDA ${{ matrix.cuda }}
     runs-on: ubuntu-latest
     container: nvidia/cuda:${{ matrix.cuda }}-devel-ubuntu22.04
+    env:
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
     strategy:
       fail-fast: false
       matrix:
@@ -61,7 +63,7 @@ jobs:
             -DHPDLP_BUILD_TESTS=ON
 
       - name: Build
-        run: cmake --build build --parallel 2
+        run: cmake --build build
 
       - name: Run CPU tests
         run: ctest --test-dir build -L cpu --output-on-failure
