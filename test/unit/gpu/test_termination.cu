@@ -5,17 +5,13 @@
 #include "internal_types.h"
 #include "result.h"
 #include "setup.h"
+#include "solver.h"
 #include "termination_checker.h"
 #include "test_checks.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-
-__global__ void compute_fixed_point_error_kernel(
-    double *, const fixed_point_reductions_t *,
-    const double *, const double *, const double *, const double *,
-    double, double, double);
 
 static void check_fixed_point_error(void)
 {
@@ -26,30 +22,29 @@ static void check_fixed_point_error(void)
         {1.0, 1.0, INFINITY}
     };
     const double expected[] = {sqrt(5.0), 0.0, INFINITY, INFINITY};
-    fixed_point_reductions_t *reductions;
-    CUDA_CHECK(cudaMallocManaged(&reductions, sizeof(*reductions)));
-    double *values;
-    CUDA_CHECK(cudaMallocManaged(&values, 5 * sizeof(double)));
+    fixed_point_reductions_t reductions = {};
+    pdhg_solver_state_t state = {};
+    state.fixed_point_reductions_mp = &reductions;
+    state.control.step_size_base = 1.0;
+    state.control.primal_weight = 1.0;
+    step_size_parameters_t step_size_params = {};
+    step_size_params.step_size_factor = 1.0;
     for (int i = 0; i < 4; ++i)
     {
-        for (int j = 0; j < 5; ++j)
-            values[j] = 0.0;
-        reductions->primal_delta_norm = inputs[i][0];
-        reductions->dual_delta_norm = inputs[i][1];
-        reductions->operator_cross_term = inputs[i][2];
-        compute_fixed_point_error_kernel<<<1, 1>>>(
-            values + 4, reductions,
-            values, values + 1, values + 2, values + 3,
-            1.0, 1.0, 1.0);
-        CUDA_CHECK(cudaDeviceSynchronize());
-        if (values[4] != expected[i])
+        reductions.primal_delta_norm = inputs[i][0];
+        reductions.dual_delta_norm = inputs[i][1];
+        reductions.operator_cross_term = inputs[i][2];
+        compute_fixed_point_error(&state, &step_size_params);
+        if (state.control.fixed_point_error != expected[i])
         {
-            fprintf(stderr, "FAIL: FPI case %d: expected %g, got %g\n", i, expected[i], values[4]);
+            fprintf(stderr,
+                    "FAIL: FPI case %d: expected %g, got %g\n",
+                    i,
+                    expected[i],
+                    state.control.fixed_point_error);
             ++failures;
         }
     }
-    CUDA_CHECK(cudaFree(values));
-    CUDA_CHECK(cudaFree(reductions));
 }
 
 static void check_solution_norms(void)

@@ -287,7 +287,10 @@ static void allocate_host_staging_buffers(pdhg_solver_state_t *state)
         &state->objective_norm_workspace_mp,
         sizeof(double),
         cudaHostAllocMapped));
-    CUDA_CHECK(cudaHostAlloc(&state->control.fixed_point_error_mp, sizeof(double), cudaHostAllocMapped));
+    CUDA_CHECK(cudaHostAlloc(
+        &state->fixed_point_reductions_mp,
+        sizeof(fixed_point_reductions_t),
+        cudaHostAllocMapped));
     CUDA_CHECK(cudaHostAlloc(
         &state->restart_reductions_mp,
         sizeof(restart_reductions_t),
@@ -312,10 +315,6 @@ static void allocate_device_scalars(pdhg_solver_state_t *state)
     state->hsd_dual_current_scale_d     = state->hsd_scalars_d + HSD_DUAL_SCALE_CURRENT;
     state->hsd_dual_pdhg_scale_d        = state->hsd_scalars_d + HSD_DUAL_SCALE_PDHG;
     state->hsd_dual_reflected_scale_d   = state->hsd_scalars_d + HSD_DUAL_SCALE_REFLECTED;
-
-    allocate_zeroed_device_buffer(
-        (void **)&state->fixed_point_reductions_d,
-        sizeof(fixed_point_reductions_t));
 
     allocate_zeroed_device_buffer(
         (void **)&state->termination_reductions_d,
@@ -753,7 +752,6 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->control.step_size_primal_d);
     FREE_DEVICE_BUFFER(state->control.step_size_dual_d);
     FREE_DEVICE_BUFFER(state->control.step_size_homogeneous_d);
-    FREE_DEVICE_BUFFER(state->fixed_point_reductions_d);
     FREE_DEVICE_BUFFER(state->termination_reductions_d);
     FREE_DEVICE_BUFFER(state->metrics_d);
 
@@ -769,7 +767,7 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_HOST_BUFFER(state->metrics_h);
     FREE_HOST_BUFFER(state->bound_norm_workspace_mp);
     FREE_HOST_BUFFER(state->objective_norm_workspace_mp);
-    FREE_HOST_BUFFER(state->control.fixed_point_error_mp);
+    FREE_HOST_BUFFER(state->fixed_point_reductions_mp);
     FREE_HOST_BUFFER(state->restart_reductions_mp);
 
 #undef FREE_HOST_BUFFER

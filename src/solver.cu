@@ -65,16 +65,12 @@ __global__ void compute_delta_kernel(
     double *__restrict__ dual_delta,
     int n_vars,
     int n_cons);
-__global__ void compute_fixed_point_error_kernel(
-    double *fixed_point_error,
-    const fixed_point_reductions_t *reductions,
+__global__ void compute_delta_scales_kernel(
+    fixed_point_reductions_t *reductions,
     const double *primal_pdhg_scale,
     const double *primal_reflected_scale,
     const double *dual_pdhg_scale,
-    const double *dual_reflected_scale,
-    double step_size_primal,
-    double step_size_dual,
-    double step_size_homogeneous);
+    const double *dual_reflected_scale);
 __global__ void restart_hsd_scalars_kernel(
     double *primal_initial_scale,
     double *primal_current_scale,
@@ -129,9 +125,7 @@ static void update_hsd_primal_block(
     const pdhg_parameters_t *params,
     const int k_offset,
     bool is_major);
-static void compute_fixed_point_error(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params);
+static void compute_fixed_point_reductions(pdhg_solver_state_t *state);
 static void perform_active_set_boost_revert(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params);
@@ -336,9 +330,10 @@ static void solve_with_pdhg(
 
         if (restarted)
         {
-            compute_fixed_point_error(state, &params->step_size_params);
+            compute_fixed_point_reductions(state);
             CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-            state->control.initial_fixed_point_error = *state->control.fixed_point_error_mp;
+            compute_fixed_point_error(state, &params->step_size_params);
+            state->control.initial_fixed_point_error = state->control.fixed_point_error;
             restarted = false;
         }
 
@@ -353,6 +348,8 @@ static void solve_with_pdhg(
                 run_hsd_iteration_step(state, params, i, false);
             }
             run_hsd_iteration_step(state, params, params->termination_evaluation_frequency, true);
+            compute_fixed_point_reductions(state);
+            compute_device_termination_metrics(state, params);
 
             CUDA_CHECK(cudaStreamEndCapture(state->stream_A, &graph));
             CUDA_CHECK(cudaGraphInstantiate(&state->iteration_graph_exec, graph,
@@ -360,9 +357,10 @@ static void solve_with_pdhg(
             CUDA_CHECK(cudaGraphDestroy(graph));
         }
         CUDA_CHECK(cudaGraphLaunch(state->iteration_graph_exec, state->stream_A));
-
+        copy_termination_metrics_to_host(state);
+        CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
         compute_fixed_point_error(state, &params->step_size_params);
-        compute_termination_metrics(state, params);
+        compute_certificate_residuals(state, params->termination_criteria.farkas_objective_margin);
         state->control.inner_count += params->termination_evaluation_frequency;
         state->control.total_count += params->termination_evaluation_frequency;
 
@@ -389,7 +387,7 @@ static void solve_with_pdhg(
         }
 
         const bool do_restart = should_do_adaptive_restart(state, params);
-        state->control.last_trial_fixed_point_error = *state->control.fixed_point_error_mp;
+        state->control.last_trial_fixed_point_error = state->control.fixed_point_error;
         if (do_restart)
         {
             perform_adaptive_restart(state, params);
@@ -591,11 +589,9 @@ static void update_hsd_primal_block(
         state->stream_A);
 }
 
-static void compute_fixed_point_error(
-    pdhg_solver_state_t *state,
-    const step_size_parameters_t *step_size_params)
+static void compute_fixed_point_reductions(pdhg_solver_state_t *state)
 {
-    fixed_point_reductions_t *reductions_d = state->fixed_point_reductions_d;
+    fixed_point_reductions_t *reductions_mp = state->fixed_point_reductions_mp;
 
     compute_delta_kernel<<<
         state->num_blocks_primal_dual,
@@ -625,13 +621,13 @@ static void compute_fixed_point_error(
         state->num_variables,
         state->primal_step_delta_d,
         1,
-        &reductions_d->primal_delta_norm));
+        &reductions_mp->primal_delta_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_constraints,
         state->dual_step_delta_d,
         1,
-        &reductions_d->dual_delta_norm));
+        &reductions_mp->dual_delta_norm));
 
     CUDA_CHECK(cudaEventRecord(state->event_At, state->stream_At));
     CUDA_CHECK(cudaStreamWaitEvent(state->stream_A, state->event_At, 0));
@@ -643,29 +639,14 @@ static void compute_fixed_point_error(
         1,
         state->primal_step_delta_d,
         1,
-        &reductions_d->operator_cross_term));
+        &reductions_mp->operator_cross_term));
 
-    double metric_step_size_primal = 0.0;
-    double metric_step_size_dual = 0.0;
-    double metric_step_size_homogeneous = 0.0;
-    compute_step_sizes(
-        state->control.step_size_base,
-        state->control.primal_weight,
-        step_size_params,
-        &metric_step_size_primal,
-        &metric_step_size_dual,
-        &metric_step_size_homogeneous);
-
-    compute_fixed_point_error_kernel<<<1, 1, 0, state->stream_A>>>(
-        state->control.fixed_point_error_mp,
-        reductions_d,
+    compute_delta_scales_kernel<<<1, 1, 0, state->stream_A>>>(
+        reductions_mp,
         state->hsd_primal_pdhg_scale_d,
         state->hsd_primal_reflected_scale_d,
         state->hsd_dual_pdhg_scale_d,
-        state->hsd_dual_reflected_scale_d,
-        metric_step_size_primal,
-        metric_step_size_dual,
-        metric_step_size_homogeneous);
+        state->hsd_dual_reflected_scale_d);
 }
 
 static void perform_active_set_boost_revert(
@@ -699,7 +680,7 @@ static bool should_do_adaptive_restart(
     const restart_parameters_t *restart_params = &params->restart_params;
     const int termination_evaluation_frequency =
         params->termination_evaluation_frequency;
-    const double fixed_point_error = *state->control.fixed_point_error_mp;
+    const double fixed_point_error = state->control.fixed_point_error;
     const double initial_fixed_point_error =
         state->control.initial_fixed_point_error;
 
@@ -972,6 +953,42 @@ static void working_problem_free(working_problem_t *working)
     free(working->owned_constraint_matrix_values);
 }
 
+void compute_fixed_point_error(
+    pdhg_solver_state_t *state,
+    const step_size_parameters_t *step_size_params)
+{
+    const fixed_point_reductions_t *reductions_mp = state->fixed_point_reductions_mp;
+    double metric_step_size_primal = 0.0;
+    double metric_step_size_dual = 0.0;
+    double metric_step_size_homogeneous = 0.0;
+    compute_step_sizes(
+        state->control.step_size_base,
+        state->control.primal_weight,
+        step_size_params,
+        &metric_step_size_primal,
+        &metric_step_size_dual,
+        &metric_step_size_homogeneous);
+
+    double primal_delta_norm = reductions_mp->primal_delta_norm;
+    double dual_delta_norm = reductions_mp->dual_delta_norm;
+    double primal_delta_scale = reductions_mp->primal_delta_scale;
+    double dual_delta_scale = reductions_mp->dual_delta_scale;
+    double operator_cross_term = reductions_mp->operator_cross_term;
+
+    double dual_movement =
+        (dual_delta_norm * dual_delta_norm +
+         dual_delta_scale * dual_delta_scale) / metric_step_size_dual;
+    double movement =
+        primal_delta_norm * primal_delta_norm / metric_step_size_primal +
+        dual_movement +
+        primal_delta_scale * primal_delta_scale / metric_step_size_homogeneous;
+    double interaction =
+        -2.0 * (primal_delta_scale * dual_delta_scale + operator_cross_term);
+    const double squared_error = movement + interaction;
+    state->control.fixed_point_error =
+        isfinite(squared_error) ? sqrt(fmax(0.0, squared_error)) : INFINITY;
+}
+
 __global__ void compute_delta_kernel(
     const double *__restrict__ primal_from,
     const double *__restrict__ primal_to,
@@ -994,35 +1011,15 @@ __global__ void compute_delta_kernel(
     }
 }
 
-__global__ void compute_fixed_point_error_kernel(
-    double *fixed_point_error,
-    const fixed_point_reductions_t *reductions,
+__global__ void compute_delta_scales_kernel(
+    fixed_point_reductions_t *reductions,
     const double *primal_pdhg_scale,
     const double *primal_reflected_scale,
     const double *dual_pdhg_scale,
-    const double *dual_reflected_scale,
-    double step_size_primal,
-    double step_size_dual,
-    double step_size_homogeneous)
+    const double *dual_reflected_scale)
 {
-    double primal_delta_scale = (*primal_reflected_scale) - (*primal_pdhg_scale);
-    double delta_constraint_offset = (*dual_reflected_scale) - (*dual_pdhg_scale);
-    double primal_delta_norm = reductions->primal_delta_norm;
-    double dual_delta_norm = reductions->dual_delta_norm;
-    double operator_cross_term = reductions->operator_cross_term;
-
-    double dual_movement =
-        (dual_delta_norm * dual_delta_norm +
-         delta_constraint_offset * delta_constraint_offset) / step_size_dual;
-    double movement =
-        primal_delta_norm * primal_delta_norm / step_size_primal +
-        dual_movement +
-        primal_delta_scale * primal_delta_scale / step_size_homogeneous;
-    double interaction =
-        -2.0 * (primal_delta_scale * delta_constraint_offset + operator_cross_term);
-    const double squared_error = movement + interaction;
-    fixed_point_error[0] =
-        isfinite(squared_error) ? sqrt(fmax(0.0, squared_error)) : INFINITY;
+    reductions->primal_delta_scale = (*primal_reflected_scale) - (*primal_pdhg_scale);
+    reductions->dual_delta_scale = (*dual_reflected_scale) - (*dual_pdhg_scale);
 }
 
 __global__ void restart_hsd_scalars_kernel(

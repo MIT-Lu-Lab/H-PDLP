@@ -130,7 +130,6 @@ static void compute_projected_difference(
 static void compute_difference_residual_norms(
     pdhg_solver_state_t *state,
     candidate_reductions_t *candidate_reductions_d);
-static void compute_certificate_residuals(pdhg_solver_state_t *state, double objective_margin);
 static bool passes_objective_margin(const certificate_metrics_t *metrics, double objective_margin);
 static certificate_metrics_t *select_certificate_metrics(
     pdhg_metrics_t *metrics,
@@ -155,6 +154,16 @@ static bool certify_infeasibility(
     certificate_source_t source);
 
 void compute_termination_metrics(
+    pdhg_solver_state_t *state,
+    const pdhg_parameters_t *params)
+{
+    compute_device_termination_metrics(state, params);
+    copy_termination_metrics_to_host(state);
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    compute_certificate_residuals(state, params->termination_criteria.farkas_objective_margin);
+}
+
+void compute_device_termination_metrics(
     pdhg_solver_state_t *state,
     const pdhg_parameters_t *params)
 {
@@ -197,12 +206,6 @@ void compute_termination_metrics(
         state->objective_constant,
         params->optimality_norm);
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaMemcpyAsync(state->metrics_h, state->metrics_d,
-                               sizeof(pdhg_metrics_t),
-                               cudaMemcpyDeviceToHost,
-                               state->stream_A));
-    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
-    compute_certificate_residuals(state, params->termination_criteria.farkas_objective_margin);
 }
 
 static void compute_matrix_products(
@@ -522,7 +525,15 @@ static void compute_difference_residual_norms(
         &candidate_reductions_d->stationarity_residual);
 }
 
-static void compute_certificate_residuals(pdhg_solver_state_t *state, double objective_margin)
+void copy_termination_metrics_to_host(pdhg_solver_state_t *state)
+{
+    CUDA_CHECK(cudaMemcpyAsync(state->metrics_h, state->metrics_d,
+                               sizeof(pdhg_metrics_t),
+                               cudaMemcpyDeviceToHost,
+                               state->stream_A));
+}
+
+void compute_certificate_residuals(pdhg_solver_state_t *state, double objective_margin)
 {
     pdhg_metrics_t *metrics_h = state->metrics_h;
     pdhg_metrics_t *metrics_d = state->metrics_d;

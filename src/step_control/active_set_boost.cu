@@ -238,7 +238,7 @@ bool should_revert_active_set_boost(
     {
         return false;
     }
-    const double fixed_point_error = *state->control.fixed_point_error_mp;
+    const double fixed_point_error = state->control.fixed_point_error;
     const bool metrics_are_finite =
         isfinite(state->metrics_h->relative_primal_residual) &&
         isfinite(state->metrics_h->relative_dual_residual) &&

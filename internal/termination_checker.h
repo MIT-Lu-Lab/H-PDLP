@@ -63,6 +63,14 @@ extern "C"
         pdhg_solver_state_t *state,
         const pdhg_parameters_t *params);
 
+    void compute_device_termination_metrics(
+        pdhg_solver_state_t *state,
+        const pdhg_parameters_t *params);
+
+    void copy_termination_metrics_to_host(pdhg_solver_state_t *state);
+
+    void compute_certificate_residuals(pdhg_solver_state_t *state, double objective_margin);
+
     void check_termination_criteria(
         pdhg_solver_state_t *state,
         const termination_criteria_t *criteria);

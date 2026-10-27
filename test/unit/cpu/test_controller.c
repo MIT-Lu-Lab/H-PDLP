@@ -104,12 +104,11 @@ static void check_boost_revert_policy(void)
     set_default_parameters(&params);
     pdhg_metrics_t metrics = {0};
     pdhg_solver_state_t state = {0};
-    double fixed_point_error = 1.0;
     state.metrics_h = &metrics;
     state.control.termination_reason = TERMINATION_REASON_UNSPECIFIED;
     state.control.step_size_base = 1.0;
     state.control.step_size = 2.0;
-    state.control.fixed_point_error_mp = &fixed_point_error;
+    state.control.fixed_point_error = 1.0;
     state.control.initial_fixed_point_error = 1.0;
 
     double *residuals[] = {
@@ -137,10 +136,10 @@ static void check_boost_revert_policy(void)
         *residuals[i] = 1e-5;
     }
 
-    fixed_point_error = 1.05;
+    state.control.fixed_point_error = 1.05;
     check("the divergence threshold itself does not revert",
           !should_revert_active_set_boost(&state, &params));
-    fixed_point_error = 1.050001;
+    state.control.fixed_point_error = 1.050001;
     check("a fixed-point error beyond the threshold reverts",
           should_revert_active_set_boost(&state, &params));
 
@@ -165,7 +164,7 @@ static void check_boost_revert_policy(void)
     check("an iteration limit may restore a diverging boosted epoch",
           should_revert_active_set_boost(&state, &params));
     state.control.termination_reason = TERMINATION_REASON_NUMERICAL_FAILURE;
-    fixed_point_error = 1.0;
+    state.control.fixed_point_error = 1.0;
     check("a numerical failure reverts a boosted epoch",
           should_revert_active_set_boost(&state, &params));
 }

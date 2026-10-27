@@ -32,6 +32,8 @@ typedef struct {
     double primal_delta_norm;
     double dual_delta_norm;
     double operator_cross_term;
+    double primal_delta_scale;
+    double dual_delta_scale;
 } fixed_point_reductions_t;
 
 typedef struct {
@@ -116,7 +118,7 @@ typedef struct {
 
     double primal_weight;
     pid_state_t pid;
-    double *fixed_point_error_mp;
+    double fixed_point_error;
     double initial_fixed_point_error;
     double last_trial_fixed_point_error;
 } solver_control_t;
@@ -297,7 +299,7 @@ typedef struct {
     solver_control_t control;
     active_set_state_t active_set;
 
-    fixed_point_reductions_t *fixed_point_reductions_d;
+    fixed_point_reductions_t *fixed_point_reductions_mp;
     restart_reductions_t *restart_reductions_mp;
     termination_reductions_t *termination_reductions_d;
 

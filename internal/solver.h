@@ -17,6 +17,7 @@ limitations under the License.
 #pragma once
 
 #include "hpdlp_types.h"
+#include "internal_types.h"
 
 #ifdef __cplusplus
 extern "C"
@@ -26,6 +27,10 @@ extern "C"
     hpdlp_result_t *optimize(
         const pdhg_parameters_t *params,
         const lp_problem_t *original_problem);
+
+    void compute_fixed_point_error(
+        pdhg_solver_state_t *state,
+        const step_size_parameters_t *step_size_params);
 
 #ifdef __cplusplus
 }
