@@ -53,6 +53,8 @@ __global__ void compute_residual_kernel(
     double *__restrict__ bound_multiplier_dual_res,
     int n_cons,
     int n_vars);
+__device__ __forceinline__ double project_box_recession(double value, double lb, double ub);
+__device__ __forceinline__ double project_box_multiplier(double value, double lb, double ub);
 __global__ void compute_box_support_contribution_kernel(
     double *__restrict__ contrib,
     const double *__restrict__ direction,
@@ -612,11 +614,7 @@ __global__ void compute_residual_kernel(
         double clamped = fmax(cons_lb[i], fmin(ax_hat, cons_ub[i]));
         primal_res[i] = (ax_hat - clamped) * cons_rescaling[i];
 
-        double recession_lower_bound = isfinite(cons_lb[i]) ? 0.0 : -INFINITY;
-        double recession_upper_bound = isfinite(cons_ub[i]) ? 0.0 : INFINITY;
-        double projected_recession_value = fmax(recession_lower_bound,
-                                                fmin(ax, recession_upper_bound));
-        constraint_recession_res[i] = (ax - projected_recession_value) 
+        constraint_recession_res[i] = (ax - project_box_recession(ax, cons_lb[i], cons_ub[i]))
                                     * cons_rescaling[i];
 
         original_dual_ray[i] = dual_sol[i] / cons_rescaling[i];
@@ -634,16 +632,12 @@ __global__ void compute_residual_kernel(
                       ? 0.0
                       : reduced_cost * inverse_primal_scale * var_rescaling[idx];
 
-        double reduced_cost_lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
-        double reduced_cost_upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
-        double bound_multiplier = fmax(reduced_cost_lower_bound,
-                                       fmin(reduced_cost, reduced_cost_upper_bound));
+        double bound_multiplier = project_box_multiplier(reduced_cost, var_lb[idx], var_ub[idx]);
         bound_multiplier_out[idx] = bound_multiplier;
         bound_multiplier_dual_res[idx] = (reduced_cost - bound_multiplier)
                                        * inverse_primal_scale * var_rescaling[idx];
 
-        double farkas_reduced_cost = fmax(reduced_cost_lower_bound,
-                                          fmin(-aty, reduced_cost_upper_bound));
+        double farkas_reduced_cost = project_box_multiplier(-aty, var_lb[idx], var_ub[idx]);
         primal_infeasibility_reduced_cost[idx] = farkas_reduced_cost;
         primal_infeasibility_stationarity_res[idx] =
             (aty + farkas_reduced_cost) * var_rescaling[idx];
@@ -654,16 +648,26 @@ __global__ void compute_residual_kernel(
         double x_box_clamped = fmax(var_lb[idx], fmin(x_hat, var_ub[idx]));
         primal_res[n_cons + idx] = (x_hat - x_box_clamped) / var_rescaling[idx];
 
-        double recession_lower_bound = isfinite(var_lb[idx]) ? 0.0 : -INFINITY;
-        double recession_upper_bound = isfinite(var_ub[idx]) ? 0.0 : INFINITY;
-        double projected_recession_value = fmax(recession_lower_bound,
-                                                fmin(x, recession_upper_bound));
-        variable_recession_res[idx] = (x - projected_recession_value)
+        variable_recession_res[idx] = (x - project_box_recession(x, var_lb[idx], var_ub[idx]))
                                     / var_rescaling[idx];
 
         original_reduced_cost_ray[idx] = farkas_reduced_cost * var_rescaling[idx];
         original_primal_ray[idx] = x / var_rescaling[idx];
     }
+}
+
+__device__ __forceinline__ double project_box_recession(double value, double lb, double ub)
+{
+    const double lower = isfinite(lb) ? 0.0 : -INFINITY;
+    const double upper = isfinite(ub) ? 0.0 : INFINITY;
+    return fmax(lower, fmin(value, upper));
+}
+
+__device__ __forceinline__ double project_box_multiplier(double value, double lb, double ub)
+{
+    const double lower = isfinite(ub) ? -INFINITY : 0.0;
+    const double upper = isfinite(lb) ? INFINITY : 0.0;
+    return fmax(lower, fmin(value, upper));
 }
 
 __global__ void compute_box_support_contribution_kernel(
@@ -708,30 +712,14 @@ __global__ void compute_projected_displacement_kernel(
 
     if (i < n_vars)
     {
-        double displacement = primal_pdhg[i] - primal_initial[i];
-        if (isfinite(var_lb[i]))
-        {
-            displacement = fmax(displacement, 0.0);
-        }
-        if (isfinite(var_ub[i]))
-        {
-            displacement = fmin(displacement, 0.0);
-        }
-        primal_delta[i] = displacement;
+        primal_delta[i] =
+            project_box_recession(primal_pdhg[i] - primal_initial[i], var_lb[i], var_ub[i]);
     }
     else if (i < n_vars + n_cons)
     {
         int idx = i - n_vars;
-        double displacement = dual_pdhg[idx] - dual_initial[idx];
-        if (!isfinite(cons_lb[idx]))
-        {
-            displacement = fmin(displacement, 0.0);
-        }
-        if (!isfinite(cons_ub[idx]))
-        {
-            displacement = fmax(displacement, 0.0);
-        }
-        dual_delta[idx] = displacement;
+        dual_delta[idx] =
+            project_box_multiplier(dual_pdhg[idx] - dual_initial[idx], cons_lb[idx], cons_ub[idx]);
     }
 }
 
@@ -754,19 +742,15 @@ __global__ void compute_ray_infeasibility_kernel(
     if (i < n_cons)
     {
         double v = primal_prod[i];
-        double lower_bound = isfinite(cons_lb[i]) ? 0.0 : -INFINITY;
-        double upper_bound = isfinite(cons_ub[i]) ? 0.0 : INFINITY;
-        double projected_value = fmax(lower_bound, fmin(v, upper_bound));
-        dual_infeasibility_res[i] = (v - projected_value) * cons_rescaling[i];
+        dual_infeasibility_res[i] =
+            (v - project_box_recession(v, cons_lb[i], cons_ub[i])) * cons_rescaling[i];
     }
     else if (i < n_cons + n_vars)
     {
         int idx = i - n_cons;
         double v = -dual_prod[idx];
-        double lower_bound = !isfinite(var_ub[idx]) ? 0.0 : -INFINITY;
-        double upper_bound = !isfinite(var_lb[idx]) ? 0.0 : INFINITY;
-        double projected_value = fmax(lower_bound, fmin(v, upper_bound));
-        primal_infeasibility_res[idx] = (v - projected_value) * var_rescaling[idx];
+        primal_infeasibility_res[idx] =
+            (v - project_box_multiplier(v, var_lb[idx], var_ub[idx])) * var_rescaling[idx];
     }
 }
 
