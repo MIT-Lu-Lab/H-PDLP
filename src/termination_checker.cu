@@ -53,23 +53,6 @@ __global__ void compute_residual_kernel(
     double *__restrict__ bound_multiplier_dual_res,
     int n_cons,
     int n_vars);
-__device__ __forceinline__ double project_box_recession(double value, double lb, double ub);
-__device__ __forceinline__ double project_box_multiplier(double value, double lb, double ub);
-__global__ void compute_box_support_contribution_kernel(
-    double *__restrict__ contrib,
-    const double *__restrict__ direction,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    double direction_sign,
-    int n);
-__device__ __forceinline__ double compute_box_support_term(double direction, double lb, double ub);
-__global__ void compute_box_support_magnitude_kernel(
-    double *__restrict__ magnitude,
-    const double *__restrict__ direction,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    double direction_sign,
-    int n);
 __global__ void compute_projected_difference_kernel(
     const double *__restrict__ primal_from,
     const double *__restrict__ primal_to,
@@ -83,19 +66,6 @@ __global__ void compute_projected_difference_kernel(
     const double *__restrict__ cons_ub,
     int n_vars,
     int n_cons);
-__global__ void compute_difference_residual_kernel(
-    const double *__restrict__ primal_prod,
-    const double *__restrict__ dual_prod,
-    const double *__restrict__ cons_lb,
-    const double *__restrict__ cons_ub,
-    const double *__restrict__ var_lb,
-    const double *__restrict__ var_ub,
-    double *__restrict__ constraint_recession_res,
-    double *__restrict__ stationarity_res,
-    const double *__restrict__ cons_rescaling,
-    const double *__restrict__ var_rescaling,
-    int n_cons,
-    int n_vars);
 __global__ void compute_termination_metrics_kernel(
     pdhg_metrics_t *metrics_d,
     const termination_reductions_t *__restrict__ reductions,
@@ -125,23 +95,6 @@ __device__ __forceinline__ void fill_difference_certificate_metrics(
     double bound_objective_scale,
     double constraint_bound_rescaling,
     double objective_vector_rescaling);
-__global__ void compute_absolute_product_entries_kernel(
-    double *__restrict__ entries,
-    const double *__restrict__ left,
-    const double *__restrict__ right,
-    int n);
-__global__ void compute_recession_entries_kernel(
-    double *__restrict__ entries,
-    const double *__restrict__ direction,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    int n);
-__global__ void compute_stationarity_entries_kernel(
-    double *__restrict__ entries,
-    const double *__restrict__ dual_product,
-    const double *__restrict__ var_lb,
-    const double *__restrict__ var_ub,
-    int n);
 static void compute_matrix_products(
     pdhg_solver_state_t *state,
     cusparseDnVecDescr_t primal_vector,
@@ -390,9 +343,6 @@ static void compute_objective_and_support_terms(
     double *constraint_support_d,
     double *variable_support_d)
 {
-    double *constraint_support_entries_d = state->constraint_reduction_entries_d;
-    double *variable_support_entries_d = state->variable_reduction_entries_d;
-
     CUBLAS_CHECK(cublasDdot(
         state->blas_handle_A,
         state->num_variables,
@@ -400,29 +350,22 @@ static void compute_objective_and_support_terms(
         primal_direction_d, 1,
         objective_dot_d));
 
-    compute_box_support_contribution_kernel<<<
-        state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        constraint_support_entries_d,
+    reduce_device_box_support(
+        state,
         dual_direction_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
         1.0,
-        state->num_constraints);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_sum(state, constraint_support_entries_d, state->num_constraints,
-                      constraint_support_d);
-
-    compute_box_support_contribution_kernel<<<
-        state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        variable_support_entries_d,
+        state->num_constraints,
+        constraint_support_d);
+    reduce_device_box_support(
+        state,
         variable_direction_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
         variable_direction_sign,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_sum(state, variable_support_entries_d, state->num_variables,
-                      variable_support_d);
+        state->num_variables,
+        variable_support_d);
 }
 
 static void compute_variable_support(
@@ -430,19 +373,14 @@ static void compute_variable_support(
     const double *multiplier_d,
     double *variable_support_d)
 {
-    double *variable_support_entries_d = state->variable_reduction_entries_d;
-
-    compute_box_support_contribution_kernel<<<
-        state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        variable_support_entries_d,
+    reduce_device_box_support(
+        state,
         multiplier_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
         1.0,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_sum(state, variable_support_entries_d, state->num_variables,
-                      variable_support_d);
+        state->num_variables,
+        variable_support_d);
 }
 
 static void compute_infeasibility_reductions(
@@ -452,87 +390,64 @@ static void compute_infeasibility_reductions(
     candidate_reductions_t *candidate_reductions_d =
         select_candidate_reductions(state->termination_reductions_d, source);
     const candidate_vectors_t candidate = select_candidate_vectors(state, source);
-    const double *primal_direction_d = candidate.primal_d;
-    const double *dual_direction_d = candidate.dual_d;
     const bool iterate = source == CERTIFICATE_SOURCE_ITERATE;
     const double *variable_direction_d =
         iterate ? state->primal_infeasibility_reduced_cost_d : state->dual_product_d;
     const double variable_direction_sign = iterate ? 1.0 : -1.0;
-    double *constraint_entries_d = state->constraint_reduction_entries_d;
-    double *variable_entries_d = state->variable_reduction_entries_d;
 
-    compute_absolute_product_entries_kernel<<<
-        state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        variable_entries_d,
+    reduce_device_absolute_product(
+        state,
         state->objective_vector_d,
-        primal_direction_d,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_sum(state, variable_entries_d, state->num_variables,
-                      &candidate_reductions_d->sum_absolute_objective_terms);
-
-    compute_box_support_magnitude_kernel<<<
-        state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        constraint_entries_d,
-        dual_direction_d,
+        candidate.primal_d,
+        state->num_variables,
+        &candidate_reductions_d->sum_absolute_objective_terms);
+    reduce_device_box_support_magnitude(
+        state,
+        candidate.dual_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
         1.0,
-        state->num_constraints);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_sum(state, constraint_entries_d, state->num_constraints,
-                      &candidate_reductions_d->sum_absolute_constraint_support_terms);
-
-    compute_box_support_magnitude_kernel<<<
-        state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        variable_entries_d,
+        state->num_constraints,
+        &candidate_reductions_d->sum_absolute_constraint_support_terms);
+    reduce_device_box_support_magnitude(
+        state,
         variable_direction_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
         variable_direction_sign,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_sum(state, variable_entries_d, state->num_variables,
-                      &candidate_reductions_d->sum_absolute_variable_support_terms);
+        state->num_variables,
+        &candidate_reductions_d->sum_absolute_variable_support_terms);
 
-    compute_recession_entries_kernel<<<
-        state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        constraint_entries_d,
+    reduce_device_recession_violation(
+        state,
         state->primal_product_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
-        state->num_constraints);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_abs_max(state, constraint_entries_d, state->num_constraints,
-                          &candidate_reductions_d->scaled_constraint_recession_residual);
-
+        NULL,
+        state->num_constraints,
+        &candidate_reductions_d->scaled_constraint_recession_residual);
     if (iterate)
     {
         termination_reductions_t *reductions_d = state->termination_reductions_d;
-        compute_recession_entries_kernel<<<
-            state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-            variable_entries_d,
-            primal_direction_d,
+        reduce_device_recession_violation(
+            state,
+            candidate.primal_d,
             state->variable_lower_bound_d,
             state->variable_upper_bound_d,
-            state->num_variables);
-        CUDA_CHECK(cudaGetLastError());
-        reduce_device_abs_max(state, variable_entries_d, state->num_variables,
-                              &reductions_d->scaled_variable_recession_residual);
-        reduce_device_abs_max(state, primal_direction_d, state->num_variables,
+            NULL,
+            state->num_variables,
+            &reductions_d->scaled_variable_recession_residual);
+        reduce_device_abs_max(state, candidate.primal_d, state->num_variables,
                               &reductions_d->scaled_primal_ray_norm);
     }
-
-    compute_stationarity_entries_kernel<<<
-        state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
-        variable_entries_d,
+    reduce_device_reduced_cost_violation(
+        state,
         state->dual_product_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-    reduce_device_abs_max(state, variable_entries_d, state->num_variables,
-                          &candidate_reductions_d->scaled_stationarity_residual);
+        NULL,
+        state->num_variables,
+        &candidate_reductions_d->scaled_stationarity_residual);
 }
 
 static void compute_difference_reductions(
@@ -589,29 +504,22 @@ static void compute_difference_residual_norms(
     pdhg_solver_state_t *state,
     candidate_reductions_t *candidate_reductions_d)
 {
-    double *constraint_recession_entries_d = state->constraint_reduction_entries_d;
-    double *stationarity_entries_d = state->variable_reduction_entries_d;
-
-    compute_difference_residual_kernel<<<
-        state->num_blocks_primal_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+    reduce_device_recession_violation(
+        state,
         state->primal_product_d,
-        state->dual_product_d,
         state->constraint_lower_bound_d,
         state->constraint_upper_bound_d,
+        state->constraint_rescaling_d,
+        state->num_constraints,
+        &candidate_reductions_d->constraint_recession_residual);
+    reduce_device_reduced_cost_violation(
+        state,
+        state->dual_product_d,
         state->variable_lower_bound_d,
         state->variable_upper_bound_d,
-        constraint_recession_entries_d,
-        stationarity_entries_d,
-        state->constraint_rescaling_d,
         state->variable_rescaling_d,
-        state->num_constraints,
-        state->num_variables);
-    CUDA_CHECK(cudaGetLastError());
-
-    reduce_device_abs_max(state, constraint_recession_entries_d, state->num_constraints,
-                          &candidate_reductions_d->constraint_recession_residual);
-    reduce_device_abs_max(state, stationarity_entries_d, state->num_variables,
-                          &candidate_reductions_d->stationarity_residual);
+        state->num_variables,
+        &candidate_reductions_d->stationarity_residual);
 }
 
 static void compute_certificate_residuals(pdhg_solver_state_t *state, double objective_margin)
@@ -1033,55 +941,6 @@ __global__ void compute_residual_kernel(
     }
 }
 
-__device__ __forceinline__ double project_box_recession(double value, double lb, double ub)
-{
-    const double lower = isfinite(lb) ? 0.0 : -INFINITY;
-    const double upper = isfinite(ub) ? 0.0 : INFINITY;
-    return fmax(lower, fmin(value, upper));
-}
-
-__device__ __forceinline__ double project_box_multiplier(double value, double lb, double ub)
-{
-    const double lower = isfinite(ub) ? -INFINITY : 0.0;
-    const double upper = isfinite(lb) ? INFINITY : 0.0;
-    return fmax(lower, fmin(value, upper));
-}
-
-__global__ void compute_box_support_contribution_kernel(
-    double *__restrict__ contrib,
-    const double *__restrict__ direction,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    double direction_sign,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    contrib[i] = compute_box_support_term(direction_sign * direction[i], lb[i], ub[i]);
-}
-
-__device__ __forceinline__ double compute_box_support_term(double direction, double lb, double ub)
-{
-    if (direction > 0.0 && isfinite(lb))
-        return lb * direction;
-    if (direction < 0.0 && isfinite(ub))
-        return ub * direction;
-    return 0.0;
-}
-
-__global__ void compute_box_support_magnitude_kernel(
-    double *__restrict__ magnitude,
-    const double *__restrict__ direction,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    double direction_sign,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    magnitude[i] = fabs(compute_box_support_term(direction_sign * direction[i], lb[i], ub[i]));
-}
-
 __global__ void compute_projected_difference_kernel(
     const double *__restrict__ primal_from,
     const double *__restrict__ primal_to,
@@ -1108,37 +967,6 @@ __global__ void compute_projected_difference_kernel(
         int idx = i - n_vars;
         dual_delta[idx] =
             project_box_multiplier(dual_to[idx] - dual_from[idx], cons_lb[idx], cons_ub[idx]);
-    }
-}
-
-__global__ void compute_difference_residual_kernel(
-    const double *__restrict__ primal_prod,
-    const double *__restrict__ dual_prod,
-    const double *__restrict__ cons_lb,
-    const double *__restrict__ cons_ub,
-    const double *__restrict__ var_lb,
-    const double *__restrict__ var_ub,
-    double *__restrict__ constraint_recession_res,
-    double *__restrict__ stationarity_res,
-    const double *__restrict__ cons_rescaling,
-    const double *__restrict__ var_rescaling,
-    int n_cons,
-    int n_vars)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (i < n_cons)
-    {
-        double v = primal_prod[i];
-        constraint_recession_res[i] =
-            (v - project_box_recession(v, cons_lb[i], cons_ub[i])) * cons_rescaling[i];
-    }
-    else if (i < n_cons + n_vars)
-    {
-        int idx = i - n_cons;
-        double v = -dual_prod[idx];
-        stationarity_res[idx] =
-            (v - project_box_multiplier(v, var_lb[idx], var_ub[idx])) * var_rescaling[idx];
     }
 }
 
@@ -1338,51 +1166,4 @@ __device__ __forceinline__ void fill_difference_certificate_metrics(
         candidate->sum_absolute_objective_terms,
         candidate->scaled_constraint_recession_residual,
         0.0);
-}
-
-__global__ void compute_absolute_product_entries_kernel(
-    double *__restrict__ entries,
-    const double *__restrict__ left,
-    const double *__restrict__ right,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    entries[i] = fabs(left[i] * right[i]);
-}
-
-__global__ void compute_recession_entries_kernel(
-    double *__restrict__ entries,
-    const double *__restrict__ direction,
-    const double *__restrict__ lb,
-    const double *__restrict__ ub,
-    int n)
-{
-    int i = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n) return;
-    double value = direction[i];
-    if (!isfinite(value))
-    {
-        entries[i] = INFINITY;
-        return;
-    }
-    entries[i] = fabs(value - project_box_recession(value, lb[i], ub[i]));
-}
-
-__global__ void compute_stationarity_entries_kernel(
-    double *__restrict__ entries,
-    const double *__restrict__ dual_product,
-    const double *__restrict__ var_lb,
-    const double *__restrict__ var_ub,
-    int n)
-{
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-    if (j >= n) return;
-    double reduced_cost = -dual_product[j];
-    if (!isfinite(reduced_cost))
-    {
-        entries[j] = INFINITY;
-        return;
-    }
-    entries[j] = fabs(reduced_cost - project_box_multiplier(reduced_cost, var_lb[j], var_ub[j]));
 }

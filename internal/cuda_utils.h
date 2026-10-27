@@ -17,6 +17,7 @@ limitations under the License.
 #pragma once
 
 #include "internal_types.h"
+#include <math.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -44,6 +45,49 @@ extern "C"
         int length,
         double *output);
 
+    void reduce_device_box_support(
+        pdhg_solver_state_t *state,
+        const double *direction,
+        const double *lb,
+        const double *ub,
+        double sign,
+        int length,
+        double *output);
+
+    void reduce_device_box_support_magnitude(
+        pdhg_solver_state_t *state,
+        const double *direction,
+        const double *lb,
+        const double *ub,
+        double sign,
+        int length,
+        double *output);
+
+    void reduce_device_absolute_product(
+        pdhg_solver_state_t *state,
+        const double *left,
+        const double *right,
+        int length,
+        double *output);
+
+    void reduce_device_recession_violation(
+        pdhg_solver_state_t *state,
+        const double *value,
+        const double *lb,
+        const double *ub,
+        const double *rescaling,
+        int length,
+        double *output);
+
+    void reduce_device_reduced_cost_violation(
+        pdhg_solver_state_t *state,
+        const double *dual_product,
+        const double *lb,
+        const double *ub,
+        const double *rescaling,
+        int length,
+        double *output);
+
     void compute_device_abs(
         pdhg_solver_state_t *state,
         const double *input,
@@ -53,3 +97,23 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+__host__ __device__ __forceinline__ double project_box_recession(
+    double value,
+    double lb,
+    double ub)
+{
+    const double lower = isfinite(lb) ? 0.0 : -INFINITY;
+    const double upper = isfinite(ub) ? 0.0 : INFINITY;
+    return fmax(lower, fmin(value, upper));
+}
+
+__host__ __device__ __forceinline__ double project_box_multiplier(
+    double value,
+    double lb,
+    double ub)
+{
+    const double lower = isfinite(ub) ? -INFINITY : 0.0;
+    const double upper = isfinite(lb) ? INFINITY : 0.0;
+    return fmax(lower, fmin(value, upper));
+}
