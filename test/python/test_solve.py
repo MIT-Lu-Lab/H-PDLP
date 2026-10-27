@@ -50,6 +50,50 @@ def test_dual_infeasible_result(presolve):
         assert_dual_certificate(model)
 
 
+@pytest.mark.parametrize("presolve", [False, True])
+@pytest.mark.parametrize("dummy_equality", [False, True])
+def test_huge_objective_does_not_certify_infeasibility(presolve, dummy_equality):
+    if dummy_equality:
+        c = np.array([-1e10, -1.001e10, 0.])
+        matrix = np.array([[1., 1., 0.], [0., 0., 1e10]])
+        lower, upper = [-np.inf, 0.], [2., 0.]
+    else:
+        c = np.array([-1e10, -1.001e10])
+        matrix = np.array([[1., 1.], [-1e10, 1e10]])
+        lower, upper = [-np.inf, 0.], [2., np.inf]
+    model = Model(c, matrix, lower, upper, np.zeros(c.size), None)
+    model.setParams(OutputFlag=False, Presolve=presolve,
+                    OptimalityTol=1e-7, FeasibilityTol=1e-7,
+                    IterationLimit=20000, TimeLimit=10)
+    model.optimize()
+    assert model.Status == PDLP.OPTIMAL
+    assert model.ObjVal == pytest.approx(-2.002e10, rel=1e-7)
+    np.testing.assert_allclose(model.X[:2], [0., 2.], atol=1e-6)
+
+
+@pytest.mark.parametrize("presolve", [False, True])
+@pytest.mark.parametrize("objective_scale", [1e-6, 1., 1e8])
+def test_infeasible_certificate_with_scaled_objective(presolve, objective_scale):
+    model = Model([objective_scale], np.ones((2, 1)), [2., -np.inf], [np.inf, 1.])
+    model.setParams(OutputFlag=False, Presolve=presolve, TimeLimit=10)
+    model.optimize()
+    assert model.Status == PDLP.PRIMAL_INFEASIBLE
+    assert presolve or model.Pi is not None
+    if model.Pi is not None:
+        assert_primal_certificate(model)
+
+
+@pytest.mark.parametrize("margin,status", [(0., PDLP.PRIMAL_INFEASIBLE), (2., PDLP.ITERATION_LIMIT)])
+def test_objective_margin_controls_certificate_acceptance(margin, status):
+    model = Model([1.], np.ones((2, 1)), [2., -np.inf], [np.inf, 1.])
+    model.setParams(OutputFlag=False, Presolve=False, FarkasObjectiveMargin=margin,
+                    IterationLimit=2000, TimeLimit=10)
+    model.optimize()
+    assert model.Status == status
+    if status == PDLP.PRIMAL_INFEASIBLE:
+        assert_primal_certificate(model)
+
+
 @pytest.mark.parametrize("parameter,value,status", [
     ("IterationLimit", 1, PDLP.ITERATION_LIMIT),
     ("TimeLimit", 1e-12, PDLP.TIME_LIMIT),

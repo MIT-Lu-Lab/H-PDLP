@@ -122,9 +122,10 @@ def test_param_name_validation(model):
 
 def test_specific_parameters_and_transactional_validation(base_lp_data):
     model = Model(*base_lp_data)
-    model.setParams(FarkasHomogeneousTol=1e-08, FarkasDisplacementTol=1e-09, ConeNewtonTol=1e-08, ConeNewtonMaxIter=150, StepSizeFactor=0.9, Ki=0.1, Kd=0.01, ISmooth=0.2, PrimalWeightSafeguard=False, Diagnose=True)
-    assert model.Params.eps_farkas_homogeneous == 1e-08
-    assert model.Params.eps_farkas_displacement == 1e-09
+    model.setParams(FarkasIterateTol=1e-07, FarkasStepTol=1e-06, FarkasRestartTol=1e-09, ConeNewtonTol=1e-08, ConeNewtonMaxIter=150, StepSizeFactor=0.9, Ki=0.1, Kd=0.01, ISmooth=0.2, PrimalWeightSafeguard=False, Diagnose=True)
+    assert model.Params.eps_farkas_iterate == 1e-07
+    assert model.Params.eps_farkas_step == 1e-06
+    assert model.Params.eps_farkas_restart == 1e-09
     assert model.Params.cone_newton_max_iter == 150
     assert model.Params.k_i == 0.1
     before = dict(model.Params.items())
@@ -136,7 +137,7 @@ def test_specific_parameters_and_transactional_validation(base_lp_data):
             model.setParam(name, 1)
 
 
-@pytest.mark.parametrize('params', [{'eps_farkas_homogeneous': 0}, {'eps_farkas_displacement': -1}, {'cone_newton_max_iter': 0}, {'cone_newton_tol': float('nan')}, {'step_size_factor': 1}, {'i_smooth': 1}, {'k_i': float('inf')}, {'asb_relative_tol': -1}, {'optimality_norm': 'l1'}, {'sufficient_reduction_for_restart': 0.8, 'necessary_reduction_for_restart': 0.4}])
+@pytest.mark.parametrize('params', [{'eps_farkas_iterate': 0}, {'eps_farkas_step': float('inf')}, {'eps_farkas_restart': -1}, {'cone_newton_max_iter': 0}, {'cone_newton_tol': float('nan')}, {'step_size_factor': 1}, {'i_smooth': 1}, {'k_i': float('inf')}, {'asb_relative_tol': -1}, {'optimality_norm': 'l1'}, {'sufficient_reduction_for_restart': 0.8, 'necessary_reduction_for_restart': 0.4}])
 def test_core_parameter_ranges(params):
     with pytest.raises(ValueError):
         validate_params(params)
@@ -147,6 +148,15 @@ def test_defaults_are_usable_without_gpu_work(base_lp_data):
     validate_params(defaults)
     model = Model(*base_lp_data)
     assert dict(model.Params.items()) == defaults
+
+
+def test_farkas_objective_margin_parameter(model):
+    for value in (0., 1e-8, 2.):
+        model.setParam("FarkasObjectiveMargin", value)
+        assert model.getParam("farkas_objective_margin") == value
+    for value in (-1., float("inf"), float("nan")):
+        with pytest.raises(ValueError, match="farkas_objective_margin.*finite"):
+            validate_params({"farkas_objective_margin": value})
 
 
 @pytest.mark.parametrize("alias,canonical,value", [

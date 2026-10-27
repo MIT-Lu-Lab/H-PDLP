@@ -62,7 +62,8 @@ static void create_csr_descriptor(
     cusparseSpMatDescr_t *descriptor,
     int num_rows,
     int num_cols,
-    const cu_sparse_matrix_csr_t *matrix);
+    const cu_sparse_matrix_csr_t *matrix,
+    bool absolute_values);
 static void create_dense_vector_descriptor(
     cusparseDnVecDescr_t *descriptor,
     int length,
@@ -176,6 +177,8 @@ static void upload_problem_data(
     allocate_and_copy_to_device((void **)&state->constraint_matrix->val,
                                 working_problem->constraint_matrix_values,
                                 (size_t)nnz * sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_matrix->abs_val,
+                                  (size_t)nnz * sizeof(double));
 
     allocate_zeroed_device_buffer(
         (void **)&state->constraint_matrix->row_ind,
@@ -207,6 +210,8 @@ static void upload_problem_data(
     allocate_and_copy_to_device((void **)&state->constraint_matrix_t->val,
                                 transpose_val_h,
                                 (size_t)nnz * sizeof(double));
+    allocate_zeroed_device_buffer((void **)&state->constraint_matrix_t->abs_val,
+                                  (size_t)nnz * sizeof(double));
 
     allocate_and_copy_to_device((void **)&state->constraint_matrix->transpose_map,
                                 transpose_map_h,
@@ -238,7 +243,8 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->primal_current_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_pdhg_solution_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_reflected_solution_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->primal_delta_solution_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_step_delta_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_restart_delta_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_product_d, con_bytes);
     allocate_zeroed_device_buffer(
         (void **)&state->variable_reduction_entries_d,
@@ -248,7 +254,8 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->dual_current_solution_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_pdhg_solution_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_reflected_solution_d, con_bytes);
-    allocate_zeroed_device_buffer((void **)&state->dual_delta_solution_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->dual_step_delta_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->dual_restart_delta_d, con_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_product_d, var_bytes);
     allocate_zeroed_device_buffer(
         (void **)&state->constraint_reduction_entries_d,
@@ -258,9 +265,9 @@ static void allocate_solver_work_vectors(pdhg_solver_state_t *state)
     allocate_zeroed_device_buffer((void **)&state->bound_multiplier_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_pdhg_projection_multiplier_d, var_bytes);
     allocate_zeroed_device_buffer((void **)&state->primal_infeasibility_reduced_cost_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->reduced_cost_ray_d, var_bytes);
-    allocate_zeroed_device_buffer((void **)&state->dual_ray_d, con_bytes);
-    allocate_zeroed_device_buffer((void **)&state->primal_ray_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->reduced_cost_iterate_ray_d, var_bytes);
+    allocate_zeroed_device_buffer((void **)&state->dual_iterate_ray_d, con_bytes);
+    allocate_zeroed_device_buffer((void **)&state->primal_iterate_ray_d, var_bytes);
 
     allocate_zeroed_device_buffer((void **)&state->primal_residual_d, con_bytes + var_bytes);
     allocate_zeroed_device_buffer((void **)&state->dual_residual_d, var_bytes);
@@ -434,12 +441,26 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         &state->matA,
         state->num_constraints,
         state->num_variables,
-        state->constraint_matrix);
+        state->constraint_matrix,
+        false);
     create_csr_descriptor(
         &state->matAt,
         state->num_variables,
         state->num_constraints,
-        state->constraint_matrix_t);
+        state->constraint_matrix_t,
+        false);
+    create_csr_descriptor(
+        &state->matAbsA,
+        state->num_constraints,
+        state->num_variables,
+        state->constraint_matrix,
+        true);
+    create_csr_descriptor(
+        &state->matAbsAt,
+        state->num_variables,
+        state->num_constraints,
+        state->constraint_matrix_t,
+        true);
 
     create_dense_vector_descriptor(
         &state->spmv_primal_current_solution,
@@ -458,13 +479,21 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         state->num_constraints,
         state->dual_pdhg_solution_d);
     create_dense_vector_descriptor(
-        &state->spmv_primal_delta_solution,
+        &state->spmv_primal_step_delta,
         state->num_variables,
-        state->primal_delta_solution_d);
+        state->primal_step_delta_d);
     create_dense_vector_descriptor(
-        &state->spmv_dual_delta_solution,
+        &state->spmv_dual_step_delta,
         state->num_constraints,
-        state->dual_delta_solution_d);
+        state->dual_step_delta_d);
+    create_dense_vector_descriptor(
+        &state->spmv_primal_restart_delta,
+        state->num_variables,
+        state->primal_restart_delta_d);
+    create_dense_vector_descriptor(
+        &state->spmv_dual_restart_delta,
+        state->num_constraints,
+        state->dual_restart_delta_d);
     create_dense_vector_descriptor(
         &state->spmv_primal_product,
         state->num_constraints,
@@ -473,13 +502,22 @@ static void setup_sparse_resources(pdhg_solver_state_t *state)
         &state->spmv_dual_product,
         state->num_variables,
         state->dual_product_d);
+    create_dense_vector_descriptor(
+        &state->spmv_variable_reduction_entries,
+        state->num_variables,
+        state->variable_reduction_entries_d);
+    create_dense_vector_descriptor(
+        &state->spmv_constraint_reduction_entries,
+        state->num_constraints,
+        state->constraint_reduction_entries_d);
 }
 
 static void create_csr_descriptor(
     cusparseSpMatDescr_t *descriptor,
     int num_rows,
     int num_cols,
-    const cu_sparse_matrix_csr_t *matrix)
+    const cu_sparse_matrix_csr_t *matrix,
+    bool absolute_values)
 {
     CUSPARSE_CHECK(cusparseCreateCsr(
         descriptor,
@@ -488,7 +526,7 @@ static void create_csr_descriptor(
         matrix->num_nonzeros,
         matrix->row_ptr,
         matrix->col_ind,
-        matrix->val,
+        absolute_values ? matrix->abs_val : matrix->val,
         CUSPARSE_INDEX_32I,
         CUSPARSE_INDEX_32I,
         CUSPARSE_INDEX_BASE_ZERO,
@@ -517,6 +555,25 @@ static void initialize_spmv_plans(pdhg_solver_state_t *state)
         state->spmv_dual_reflected_solution,
         state->spmv_dual_product,
         &state->constraint_matrix_transpose_spmv_plan);
+
+    const int num_nonzeros = state->constraint_matrix->num_nonzeros;
+    compute_device_abs(state, state->constraint_matrix->val, num_nonzeros,
+                       state->constraint_matrix->abs_val);
+    compute_device_abs(state, state->constraint_matrix_t->val, num_nonzeros,
+                       state->constraint_matrix_t->abs_val);
+    CUDA_CHECK(cudaStreamSynchronize(state->stream_A));
+    create_spmv_plan(
+        state->sparse_handle_A,
+        state->matAbsA,
+        state->spmv_variable_reduction_entries,
+        state->spmv_constraint_reduction_entries,
+        &state->absolute_constraint_matrix_spmv_plan);
+    create_spmv_plan(
+        state->sparse_handle_A,
+        state->matAbsAt,
+        state->spmv_constraint_reduction_entries,
+        state->spmv_variable_reduction_entries,
+        &state->absolute_constraint_matrix_transpose_spmv_plan);
 }
 
 static void release_setup_only_resources(pdhg_solver_state_t *state)
@@ -599,11 +656,17 @@ static void free_sparse_resources(pdhg_solver_state_t *state)
 {
     destroy_spmv_plan(&state->constraint_matrix_spmv_plan);
     destroy_spmv_plan(&state->constraint_matrix_transpose_spmv_plan);
+    destroy_spmv_plan(&state->absolute_constraint_matrix_spmv_plan);
+    destroy_spmv_plan(&state->absolute_constraint_matrix_transpose_spmv_plan);
 
     if (state->matA)
         CUSPARSE_CHECK(cusparseDestroySpMat(state->matA));
     if (state->matAt)
         CUSPARSE_CHECK(cusparseDestroySpMat(state->matAt));
+    if (state->matAbsA)
+        CUSPARSE_CHECK(cusparseDestroySpMat(state->matAbsA));
+    if (state->matAbsAt)
+        CUSPARSE_CHECK(cusparseDestroySpMat(state->matAbsAt));
     if (state->spmv_primal_current_solution)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_current_solution));
     if (state->spmv_dual_reflected_solution)
@@ -612,14 +675,22 @@ static void free_sparse_resources(pdhg_solver_state_t *state)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_pdhg_solution));
     if (state->spmv_dual_pdhg_solution)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_pdhg_solution));
-    if (state->spmv_primal_delta_solution)
-        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_delta_solution));
-    if (state->spmv_dual_delta_solution)
-        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_delta_solution));
+    if (state->spmv_primal_step_delta)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_step_delta));
+    if (state->spmv_dual_step_delta)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_step_delta));
+    if (state->spmv_primal_restart_delta)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_restart_delta));
+    if (state->spmv_dual_restart_delta)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_restart_delta));
     if (state->spmv_primal_product)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_primal_product));
     if (state->spmv_dual_product)
         CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_dual_product));
+    if (state->spmv_variable_reduction_entries)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_variable_reduction_entries));
+    if (state->spmv_constraint_reduction_entries)
+        CUSPARSE_CHECK(cusparseDestroyDnVec(state->spmv_constraint_reduction_entries));
 }
 
 static void free_solver_device_buffers(pdhg_solver_state_t *state)
@@ -645,7 +716,8 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->primal_current_solution_d);
     FREE_DEVICE_BUFFER(state->primal_pdhg_solution_d);
     FREE_DEVICE_BUFFER(state->primal_reflected_solution_d);
-    FREE_DEVICE_BUFFER(state->primal_delta_solution_d);
+    FREE_DEVICE_BUFFER(state->primal_step_delta_d);
+    FREE_DEVICE_BUFFER(state->primal_restart_delta_d);
     FREE_DEVICE_BUFFER(state->primal_product_d);
     FREE_DEVICE_BUFFER(state->variable_reduction_entries_d);
 
@@ -653,7 +725,8 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->dual_current_solution_d);
     FREE_DEVICE_BUFFER(state->dual_pdhg_solution_d);
     FREE_DEVICE_BUFFER(state->dual_reflected_solution_d);
-    FREE_DEVICE_BUFFER(state->dual_delta_solution_d);
+    FREE_DEVICE_BUFFER(state->dual_step_delta_d);
+    FREE_DEVICE_BUFFER(state->dual_restart_delta_d);
     FREE_DEVICE_BUFFER(state->dual_product_d);
     FREE_DEVICE_BUFFER(state->constraint_reduction_entries_d);
 
@@ -661,9 +734,9 @@ static void free_solver_device_buffers(pdhg_solver_state_t *state)
     FREE_DEVICE_BUFFER(state->bound_multiplier_d);
     FREE_DEVICE_BUFFER(state->primal_pdhg_projection_multiplier_d);
     FREE_DEVICE_BUFFER(state->primal_infeasibility_reduced_cost_d);
-    FREE_DEVICE_BUFFER(state->reduced_cost_ray_d);
-    FREE_DEVICE_BUFFER(state->dual_ray_d);
-    FREE_DEVICE_BUFFER(state->primal_ray_d);
+    FREE_DEVICE_BUFFER(state->reduced_cost_iterate_ray_d);
+    FREE_DEVICE_BUFFER(state->dual_iterate_ray_d);
+    FREE_DEVICE_BUFFER(state->primal_iterate_ray_d);
 
     FREE_DEVICE_BUFFER(state->hsd_scalars_d);
     FREE_DEVICE_BUFFER(state->hsd_inverse_scale_d);
@@ -715,6 +788,8 @@ static void free_device_sparse_matrix(cu_sparse_matrix_csr_t *matrix)
         CUDA_CHECK(cudaFree(matrix->row_ind));
     if (matrix->val)
         CUDA_CHECK(cudaFree(matrix->val));
+    if (matrix->abs_val)
+        CUDA_CHECK(cudaFree(matrix->abs_val));
     if (matrix->transpose_map)
         CUDA_CHECK(cudaFree(matrix->transpose_map));
 

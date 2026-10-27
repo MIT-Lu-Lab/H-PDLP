@@ -112,8 +112,10 @@ extern "C"
     {
         double eps_optimal_relative;
         double eps_feasible_relative;
-        double eps_farkas_homogeneous;
-        double eps_farkas_displacement;
+        double eps_farkas_iterate;
+        double eps_farkas_step;
+        double eps_farkas_restart;
+        double farkas_objective_margin;
         double time_sec_limit;
         int iteration_limit;
     } termination_criteria_t;

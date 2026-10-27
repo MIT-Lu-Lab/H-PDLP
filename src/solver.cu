@@ -604,10 +604,10 @@ static void compute_fixed_point_error(
         state->stream_A>>>(
         state->primal_pdhg_solution_d,
         state->primal_reflected_solution_d,
-        state->primal_delta_solution_d,
+        state->primal_step_delta_d,
         state->dual_pdhg_solution_d,
         state->dual_reflected_solution_d,
-        state->dual_delta_solution_d,
+        state->dual_step_delta_d,
         state->num_variables,
         state->num_constraints);
 
@@ -616,20 +616,20 @@ static void compute_fixed_point_error(
 
     execute_spmv(
         state->sparse_handle_At,
-        state->spmv_dual_delta_solution,
+        state->spmv_dual_step_delta,
         state->spmv_dual_product,
         &state->constraint_matrix_transpose_spmv_plan);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_variables,
-        state->primal_delta_solution_d,
+        state->primal_step_delta_d,
         1,
         &reductions_d->primal_delta_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_constraints,
-        state->dual_delta_solution_d,
+        state->dual_step_delta_d,
         1,
         &reductions_d->dual_delta_norm));
 
@@ -641,7 +641,7 @@ static void compute_fixed_point_error(
         state->num_variables,
         state->dual_product_d,
         1,
-        state->primal_delta_solution_d,
+        state->primal_step_delta_d,
         1,
         &reductions_d->operator_cross_term));
 
@@ -753,23 +753,23 @@ static void perform_adaptive_restart(
         state->stream_A>>>(
         state->primal_initial_solution_d,
         state->primal_pdhg_solution_d,
-        state->primal_delta_solution_d,
+        state->primal_restart_delta_d,
         state->dual_initial_solution_d,
         state->dual_pdhg_solution_d,
-        state->dual_delta_solution_d,
+        state->dual_restart_delta_d,
         state->num_variables,
         state->num_constraints);
 
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_variables,
-        state->primal_delta_solution_d,
+        state->primal_restart_delta_d,
         1,
         &reductions_mp->primal_delta_norm));
     CUBLAS_CHECK(cublasDnrm2_v2_64(
         state->blas_handle_A,
         state->num_constraints,
-        state->dual_delta_solution_d,
+        state->dual_restart_delta_d,
         1,
         &reductions_mp->dual_delta_norm));
 

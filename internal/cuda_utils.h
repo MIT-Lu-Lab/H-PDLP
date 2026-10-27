@@ -44,6 +44,12 @@ extern "C"
         int length,
         double *output);
 
+    void compute_device_abs(
+        pdhg_solver_state_t *state,
+        const double *input,
+        int length,
+        double *output);
+
 #ifdef __cplusplus
 }
 #endif

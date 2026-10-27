@@ -65,12 +65,16 @@ By default, PSLP presolve is followed by geometric-mean scaling (12 iterations),
 | :--- | :--- | :--- | :--- |
 | `--eps_opt` | `double` | Relative optimality tolerance. | `1e-4` |
 | `--eps_feas` | `double` | Relative feasibility tolerance. | `1e-4` |
-| `--eps_farkas_homogeneous` | `double` | Residual-to-margin tolerance for homogeneous infeasibility certificates. | `1e-9` |
-| `--eps_farkas_displacement` | `double` | Residual-to-margin tolerance for displacement infeasibility certificates. | `1e-10` |
+| `--eps_farkas_iterate` | `double` | Relative residual tolerance for certificates from the current iterate. | `1e-8` |
+| `--eps_farkas_step` | `double` | Relative residual tolerance for certificates from the last PDHG step. | `1e-8` |
+| `--eps_farkas_restart` | `double` | Relative residual tolerance for certificates from the displacement since the last restart. | `1e-8` |
+| `--farkas_objective_margin` | `double` | Minimum certificate objective margin, relative to the sum of absolute objective terms; `0` requires only a positive margin. | `1e-8` |
 | `--time_limit` | `double` | Iteration CPU-time limit in seconds. | `3600.0` |
 | `--iter_limit` | `int` | Iteration limit. | `2147483647` |
 
 `--time_limit` uses iteration CPU time measured by C `clock()`. It excludes presolve and initialization and is checked at termination evaluations. It is not a wall-clock limit.
+
+A certificate's relative residual is measured on the rescaled problem. For a primal ray `d`, it is the larger of the constraint violation divided by `‖|A||d|‖∞` and the bound violation divided by `‖d‖∞`. For a dual ray `y`, it is the reduced-cost violation divided by `‖|Aᵀ||y|‖∞`.
 
 **Active-set step boost**
 
@@ -105,4 +109,3 @@ Add `--diagnose` to show these additional groups:
 | Step sizes | `pr ss`, `du ss`, `sc ss` | Primal, dual, and homogeneous step sizes. |
 | Weight and scales | `omega`, `tau`, `alpha` | Primal weight, PDHG primal scale, and PDHG dual scale. |
 | Block norms | `\|x\|`, `\|y\|` | Primal and dual solution norms. |
-

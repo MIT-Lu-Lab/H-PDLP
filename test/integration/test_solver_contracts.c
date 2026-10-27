@@ -60,8 +60,9 @@ static void check_certificates(void)
     pdhg_parameters_t params;
     set_default_parameters(&params);
     params.verbose = params.presolve = false;
-    params.termination_criteria.eps_farkas_homogeneous = 1e-7;
-    params.termination_criteria.eps_farkas_displacement = 1e-7;
+    params.termination_criteria.eps_farkas_iterate = 1e-7;
+    params.termination_criteria.eps_farkas_step = 1e-7;
+    params.termination_criteria.eps_farkas_restart = 1e-7;
     hpdlp_result_t *result = solve_lp_problem(problem, &params);
     CHECK(result && result->termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE);
     if (result && result->dual_solution && result->reduced_cost)

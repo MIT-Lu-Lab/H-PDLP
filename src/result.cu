@@ -56,9 +56,11 @@ hpdlp_result_t *create_result_from_state(
     const bool has_solution = termination_has_solution(reason);
     const bool primal_infeasible = reason == TERMINATION_REASON_PRIMAL_INFEASIBLE;
     const bool dual_infeasible = reason == TERMINATION_REASON_DUAL_INFEASIBLE;
-    const bool from_displacement =
+    const bool from_difference =
         (primal_infeasible || dual_infeasible) &&
-        !state->control.certificate_from_homogeneous;
+        state->control.certificate_source != CERTIFICATE_SOURCE_ITERATE;
+    const candidate_vectors_t candidate =
+        select_candidate_vectors(state, state->control.certificate_source);
 
     if (has_solution || primal_infeasible || dual_infeasible)
     {
@@ -67,9 +69,7 @@ hpdlp_result_t *create_result_from_state(
         if (has_solution || dual_infeasible)
         {
             const double *primal_input_d =
-                from_displacement
-                    ? state->primal_delta_solution_d
-                    : state->primal_pdhg_solution_d;
+                from_difference ? candidate.primal_d : state->primal_pdhg_solution_d;
             result->primal_solution = (double *)safe_malloc(state->var_bytes);
             rescale_solution_component_kernel<<<
                 state->num_blocks_primal, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -85,9 +85,7 @@ hpdlp_result_t *create_result_from_state(
         if (has_solution || primal_infeasible)
         {
             const double *dual_input_d =
-                from_displacement
-                    ? state->dual_delta_solution_d
-                    : state->dual_pdhg_solution_d;
+                from_difference ? candidate.dual_d : state->dual_pdhg_solution_d;
             result->dual_solution = (double *)safe_malloc(state->con_bytes);
             rescale_solution_component_kernel<<<
                 state->num_blocks_dual, THREADS_PER_BLOCK, 0, state->stream_A>>>(
@@ -99,8 +97,10 @@ hpdlp_result_t *create_result_from_state(
                 result->dual_solution, state->constraint_reduction_entries_d,
                 state->con_bytes, cudaMemcpyDeviceToHost, state->stream_A));
 
+            if (from_difference)
+                compute_certificate_dual_product(state);
             const double *reduced_cost_input_d =
-                from_displacement
+                from_difference
                     ? state->dual_product_d
                     : (primal_infeasible
                            ? state->primal_infeasibility_reduced_cost_d
@@ -111,7 +111,7 @@ hpdlp_result_t *create_result_from_state(
                 reduced_cost_input_d, state->variable_reduction_entries_d,
                 state->variable_lower_bound_d, state->variable_upper_bound_d,
                 state->variable_rescaling_d, state->objective_vector_rescaling,
-                divisor, from_displacement ? -1.0 : 1.0, state->num_variables);
+                divisor, from_difference ? -1.0 : 1.0, state->num_variables);
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaMemcpyAsync(
                 result->reduced_cost, state->variable_reduction_entries_d,
@@ -161,21 +161,12 @@ static double compute_result_divisor(const pdhg_solver_state_t *state)
     CUDA_CHECK(cudaMemcpy(&reductions_h, state->termination_reductions_d,
                           sizeof(reductions_h), cudaMemcpyDeviceToHost));
 
-    double margin;
-    if (state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE)
-    {
-        margin = state->control.certificate_from_homogeneous
-                     ? reductions_h.constraint_support +
-                           reductions_h.homogeneous_variable_support
-                     : reductions_h.primal_infeasibility_constraint_support +
-                           reductions_h.primal_infeasibility_variable_support;
-    }
-    else
-    {
-        margin = -(state->control.certificate_from_homogeneous
-                       ? reductions_h.objective_dot_primal
-                       : reductions_h.dual_infeasibility_objective);
-    }
+    const candidate_reductions_t *candidate =
+        select_candidate_reductions(&reductions_h, state->control.certificate_source);
+    const double margin =
+        state->control.termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE
+            ? candidate->constraint_support + candidate->variable_support
+            : -candidate->objective_dot;
     return margin /
            (state->constraint_bound_rescaling * state->objective_vector_rescaling);
 }

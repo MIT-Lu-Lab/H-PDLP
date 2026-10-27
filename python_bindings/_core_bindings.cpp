@@ -297,8 +297,10 @@ static void visit_params(pdhg_parameters_t &p, Visitor &&visit)
     visit("cone_newton_tol", p.cone_params.tol);
     visit("eps_optimal_relative", p.termination_criteria.eps_optimal_relative);
     visit("eps_feasible_relative", p.termination_criteria.eps_feasible_relative);
-    visit("eps_farkas_homogeneous", p.termination_criteria.eps_farkas_homogeneous);
-    visit("eps_farkas_displacement", p.termination_criteria.eps_farkas_displacement);
+    visit("eps_farkas_iterate", p.termination_criteria.eps_farkas_iterate);
+    visit("eps_farkas_step", p.termination_criteria.eps_farkas_step);
+    visit("eps_farkas_restart", p.termination_criteria.eps_farkas_restart);
+    visit("farkas_objective_margin", p.termination_criteria.farkas_objective_margin);
     visit("time_sec_limit", p.termination_criteria.time_sec_limit);
     visit("iteration_limit", p.termination_criteria.iteration_limit);
     visit("artificial_restart_threshold", p.restart_params.artificial_restart_threshold);

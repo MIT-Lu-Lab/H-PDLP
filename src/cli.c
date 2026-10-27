@@ -68,11 +68,13 @@ int main(int argc, char *argv[])
         {"cone_newton_tol", required_argument, 0, 1013},
         {"eps_opt", required_argument, 0, 1014},
         {"eps_feas", required_argument, 0, 1015},
-        {"eps_farkas_homogeneous", required_argument, 0, 1016},
-        {"eps_farkas_displacement", required_argument, 0, 1017},
-        {"time_limit", required_argument, 0, 1018},
-        {"iter_limit", required_argument, 0, 1019},
-        {"no_active_set_boost", no_argument, 0, 1020},
+        {"eps_farkas_iterate", required_argument, 0, 1016},
+        {"eps_farkas_step", required_argument, 0, 1017},
+        {"eps_farkas_restart", required_argument, 0, 1018},
+        {"farkas_objective_margin", required_argument, 0, 1019},
+        {"time_limit", required_argument, 0, 1020},
+        {"iter_limit", required_argument, 0, 1021},
+        {"no_active_set_boost", no_argument, 0, 1022},
         {0, 0, 0, 0}};
 
     int opt;
@@ -166,26 +168,36 @@ int main(int argc, char *argv[])
                 return 1;
             break;
         case 1016:
-            if (!parse_double_arg("--eps_farkas_homogeneous", optarg,
-                                  &params.termination_criteria.eps_farkas_homogeneous))
+            if (!parse_double_arg("--eps_farkas_iterate", optarg,
+                                  &params.termination_criteria.eps_farkas_iterate))
                 return 1;
             break;
         case 1017:
-            if (!parse_double_arg("--eps_farkas_displacement", optarg,
-                                  &params.termination_criteria.eps_farkas_displacement))
+            if (!parse_double_arg("--eps_farkas_step", optarg,
+                                  &params.termination_criteria.eps_farkas_step))
                 return 1;
             break;
         case 1018:
+            if (!parse_double_arg("--eps_farkas_restart", optarg,
+                                  &params.termination_criteria.eps_farkas_restart))
+                return 1;
+            break;
+        case 1019:
+            if (!parse_double_arg("--farkas_objective_margin", optarg,
+                                  &params.termination_criteria.farkas_objective_margin))
+                return 1;
+            break;
+        case 1020:
             if (!parse_double_arg("--time_limit", optarg,
                                   &params.termination_criteria.time_sec_limit))
                 return 1;
             break;
-        case 1019:
+        case 1021:
             if (!parse_int_arg("--iter_limit", optarg,
                                &params.termination_criteria.iteration_limit))
                 return 1;
             break;
-        case 1020:
+        case 1022:
             params.active_set_params.step_size_boost = false;
             break;
         case '?':
@@ -292,10 +304,14 @@ static void print_usage(const char *prog_name)
             defaults.termination_criteria.eps_optimal_relative);
     fprintf(stderr, "      --eps_feas <float>                Relative feasibility tolerance (default: %g).\n",
             defaults.termination_criteria.eps_feasible_relative);
-    fprintf(stderr, "      --eps_farkas_homogeneous <float>  Homogeneous-certificate infeasibility ratio (default: %g).\n",
-            defaults.termination_criteria.eps_farkas_homogeneous);
-    fprintf(stderr, "      --eps_farkas_displacement <float> Displacement-certificate infeasibility ratio (default: %g).\n",
-            defaults.termination_criteria.eps_farkas_displacement);
+    fprintf(stderr, "      --eps_farkas_iterate <float>      Certificate residual tolerance, current iterate (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_iterate);
+    fprintf(stderr, "      --eps_farkas_step <float>         Certificate residual tolerance, last PDHG step (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_step);
+    fprintf(stderr, "      --eps_farkas_restart <float>      Certificate residual tolerance, since last restart (default: %g).\n",
+            defaults.termination_criteria.eps_farkas_restart);
+    fprintf(stderr, "      --farkas_objective_margin <float> Minimum relative certificate objective margin (default: %g).\n",
+            defaults.termination_criteria.farkas_objective_margin);
     fprintf(stderr, "      --time_limit <float>              Time limit in seconds (default: %g).\n",
             defaults.termination_criteria.time_sec_limit);
     fprintf(stderr, "      --iter_limit <int>                Iteration limit (default: %d).\n",

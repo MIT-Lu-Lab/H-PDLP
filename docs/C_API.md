@@ -97,3 +97,5 @@ Check `result->termination_reason` before interpreting the returned vectors. The
 Limit statuses do not guarantee feasibility or optimality. Presolve may detect infeasibility without returning a ray. A dual-infeasibility certificate establishes primal unboundedness only when the primal problem is feasible.
 
 The vector fields are `primal_solution`, `dual_solution`, and `reduced_cost`; on an infeasibility return, these fields hold the corresponding rays. The result also includes objective values, residuals, timings, and certificate statistics. The CLI writes primal and dual vectors when available; reduced costs are accessible through the C API.
+
+`farkas_margin` and `farkas_residual` report the accepted ray's margin and residual in original units; with presolve, they refer to the reduced problem. The certificate tolerances are compared with the [relative residual](CLI.md#solver-options), not with `farkas_residual`.

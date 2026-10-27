@@ -63,8 +63,10 @@ _PARAM_ALIAS = {
     # termination criteria
     "OptimalityTol": "eps_optimal_relative",
     "FeasibilityTol": "eps_feasible_relative",
-    "FarkasHomogeneousTol": "eps_farkas_homogeneous",
-    "FarkasDisplacementTol": "eps_farkas_displacement",
+    "FarkasIterateTol": "eps_farkas_iterate",
+    "FarkasStepTol": "eps_farkas_step",
+    "FarkasRestartTol": "eps_farkas_restart",
+    "FarkasObjectiveMargin": "farkas_objective_margin",
     "TimeLimit": "time_sec_limit",
     "IterationLimit": "iteration_limit",
     # restarts

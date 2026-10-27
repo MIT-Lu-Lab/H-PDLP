@@ -95,8 +95,12 @@ static void check_parameter_validation(void)
         REJECT(active_set_params.max_reverts, -1);
         REJECT(termination_criteria.eps_optimal_relative, 0.0);
         REJECT(termination_criteria.eps_feasible_relative, INFINITY);
-        REJECT(termination_criteria.eps_farkas_homogeneous, NAN);
-        REJECT(termination_criteria.eps_farkas_displacement, -1.0);
+        REJECT(termination_criteria.eps_farkas_iterate, NAN);
+        REJECT(termination_criteria.eps_farkas_step, 0.0);
+        REJECT(termination_criteria.eps_farkas_restart, -1.0);
+        REJECT(termination_criteria.farkas_objective_margin, -1.0);
+        REJECT(termination_criteria.farkas_objective_margin, INFINITY);
+        REJECT(termination_criteria.farkas_objective_margin, NAN);
         REJECT(termination_criteria.time_sec_limit, 0.0);
         REJECT(termination_criteria.iteration_limit, 0);
         REJECT(restart_params.artificial_restart_threshold, 0.0);
@@ -107,6 +111,9 @@ static void check_parameter_validation(void)
     params.verbose = false;
     char error[256];
     check("default parameters validate",
+          hpdlp_validate_parameters(&params, error, sizeof(error)) == 0);
+    params.termination_criteria.farkas_objective_margin = 0.0;
+    check("zero objective margin permits a sign-only check",
           hpdlp_validate_parameters(&params, error, sizeof(error)) == 0);
     lp_problem_free(problem);
 }

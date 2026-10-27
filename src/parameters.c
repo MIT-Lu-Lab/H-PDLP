@@ -54,8 +54,10 @@ void set_default_parameters(pdhg_parameters_t *params)
 
     params->termination_criteria.eps_optimal_relative = 1e-4;
     params->termination_criteria.eps_feasible_relative = 1e-4;
-    params->termination_criteria.eps_farkas_homogeneous = 1e-9;
-    params->termination_criteria.eps_farkas_displacement = 1e-10;
+    params->termination_criteria.eps_farkas_iterate = 1e-8;
+    params->termination_criteria.eps_farkas_step = 1e-8;
+    params->termination_criteria.eps_farkas_restart = 1e-8;
+    params->termination_criteria.farkas_objective_margin = 1e-8;
     params->termination_criteria.time_sec_limit = 3600.0;
     params->termination_criteria.iteration_limit = INT32_MAX;
 
@@ -188,17 +190,29 @@ int hpdlp_validate_parameters(const pdhg_parameters_t *params, char *error, size
         return parameter_error(error, error_size, "'eps_feasible_relative' must be finite and > 0",
                                params->termination_criteria.eps_feasible_relative);
     }
-    if (!(params->termination_criteria.eps_farkas_homogeneous > 0.0 &&
-          isfinite(params->termination_criteria.eps_farkas_homogeneous)))
+    if (!(params->termination_criteria.eps_farkas_iterate > 0.0 &&
+          isfinite(params->termination_criteria.eps_farkas_iterate)))
     {
-        return parameter_error(error, error_size, "'eps_farkas_homogeneous' must be finite and > 0",
-                               params->termination_criteria.eps_farkas_homogeneous);
+        return parameter_error(error, error_size, "'eps_farkas_iterate' must be finite and > 0",
+                               params->termination_criteria.eps_farkas_iterate);
     }
-    if (!(params->termination_criteria.eps_farkas_displacement > 0.0 &&
-          isfinite(params->termination_criteria.eps_farkas_displacement)))
+    if (!(params->termination_criteria.eps_farkas_step > 0.0 &&
+          isfinite(params->termination_criteria.eps_farkas_step)))
     {
-        return parameter_error(error, error_size, "'eps_farkas_displacement' must be finite and > 0",
-                               params->termination_criteria.eps_farkas_displacement);
+        return parameter_error(error, error_size, "'eps_farkas_step' must be finite and > 0",
+                               params->termination_criteria.eps_farkas_step);
+    }
+    if (!(params->termination_criteria.eps_farkas_restart > 0.0 &&
+          isfinite(params->termination_criteria.eps_farkas_restart)))
+    {
+        return parameter_error(error, error_size, "'eps_farkas_restart' must be finite and > 0",
+                               params->termination_criteria.eps_farkas_restart);
+    }
+    if (!(params->termination_criteria.farkas_objective_margin >= 0.0 &&
+          isfinite(params->termination_criteria.farkas_objective_margin)))
+    {
+        return parameter_error(error, error_size, "'farkas_objective_margin' must be finite and >= 0",
+                               params->termination_criteria.farkas_objective_margin);
     }
     if (!(params->termination_criteria.time_sec_limit > 0.0))
     {

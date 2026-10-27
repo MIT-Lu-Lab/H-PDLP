@@ -94,8 +94,10 @@ H-PDLP-specific controls:
 | `PrimalWeightSafeguard` | `primal_weight_safeguard` |
 | `ConeNewtonMaxIter` | `cone_newton_max_iter` |
 | `ConeNewtonTol` | `cone_newton_tol` |
-| `FarkasHomogeneousTol` | `eps_farkas_homogeneous` |
-| `FarkasDisplacementTol` | `eps_farkas_displacement` |
+| `FarkasIterateTol` | `eps_farkas_iterate` |
+| `FarkasStepTol` | `eps_farkas_step` |
+| `FarkasRestartTol` | `eps_farkas_restart` |
+| `FarkasObjectiveMargin` | `farkas_objective_margin` |
 | `ASBRelativeTol` | `asb_relative_tol` |
 
 `TimeLimit` is the iteration CPU-time limit in seconds, measured by C `clock()`. It excludes presolve, initialization, and Python conversion and is checked at termination evaluations. It is not a wall-clock limit.

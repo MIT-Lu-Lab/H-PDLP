@@ -40,26 +40,58 @@ typedef struct {
 } restart_reductions_t;
 
 typedef struct {
+    double objective_dot;
+    double constraint_support;
+    double variable_support;
+    double constraint_recession_residual;
+    double stationarity_residual;
+    double sum_absolute_objective_terms;
+    double sum_absolute_constraint_support_terms;
+    double sum_absolute_variable_support_terms;
+    double scaled_constraint_recession_residual;
+    double scaled_stationarity_residual;
+} candidate_reductions_t;
+
+typedef struct {
+    double margin;
+    double residual;
+    double relative_margin;
+    double scaled_residual;
+    double relative_bound_residual;
+    double scaled_activity;
+    double relative_residual;
+} certificate_metrics_t;
+
+typedef struct {
     double primal_residual_norm;
     double dual_residual_norm;
     double bound_multiplier_dual_residual_norm;
-    double primal_infeasibility_stationarity_residual_norm;
-    double constraint_recession_residual_norm;
     double variable_recession_residual_norm;
+    double scaled_variable_recession_residual;
+    double scaled_primal_ray_norm;
     double original_dual_ray_norm;
     double original_reduced_cost_ray_norm;
     double original_primal_ray_norm;
-    double objective_dot_primal;
-    double constraint_support;
     double variable_support;
     double bound_multiplier_variable_support;
-    double homogeneous_variable_support;
-    double dual_infeasibility_objective;
-    double primal_infeasibility_constraint_support;
-    double primal_infeasibility_variable_support;
-    double dual_infeasibility_residual;
-    double primal_infeasibility_residual;
+    candidate_reductions_t iterate;
+    candidate_reductions_t step;
+    candidate_reductions_t restart;
 } termination_reductions_t;
+
+typedef enum {
+    CERTIFICATE_SOURCE_ITERATE,
+    CERTIFICATE_SOURCE_STEP,
+    CERTIFICATE_SOURCE_RESTART,
+    CERTIFICATE_SOURCE_COUNT
+} certificate_source_t;
+
+typedef struct {
+    double *primal_d;
+    double *dual_d;
+    cusparseDnVecDescr_t spmv_primal;
+    cusparseDnVecDescr_t spmv_dual;
+} candidate_vectors_t;
 
 typedef struct {
     double step_size_primal;
@@ -75,7 +107,7 @@ typedef struct {
     termination_reason_t termination_reason;
     double certificate_margin;
     double certificate_residual;
-    bool certificate_from_homogeneous;
+    certificate_source_t certificate_source;
 
     int *inner_count_d;
     double *step_size_primal_d;
@@ -109,6 +141,7 @@ typedef struct {
     int *col_ind;
     int *row_ind;
     double *val;
+    double *abs_val;
     int *transpose_map;
 } cu_sparse_matrix_csr_t;
 
@@ -180,16 +213,24 @@ typedef struct {
 
     cusparseSpMatDescr_t matA;
     cusparseSpMatDescr_t matAt;
+    cusparseSpMatDescr_t matAbsA;
+    cusparseSpMatDescr_t matAbsAt;
     cusparseDnVecDescr_t spmv_primal_current_solution;
     cusparseDnVecDescr_t spmv_dual_reflected_solution;
     cusparseDnVecDescr_t spmv_primal_pdhg_solution;
     cusparseDnVecDescr_t spmv_dual_pdhg_solution;
-    cusparseDnVecDescr_t spmv_primal_delta_solution;
-    cusparseDnVecDescr_t spmv_dual_delta_solution;
+    cusparseDnVecDescr_t spmv_primal_step_delta;
+    cusparseDnVecDescr_t spmv_dual_step_delta;
+    cusparseDnVecDescr_t spmv_primal_restart_delta;
+    cusparseDnVecDescr_t spmv_dual_restart_delta;
     cusparseDnVecDescr_t spmv_primal_product;
     cusparseDnVecDescr_t spmv_dual_product;
+    cusparseDnVecDescr_t spmv_variable_reduction_entries;
+    cusparseDnVecDescr_t spmv_constraint_reduction_entries;
     spmv_plan_t constraint_matrix_spmv_plan;
     spmv_plan_t constraint_matrix_transpose_spmv_plan;
+    spmv_plan_t absolute_constraint_matrix_spmv_plan;
+    spmv_plan_t absolute_constraint_matrix_transpose_spmv_plan;
     void   *cub_reduce_workspace_d;
     size_t  cub_reduce_workspace_bytes;
 
@@ -213,7 +254,8 @@ typedef struct {
     double *primal_current_solution_d;
     double *primal_pdhg_solution_d;
     double *primal_reflected_solution_d;
-    double *primal_delta_solution_d;
+    double *primal_step_delta_d;
+    double *primal_restart_delta_d;
     double *primal_product_d;
     double *variable_reduction_entries_d;
 
@@ -221,7 +263,8 @@ typedef struct {
     double *dual_current_solution_d;
     double *dual_pdhg_solution_d;
     double *dual_reflected_solution_d;
-    double *dual_delta_solution_d;
+    double *dual_step_delta_d;
+    double *dual_restart_delta_d;
     double *dual_product_d;
     double *constraint_reduction_entries_d;
 
@@ -229,9 +272,9 @@ typedef struct {
     double *bound_multiplier_d;
     double *primal_pdhg_projection_multiplier_d;
     double *primal_infeasibility_reduced_cost_d;
-    double *reduced_cost_ray_d;
-    double *dual_ray_d;
-    double *primal_ray_d;
+    double *reduced_cost_iterate_ray_d;
+    double *dual_iterate_ray_d;
+    double *primal_iterate_ray_d;
 
     double *hsd_scalars_d;
     double *hsd_inverse_scale_d;

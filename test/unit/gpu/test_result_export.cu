@@ -173,7 +173,7 @@ static void check_device_values(const char *name, const double *device_values,
 
 static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
                          termination_criteria_t *criteria,
-                         termination_reason_t reason, bool homogeneous,
+                         termination_reason_t reason, certificate_source_t source,
                          const double *primal, const double *dual,
                          const double *reduced_cost)
 {
@@ -183,7 +183,7 @@ static void check_result(pdhg_solver_state_t *state, lp_problem_t *problem,
     if (state->control.termination_reason != reason ||
         ((reason == TERMINATION_REASON_PRIMAL_INFEASIBLE ||
           reason == TERMINATION_REASON_DUAL_INFEASIBLE) &&
-         state->control.certificate_from_homogeneous != homogeneous))
+         state->control.certificate_source != source))
     {
         fprintf(stderr, "FAIL: wrong termination decision: %d expected %d\n",
                 state->control.termination_reason, reason);
@@ -215,22 +215,22 @@ static void check_result_export(void)
     const double primal_source[] = {8, 12};
     const double dual_source[] = {30};
     const double reduced_cost_source[] = {-40, 20};
-    const double primal_delta[] = {16, 20};
-    const double dual_delta[] = {50};
-    const double dual_product[] = {3, -7};
+    const double primal_restart[] = {16, 20};
+    const double dual_restart[] = {50};
+    const double primal_step[] = {32, 40};
+    const double dual_step[] = {100};
     const double primal_infeasibility_reduced_cost[] = {-6, 8};
     const double variable_rescaling[] = {2, 4};
     const double constraint_rescaling[] = {5};
     const double variable_lower_bound[] = {-INFINITY, 0};
     const double variable_upper_bound[] = {2, INFINITY};
     const double expected_primal[] = {1, 0.75};
-    const double expected_homogeneous_primal[] = {0.4, 0.3};
-    const double expected_primal_delta[] = {0.5, 0.3125};
+    const double expected_iterate_primal[] = {0.4, 0.3};
+    const double expected_primal_restart[] = {0.5, 0.3125};
     const double expected_dual[] = {0.3};
-    const double expected_dual_delta[] = {0.25};
+    const double expected_primal_step[] = {1, 0.625};
     const double expected_reduced_cost[] = {-4, 4};
-    const double expected_homogeneous_reduced_cost[] = {-0.6, 1.6};
-    const double expected_displacement_reduced_cost[] = {-0.15, 0.7};
+    const double expected_iterate_reduced_cost[] = {-0.6, 1.6};
 
     pdhg_solver_state_t state = {};
     pdhg_metrics_t metrics = {};
@@ -251,9 +251,10 @@ static void check_result_export(void)
     state.primal_pdhg_solution_d = copy_to_device(primal_source, 2);
     state.dual_pdhg_solution_d = copy_to_device(dual_source, 1);
     state.pdhg_reduced_cost_d = copy_to_device(reduced_cost_source, 2);
-    state.primal_delta_solution_d = copy_to_device(primal_delta, 2);
-    state.dual_delta_solution_d = copy_to_device(dual_delta, 1);
-    state.dual_product_d = copy_to_device(dual_product, 2);
+    state.primal_restart_delta_d = copy_to_device(primal_restart, 2);
+    state.dual_restart_delta_d = copy_to_device(dual_restart, 1);
+    state.primal_step_delta_d = copy_to_device(primal_step, 2);
+    state.dual_step_delta_d = copy_to_device(dual_step, 1);
     state.primal_infeasibility_reduced_cost_d =
         copy_to_device(primal_infeasibility_reduced_cost, 2);
     state.variable_rescaling_d = copy_to_device(variable_rescaling, 2);
@@ -264,49 +265,54 @@ static void check_result_export(void)
     CUDA_CHECK(cudaMalloc(&state.constraint_reduction_entries_d, state.con_bytes));
 
     termination_reductions_t reductions = {};
-    reductions.constraint_support = 20;
-    reductions.homogeneous_variable_support = 20;
-    reductions.primal_infeasibility_constraint_support = 20;
-    reductions.primal_infeasibility_variable_support = 60;
-    reductions.objective_dot_primal = -100;
-    reductions.dual_infeasibility_objective = -160;
+    reductions.iterate.constraint_support = 20;
+    reductions.iterate.variable_support = 20;
+    reductions.iterate.objective_dot = -100;
+    reductions.restart.constraint_support = 20;
+    reductions.restart.variable_support = 60;
+    reductions.restart.objective_dot = -160;
+    reductions.step = reductions.restart;
     CUDA_CHECK(cudaMalloc(&state.termination_reductions_d, sizeof(reductions)));
     CUDA_CHECK(cudaMemcpy(state.termination_reductions_d, &reductions,
                           sizeof(reductions), cudaMemcpyHostToDevice));
 
     metrics.primal_pdhg_scale = 2;
     check_result(&state, &problem, &params.termination_criteria,
-                 TERMINATION_REASON_OPTIMAL, false,
+                 TERMINATION_REASON_OPTIMAL, CERTIFICATE_SOURCE_ITERATE,
                  expected_primal, expected_dual, expected_reduced_cost);
 
     metrics.normalized_homogeneous_ratio = 1;
-    metrics.primal_infeasibility_homogeneous_margin = 1;
+    metrics.primal_infeasibility_iterate.margin = 1;
+    metrics.primal_infeasibility_iterate.relative_margin = 1;
     check_result(&state, &problem, &params.termination_criteria,
-                 TERMINATION_REASON_PRIMAL_INFEASIBLE, true,
-                 NULL, expected_dual, expected_homogeneous_reduced_cost);
+                 TERMINATION_REASON_PRIMAL_INFEASIBLE, CERTIFICATE_SOURCE_ITERATE,
+                 NULL, expected_dual, expected_iterate_reduced_cost);
 
-    metrics.primal_infeasibility_homogeneous_margin = 0;
-    metrics.dual_infeasibility_homogeneous_margin = 1;
+    metrics.primal_infeasibility_iterate.margin = 0;
+    metrics.dual_infeasibility_iterate.margin = 1;
+    metrics.dual_infeasibility_iterate.relative_margin = 1;
     check_result(&state, &problem, &params.termination_criteria,
-                 TERMINATION_REASON_DUAL_INFEASIBLE, true,
-                 expected_homogeneous_primal, NULL, NULL);
+                 TERMINATION_REASON_DUAL_INFEASIBLE, CERTIFICATE_SOURCE_ITERATE,
+                 expected_iterate_primal, NULL, NULL);
 
     metrics.normalized_homogeneous_ratio = 0.5;
-    metrics.dual_infeasibility_homogeneous_margin = 0;
-    metrics.primal_infeasibility_displacement_margin = 1;
+    metrics.dual_infeasibility_iterate.margin = 0;
+    metrics.dual_infeasibility_restart.margin = 1;
+    metrics.dual_infeasibility_restart.relative_margin = 1;
     check_result(&state, &problem, &params.termination_criteria,
-                 TERMINATION_REASON_PRIMAL_INFEASIBLE, false,
-                 NULL, expected_dual_delta, expected_displacement_reduced_cost);
+                 TERMINATION_REASON_DUAL_INFEASIBLE, CERTIFICATE_SOURCE_RESTART,
+                 expected_primal_restart, NULL, NULL);
 
-    metrics.primal_infeasibility_displacement_margin = 0;
-    metrics.dual_infeasibility_displacement_margin = 1;
+    metrics.dual_infeasibility_restart.margin = 0;
+    metrics.dual_infeasibility_step.margin = 1;
+    metrics.dual_infeasibility_step.relative_margin = 1;
     check_result(&state, &problem, &params.termination_criteria,
-                 TERMINATION_REASON_DUAL_INFEASIBLE, false,
-                 expected_primal_delta, NULL, NULL);
+                 TERMINATION_REASON_DUAL_INFEASIBLE, CERTIFICATE_SOURCE_STEP,
+                 expected_primal_step, NULL, NULL);
 
     metrics.primal_pdhg_scale = NAN;
     check_result(&state, &problem, &params.termination_criteria,
-                 TERMINATION_REASON_NUMERICAL_FAILURE, false,
+                 TERMINATION_REASON_NUMERICAL_FAILURE, CERTIFICATE_SOURCE_ITERATE,
                  NULL, NULL, NULL);
 
     state.num_variables = problem.num_variables = 0;
@@ -324,12 +330,14 @@ static void check_result_export(void)
     check_device_values("state dual", state.dual_pdhg_solution_d, dual_source, 1);
     check_device_values("state reduced cost", state.pdhg_reduced_cost_d,
                         reduced_cost_source, 2);
-    check_device_values("state delta primal", state.primal_delta_solution_d,
-                        primal_delta, 2);
-    check_device_values("state delta dual", state.dual_delta_solution_d,
-                        dual_delta, 1);
-    check_device_values("state dual product", state.dual_product_d,
-                        dual_product, 2);
+    check_device_values("state restart primal", state.primal_restart_delta_d,
+                        primal_restart, 2);
+    check_device_values("state restart dual", state.dual_restart_delta_d,
+                        dual_restart, 1);
+    check_device_values("state step primal", state.primal_step_delta_d,
+                        primal_step, 2);
+    check_device_values("state step dual", state.dual_step_delta_d,
+                        dual_step, 1);
     check_device_values("state infeasibility reduced cost",
                         state.primal_infeasibility_reduced_cost_d,
                         primal_infeasibility_reduced_cost, 2);
@@ -337,9 +345,10 @@ static void check_result_export(void)
     CUDA_CHECK(cudaFree(state.primal_pdhg_solution_d));
     CUDA_CHECK(cudaFree(state.dual_pdhg_solution_d));
     CUDA_CHECK(cudaFree(state.pdhg_reduced_cost_d));
-    CUDA_CHECK(cudaFree(state.primal_delta_solution_d));
-    CUDA_CHECK(cudaFree(state.dual_delta_solution_d));
-    CUDA_CHECK(cudaFree(state.dual_product_d));
+    CUDA_CHECK(cudaFree(state.primal_restart_delta_d));
+    CUDA_CHECK(cudaFree(state.dual_restart_delta_d));
+    CUDA_CHECK(cudaFree(state.primal_step_delta_d));
+    CUDA_CHECK(cudaFree(state.dual_step_delta_d));
     CUDA_CHECK(cudaFree(state.primal_infeasibility_reduced_cost_d));
     CUDA_CHECK(cudaFree(state.variable_rescaling_d));
     CUDA_CHECK(cudaFree(state.constraint_rescaling_d));

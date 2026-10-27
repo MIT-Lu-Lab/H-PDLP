@@ -48,14 +48,12 @@ extern "C"
         double primal_solution_norm;
         double dual_solution_norm;
 
-        double primal_infeasibility_homogeneous_margin;
-        double primal_infeasibility_homogeneous_residual;
-        double dual_infeasibility_homogeneous_margin;
-        double dual_infeasibility_homogeneous_residual;
-        double primal_infeasibility_displacement_margin;
-        double primal_infeasibility_displacement_residual;
-        double dual_infeasibility_displacement_margin;
-        double dual_infeasibility_displacement_residual;
+        certificate_metrics_t primal_infeasibility_iterate;
+        certificate_metrics_t dual_infeasibility_iterate;
+        certificate_metrics_t primal_infeasibility_step;
+        certificate_metrics_t dual_infeasibility_step;
+        certificate_metrics_t primal_infeasibility_restart;
+        certificate_metrics_t dual_infeasibility_restart;
 
         double normalized_homogeneous_gap;
         double normalized_homogeneous_ratio;
@@ -68,6 +66,16 @@ extern "C"
     void check_termination_criteria(
         pdhg_solver_state_t *state,
         const termination_criteria_t *criteria);
+
+    void compute_certificate_dual_product(pdhg_solver_state_t *state);
+
+    candidate_vectors_t select_candidate_vectors(
+        pdhg_solver_state_t *state,
+        certificate_source_t source);
+
+    candidate_reductions_t *select_candidate_reductions(
+        termination_reductions_t *reductions,
+        certificate_source_t source);
 
 #ifdef __cplusplus
 }

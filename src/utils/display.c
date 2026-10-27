@@ -105,10 +105,14 @@ void print_initial_info(
            params->termination_criteria.eps_optimal_relative);
     printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_feasible_relative",
            params->termination_criteria.eps_feasible_relative);
-    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_homogeneous",
-           params->termination_criteria.eps_farkas_homogeneous);
-    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_displacement",
-           params->termination_criteria.eps_farkas_displacement);
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_iterate",
+           params->termination_criteria.eps_farkas_iterate);
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_step",
+           params->termination_criteria.eps_farkas_step);
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "eps_farkas_restart",
+           params->termination_criteria.eps_farkas_restart);
+    printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "farkas_objective_margin",
+           params->termination_criteria.farkas_objective_margin);
     printf("  %-*s : %g\n", SETTING_LABEL_WIDTH, "time_sec_limit",
            params->termination_criteria.time_sec_limit);
     printf("  %-*s : %d\n", SETTING_LABEL_WIDTH, "iteration_limit",

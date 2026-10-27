@@ -28,6 +28,11 @@ struct absolute_value_transform_t
     }
 };
 
+__global__ void compute_abs_kernel(
+    const double *__restrict__ input,
+    int length,
+    double *__restrict__ output);
+
 void allocate_zeroed_device_buffer(void **dst, size_t bytes)
 {
     const size_t allocation_bytes = bytes > 0 ? bytes : 1;
@@ -122,4 +127,26 @@ void reduce_device_abs_max(
         output,
         length,
         state->stream_A));
+}
+
+void compute_device_abs(
+    pdhg_solver_state_t *state,
+    const double *input,
+    int length,
+    double *output)
+{
+    const int num_blocks = (length + 1 + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+    compute_abs_kernel<<<num_blocks, THREADS_PER_BLOCK, 0, state->stream_A>>>(
+        input, length, output);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+__global__ void compute_abs_kernel(
+    const double *__restrict__ input,
+    int length,
+    double *__restrict__ output)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= length) return;
+    output[i] = fabs(input[i]);
 }
